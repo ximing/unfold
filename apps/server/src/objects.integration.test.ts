@@ -39,6 +39,7 @@ describe('objects', () => {
   let db: ReturnType<typeof createDb>;
   let cookie = '';
   let todayBefore = 0;
+  let pendingBefore = 0;
   const suffix = Date.now();
   const domainNameA = `领域-${suffix}`;
   const domainNameB = `领域-b-${suffix}`;
@@ -64,7 +65,9 @@ describe('objects', () => {
       headers: { cookie },
     });
     expect(today.statusCode).toBe(200);
-    todayBefore = todayResponseSchema.parse(today.json()).freeCount;
+    const before = todayResponseSchema.parse(today.json());
+    todayBefore = before.freeCount;
+    pendingBefore = before.pendingSuggestions;
   });
 
   afterAll(async () => {
@@ -282,10 +285,11 @@ describe('objects', () => {
     expect(res.statusCode).toBe(200);
     const today = todayResponseSchema.parse(res.json());
     expect(today.freeCount).toBe(todayBefore + 3);
-    expect(today.focus).toBeNull();
+    if (!today.focus) throw new Error('missing focus');
+    expect(objectIds).toContain(today.focus.id);
     expect(today.due).toEqual([]);
-    expect(today.pendingSuggestions).toBe(0);
-    expect(today.openQuestions).toEqual([]);
+    expect(today.pendingSuggestions).toBe(pendingBefore);
+    expect(today.openQuestions.filter((question) => objectIds.includes(question.objectId))).toEqual([]);
   });
 
   it('adds an alias without bumping coreVersion', async () => {

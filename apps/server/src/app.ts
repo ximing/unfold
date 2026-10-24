@@ -1,12 +1,12 @@
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import { loginBodySchema, todayResponseSchema } from '@unfold/dto';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import argon2 from 'argon2';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { loadConfig } from './config.js';
 import { createDb, createPool } from './db/client.js';
-import { users } from './db/schema.js';
+import { blockIndex, documents, domains, knowledgeObjects, suggestions, users } from './db/schema.js';
 import { registerChainRoutes } from './chain.js';
 import { registerCollectionRefRoutes } from './collection-refs.js';
 import { registerCollectionRoutes } from './collections.js';
@@ -176,12 +176,74 @@ export async function buildApp() {
       if (!Number.isInteger(freeCount) || freeCount < 0) {
         return reply.code(500).send(databaseUnavailable);
       }
+
+      const focusRows = await db
+        .select({
+          id: knowledgeObjects.id,
+          canonicalName: knowledgeObjects.canonicalName,
+          coreStatement: knowledgeObjects.coreStatement,
+          domainName: domains.name,
+          type: knowledgeObjects.type,
+        })
+        .from(knowledgeObjects)
+        .innerJoin(documents, eq(documents.id, knowledgeObjects.documentId))
+        .innerJoin(domains, eq(domains.id, knowledgeObjects.domainId))
+        .where(
+          and(
+            eq(knowledgeObjects.userId, user.id),
+            eq(knowledgeObjects.status, 'active'),
+            isNull(knowledgeObjects.deletedAt),
+            isNull(documents.deletedAt),
+            isNull(domains.deletedAt),
+          ),
+        )
+        .orderBy(desc(documents.updatedAt), desc(knowledgeObjects.id))
+        .limit(1);
+
+      const pendingRows = await db
+        .select({ count: sql<string>`count(*)::text` })
+        .from(suggestions)
+        .where(
+          and(
+            eq(suggestions.userId, user.id),
+            isNull(suggestions.deletedAt),
+            inArray(suggestions.status, ['pending', 'deferred']),
+          ),
+        );
+      const pendingSuggestions = Number(pendingRows[0]?.count ?? 0);
+      if (!Number.isInteger(pendingSuggestions) || pendingSuggestions < 0) {
+        return reply.code(500).send(databaseUnavailable);
+      }
+
+      const openQuestions = await db
+        .select({
+          blockId: blockIndex.blockId,
+          text: blockIndex.textPreview,
+          objectId: knowledgeObjects.id,
+          objectName: knowledgeObjects.canonicalName,
+        })
+        .from(blockIndex)
+        .innerJoin(documents, eq(documents.id, blockIndex.documentId))
+        .innerJoin(knowledgeObjects, eq(knowledgeObjects.id, documents.ownerId))
+        .where(
+          and(
+            eq(blockIndex.blockType, 'question'),
+            isNull(blockIndex.deletedAt),
+            isNull(documents.deletedAt),
+            eq(documents.ownerType, 'object'),
+            eq(knowledgeObjects.userId, user.id),
+            eq(knowledgeObjects.status, 'active'),
+            isNull(knowledgeObjects.deletedAt),
+          ),
+        )
+        .orderBy(desc(documents.updatedAt), asc(blockIndex.position));
+
       return todayResponseSchema.parse({
-        focus: null,
+        focus: focusRows[0] ?? null,
         due: [],
         freeCount,
-        pendingSuggestions: 0,
-        openQuestions: [],
+        pendingSuggestions,
+        openQuestions,
       });
     } catch {
       return reply.code(500).send(databaseUnavailable);

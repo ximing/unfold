@@ -46,6 +46,9 @@ export const TodayPage = observer(function TodayPage() {
                 </p>
                 <h2>{today.focus.canonicalName}</h2>
                 <p>{today.focus.coreStatement}</p>
+                <p>
+                  <Link to={`/o/${today.focus.id}`}>回到这个点</Link>
+                </p>
               </>
             )}
           </section>

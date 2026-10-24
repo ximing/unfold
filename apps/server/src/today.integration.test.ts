@@ -16,14 +16,6 @@ function cookiePair(setCookie: string | string[] | undefined): string {
   return pair;
 }
 
-const emptyToday = {
-  focus: null,
-  due: [],
-  freeCount: 0,
-  pendingSuggestions: 0,
-  openQuestions: [],
-};
-
 describe('today', () => {
   let app: FastifyInstance;
 
@@ -41,7 +33,7 @@ describe('today', () => {
     expect(res.json().error.code).toBe('unauthenticated');
   });
 
-  it('returns an empty today aggregate after login', async () => {
+  it('returns a today aggregate after login', async () => {
     const login = await app.inject({
       method: 'POST',
       url: '/api/login',
@@ -54,7 +46,7 @@ describe('today', () => {
     });
     expect(res.statusCode).toBe(200);
     const body: unknown = res.json();
-    expect(body).toEqual(emptyToday);
-    expect(() => todayResponseSchema.parse(body)).not.toThrow();
+    const today = todayResponseSchema.parse(body);
+    expect(today.due).toEqual([]);
   });
 });
