@@ -56,6 +56,7 @@ export const CreateObjectPage = observer(function CreateObjectPage() {
       coreStatement,
     });
     if (!created) return;
+    await library.loadDomains();
     navigate(`/o/${created.id}`);
   }
 
