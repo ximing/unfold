@@ -14,6 +14,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { createDb } from './db/client.js';
 import { blockIndex, domains, documents, knowledgeObjects, relations } from './db/schema.js';
+import { markObjectDueForReview } from './review-due.js';
 import { syncObjectIndex } from './services/index-sync.js';
 
 type Database = ReturnType<typeof createDb>;
@@ -368,6 +369,10 @@ export function registerObjectRoutes(app: FastifyInstance, db: Database, session
     } catch (error) {
       if (isUniqueViolation(error)) return reply.code(409).send(duplicateObject);
       throw error;
+    }
+
+    if (statementChanged) {
+      await markObjectDueForReview(db, user.id, current.id, new Date());
     }
 
     await syncObjectIndex(db, user.id, current.id);

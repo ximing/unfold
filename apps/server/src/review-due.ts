@@ -81,3 +81,26 @@ export function registerReviewDueRoutes(app: FastifyInstance, db: Database, sess
     }
   });
 }
+
+export async function markObjectDueForReview(db: Database, userId: string, objectId: string, now: Date): Promise<void> {
+  const caps = await db
+    .select({ id: capabilities.id })
+    .from(capabilities)
+    .where(
+      and(eq(capabilities.userId, userId), eq(capabilities.primaryObjectId, objectId), isNull(capabilities.deletedAt)),
+    );
+  if (caps.length === 0) return;
+  await db
+    .update(reviewStates)
+    .set({ dueAt: now, updatedAt: now })
+    .where(
+      and(
+        eq(reviewStates.userId, userId),
+        isNull(reviewStates.deletedAt),
+        inArray(
+          reviewStates.capabilityId,
+          caps.map((row) => row.id),
+        ),
+      ),
+    );
+}
