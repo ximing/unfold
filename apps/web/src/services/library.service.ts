@@ -6,6 +6,7 @@ import {
   errorBodySchema,
   objectSummarySchema,
   type CreateObjectBody,
+  type DocumentResponse,
   type Domain,
   type ObjectSummary,
 } from '@unfold/dto';
@@ -106,15 +107,37 @@ export class LibraryService extends Service {
   }
 
   // 文档接口可能还没部署；解析失败只返回 null，不把页面打崩。
-  async loadDocument(id: string): Promise<{ plainText: string } | null> {
+  async loadDocument(id: string): Promise<DocumentResponse | null> {
     try {
       const res = await fetch(`/api/objects/${encodeURIComponent(id)}/doc`, {
         credentials: 'include',
       });
       if (!res.ok) return null;
-      const body = documentResponseSchema.parse(await res.json());
-      return { plainText: body.plainText };
+      return documentResponseSchema.parse(await res.json());
     } catch {
+      return null;
+    }
+  }
+
+  async saveDocument(
+    id: string,
+    body: { schemaVersion: number; content: unknown; plainText: string },
+  ): Promise<DocumentResponse | null> {
+    this.error = '';
+    const res = await fetch(`/api/objects/${encodeURIComponent(id)}/doc`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      this.error = await errorMessage(res);
+      return null;
+    }
+    try {
+      return documentResponseSchema.parse(await res.json());
+    } catch {
+      this.error = '保存结果无法读取';
       return null;
     }
   }

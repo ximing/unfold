@@ -158,7 +158,13 @@ const TieredHints = Node.create({
   isolating: true,
   addAttributes() {
     return {
-      collapsed: { default: true },
+      collapsed: {
+        default: true,
+        parseHTML: (element) => element.getAttribute('data-collapsed') !== 'false',
+        renderHTML: (attributes) => ({
+          'data-collapsed': attributes.collapsed === false ? 'false' : 'true',
+        }),
+      },
     };
   },
   parseHTML() {
@@ -166,6 +172,49 @@ const TieredHints = Node.create({
   },
   renderHTML({ HTMLAttributes }) {
     return ['section', mergeAttributes(HTMLAttributes, { 'data-type': 'tiered-hints' }), 0];
+  },
+  addNodeView() {
+    return ({ node, getPos, editor }) => {
+      let current = node;
+      const dom = document.createElement('section');
+      dom.setAttribute('data-type', 'tiered-hints');
+      const button = document.createElement('button');
+      button.type = 'button';
+      const contentDOM = document.createElement('div');
+
+      const sync = (next: typeof node) => {
+        current = next;
+        const collapsed = next.attrs.collapsed !== false;
+        dom.setAttribute('data-collapsed', collapsed ? 'true' : 'false');
+        button.textContent = collapsed ? '展开提示' : '折叠提示';
+        contentDOM.hidden = collapsed;
+      };
+      sync(node);
+
+      button.addEventListener('mousedown', (event) => {
+        event.preventDefault();
+      });
+      button.addEventListener('click', () => {
+        const pos = getPos();
+        if (typeof pos !== 'number') return;
+        const collapsed = current.attrs.collapsed === false;
+        editor.commands.command(({ tr }) => {
+          tr.setNodeMarkup(pos, undefined, { ...current.attrs, collapsed });
+          return true;
+        });
+      });
+
+      dom.append(button, contentDOM);
+      return {
+        dom,
+        contentDOM,
+        update(updated) {
+          if (updated.type.name !== 'tiered_hints') return false;
+          sync(updated);
+          return true;
+        },
+      };
+    };
   },
 });
 

@@ -165,3 +165,61 @@ p[role='alert'] {
     border-bottom: 1px solid var(--line);
   }
 }
+
+.doc {
+  margin-top: 1.25rem;
+}
+
+.doc-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.doc-tools button {
+  margin-top: 0;
+}
+
+.doc .ProseMirror {
+  min-height: 12rem;
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--line);
+  outline: none;
+}
+
+.doc .ProseMirror:focus {
+  border-top-color: var(--cobalt);
+}
+
+.doc .ProseMirror aside[data-type]::before,
+.doc .ProseMirror section[data-type]::before,
+.doc .ProseMirror div[data-type='object-ref']::before {
+  display: block;
+  height: 0;
+  overflow: hidden;
+  color: var(--mute);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+}
+
+.doc .ProseMirror aside[data-type]:hover::before,
+.doc .ProseMirror section[data-type]:hover::before,
+.doc .ProseMirror div[data-type='object-ref']:hover::before {
+  height: auto;
+  overflow: visible;
+  margin-bottom: 0.25rem;
+}
+
+.doc .ProseMirror aside[data-type='question']::before { content: '疑问'; }
+.doc .ProseMirror aside[data-type='personal-note']::before { content: '个人理解'; }
+.doc .ProseMirror aside[data-type='counterexample']::before { content: '反例'; }
+.doc .ProseMirror aside[data-type='decision']::before { content: '决定'; }
+.doc .ProseMirror section[data-type='derivation-steps']::before { content: '推导'; }
+.doc .ProseMirror section[data-type='tiered-hints']::before { content: '分级提示'; }
+.doc .ProseMirror div[data-type='object-ref']::before { content: '点'; }
+
+.doc .ProseMirror section[data-type='tiered-hints'] > button {
+  margin-top: 0.25rem;
+}
