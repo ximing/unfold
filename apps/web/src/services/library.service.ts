@@ -767,6 +767,43 @@ export class LibraryService extends Service {
     }
   }
 
+  async createCapability(body: {
+    statement: string;
+    kind: Capability['kind'];
+    primaryObjectId: string;
+    hints: string[];
+    hintThreshold: number;
+  }): Promise<Capability | null> {
+    this.error = '';
+    const res = await fetch('/api/capabilities', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        statement: body.statement,
+        kind: body.kind,
+        primaryObjectId: body.primaryObjectId,
+        hints: body.hints,
+        hintThreshold: body.hintThreshold,
+        prompt: '',
+        referenceNote: '',
+        objectIds: [],
+      }),
+    });
+    if (!res.ok) {
+      this.error = await errorMessage(res, '能力没有建出来');
+      return null;
+    }
+    try {
+      const created = capabilitySchema.parse(await res.json());
+      this.capabilities = [...this.capabilities, created];
+      return created;
+    } catch {
+      this.error = '能力没有建出来';
+      return null;
+    }
+  }
+
   async loadCapabilities(objectId: string): Promise<void> {
     this.error = '';
     try {

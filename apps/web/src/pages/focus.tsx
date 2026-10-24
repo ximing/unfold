@@ -500,8 +500,51 @@ const CAPABILITY_KIND: Record<CapabilityKind, string> = {
   tradeoff: '取舍',
 };
 
-function CapabilityProjection() {
+function isCapabilityKind(value: string): value is CapabilityKind {
+  return Object.prototype.hasOwnProperty.call(CAPABILITY_KIND, value);
+}
+
+function hintThresholdFrom(raw: string): number {
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1) return 3;
+  return parsed;
+}
+
+const CapabilityProjection = observer(function CapabilityProjection({
+  objectId,
+}: {
+  objectId: string;
+}) {
   const library = useService(LibraryService);
+  const [statement, setStatement] = useState('');
+  const [kind, setKind] = useState<CapabilityKind>('explain');
+  const [hintLines, setHintLines] = useState('');
+  const [threshold, setThreshold] = useState('3');
+  const [pending, setPending] = useState(false);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmed = statement.trim();
+    if (pending || trimmed === '') return;
+    setPending(true);
+    try {
+      const created = await library.createCapability({
+        statement: trimmed,
+        kind,
+        primaryObjectId: objectId,
+        hints: hintLines.split('\n').filter((line) => line.trim() !== ''),
+        hintThreshold: hintThresholdFrom(threshold),
+      });
+      if (!created) return;
+      setStatement('');
+      setKind('explain');
+      setHintLines('');
+      setThreshold('3');
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
     <section>
       <h2>能力</h2>
@@ -530,10 +573,46 @@ function CapabilityProjection() {
           ))}
         </ul>
       )}
+      <form onSubmit={(event) => void onSubmit(event)}>
+        <input
+          aria-label="能做什么"
+          value={statement}
+          onChange={(event) => setStatement(event.target.value)}
+        />
+        <select
+          aria-label="能力种类"
+          value={kind}
+          onChange={(event) => {
+            const next = event.target.value;
+            if (isCapabilityKind(next)) setKind(next);
+          }}
+        >
+          {(Object.keys(CAPABILITY_KIND) as CapabilityKind[]).map((value) => (
+            <option key={value} value={value}>
+              {CAPABILITY_KIND[value]}
+            </option>
+          ))}
+        </select>
+        <textarea
+          aria-label="提示，一行一级"
+          value={hintLines}
+          onChange={(event) => setHintLines(event.target.value)}
+        />
+        <input
+          type="number"
+          aria-label="独立完成锁定级数"
+          min={1}
+          value={threshold}
+          onChange={(event) => setThreshold(event.target.value)}
+        />
+        <button type="submit" disabled={pending || statement.trim() === ''}>
+          记下这条能力
+        </button>
+      </form>
       <p className="muted">能力是最小学习单元。开放回答自评，提示到第 3 级不能记独立完成。不出现掌握度百分比。</p>
     </section>
   );
-}
+});
 
 export const FocusPage = observer(function FocusPage() {
   const library = useService(LibraryService);
@@ -822,7 +901,7 @@ export const FocusPage = observer(function FocusPage() {
             {library.error && library.error !== '没有这个点' && !open ? (
               <p role="alert">{library.error}</p>
             ) : null}
-            <CapabilityProjection />
+            <CapabilityProjection objectId={id} />
           </>
         ) : (
           <p className="muted">正在读取…</p>
