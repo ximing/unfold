@@ -282,6 +282,33 @@ export const collections = pgTable(
   ],
 );
 
+export const collectionReads = pgTable(
+  'collection_reads',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    collectionId: uuid('collection_id')
+      .notNull()
+      .references(() => collections.id),
+    objectId: uuid('object_id')
+      .notNull()
+      .references(() => knowledgeObjects.id),
+    seenCoreVersion: integer('seen_core_version').notNull(),
+    seenStatement: text('seen_statement').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    check('collection_reads_seen_version_check', sql`${table.seenCoreVersion} >= 1`),
+    uniqueIndex('collection_reads_pair_active')
+      .on(table.collectionId, table.objectId)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
+);
+
 export const revisions = pgTable(
   'revisions',
   {

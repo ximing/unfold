@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  collectionDetailSchema,
   collectionListSchema,
   collectionRefBodySchema,
   collectionSchema,
   createCollectionBodySchema,
   type Collection,
+  type CollectionDetail,
   type CollectionList,
   type CollectionRefBody,
   type CreateCollectionBody,
@@ -80,5 +82,28 @@ describe('collectionSchema', () => {
 
     const list = { collections: [collection] } satisfies CollectionList;
     expect(collectionListSchema.parse(list)).toEqual(list);
+  });
+});
+
+describe('collectionDetailSchema', () => {
+  it('parses a pending confirmation and rejects any other message', () => {
+    const objectId = '6ba7b812-9dad-11d1-80b4-00c04fd430c8';
+    const detail = {
+      id: collectionId,
+      domainId,
+      title: '线性代数',
+      intent: '',
+      parentCollectionId: null,
+      position: 0,
+      documentId: null,
+      pending: [{ objectId, message: '核心定义已更新，待确认' }],
+    } satisfies CollectionDetail;
+    expect(collectionDetailSchema.parse(detail)).toEqual(detail);
+    expect(
+      collectionDetailSchema.safeParse({
+        ...detail,
+        pending: [{ objectId, message: '定义改了' }],
+      }).success,
+    ).toBe(false);
   });
 });

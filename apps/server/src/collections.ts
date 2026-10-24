@@ -1,8 +1,16 @@
 import { SCHEMA_VERSION } from '@unfold/doc-schema';
-import { collectionListSchema, collectionSchema, createCollectionBodySchema } from '@unfold/dto';
+import {
+  collectionDetailSchema,
+  collectionListSchema,
+  collectionReadSchema,
+  collectionSchema,
+  confirmCollectionReadBodySchema,
+  createCollectionBodySchema,
+} from '@unfold/dto';
 import { and, asc, eq, isNull, max } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { confirmCollectionRead, pendingCollectionReads } from './collection-reads.js';
 import type { createDb } from './db/client.js';
 import { collections, documents, domains } from './db/schema.js';
 import type { SessionLookup } from './objects.js';
@@ -12,6 +20,7 @@ type Database = ReturnType<typeof createDb>;
 const invalidBody = { error: { code: 'invalid_body', message: '请求格式不正确' } };
 const domainNotFound = { error: { code: 'not_found', message: '没有这个领域' } };
 const collectionNotFound = { error: { code: 'not_found', message: '没有这个合集' } };
+const objectNotFound = { error: { code: 'not_found', message: '没有这个点' } };
 const invalidNesting = { error: { code: 'invalid_nesting', message: '合集最多嵌套一层' } };
 const domainMismatch = {
   error: { code: 'domain_mismatch', message: '子合集要和父合集在同一个领域' },
@@ -196,6 +205,32 @@ export function registerCollectionRoutes(app: FastifyInstance, db: Database, ses
       .limit(1);
     const row = rows[0];
     if (!row) return reply.code(404).send(collectionNotFound);
-    return reply.code(200).send(presentCollection(row));
+    const pending = await pendingCollectionReads(db, user.id, row.id, row.documentId);
+    return reply.code(200).send(collectionDetailSchema.parse({ ...presentCollection(row), pending }));
+  });
+
+  app.post('/api/collections/:id/reads', async (request, reply) => {
+    const user = await session(request, reply);
+    if (!user) return;
+
+    const params = z.object({ id: z.uuid() }).safeParse(request.params);
+    if (!params.success) return reply.code(404).send(collectionNotFound);
+
+    const rows = await db
+      .select(collectionColumns)
+      .from(collections)
+      .where(
+        and(eq(collections.id, params.data.id), eq(collections.userId, user.id), isNull(collections.deletedAt)),
+      )
+      .limit(1);
+    const row = rows[0];
+    if (!row) return reply.code(404).send(collectionNotFound);
+
+    const parsed = confirmCollectionReadBodySchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send(invalidBody);
+
+    const read = await confirmCollectionRead(db, user.id, row.id, row.documentId, parsed.data.objectId);
+    if (!read) return reply.code(404).send(objectNotFound);
+    return reply.code(200).send(collectionReadSchema.parse(read));
   });
 }

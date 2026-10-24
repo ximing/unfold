@@ -36,13 +36,21 @@ export {
   type UpdateObjectBody,
 } from './objects.js';
 export {
+  collectionDetailSchema,
   collectionListSchema,
+  collectionPendingSchema,
+  collectionReadSchema,
   collectionRefBodySchema,
   collectionSchema,
+  confirmCollectionReadBodySchema,
   createCollectionBodySchema,
   type Collection,
+  type CollectionDetail,
   type CollectionList,
+  type CollectionPending,
+  type CollectionRead,
   type CollectionRefBody,
+  type ConfirmCollectionReadBody,
   type CreateCollectionBody,
 } from './collections.js';
 export {

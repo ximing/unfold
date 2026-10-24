@@ -27,7 +27,30 @@ export const collectionRefBodySchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('move'), objectId: z.uuid(), position: z.int().nonnegative() }),
 ]);
 
+export const collectionPendingSchema = z.object({
+  objectId: z.uuid(),
+  message: z.literal('核心定义已更新，待确认'),
+});
+
+export const collectionDetailSchema = collectionSchema.extend({
+  pending: z.array(collectionPendingSchema),
+});
+
+export const confirmCollectionReadBodySchema = z.object({
+  objectId: z.uuid(),
+});
+
+export const collectionReadSchema = z.object({
+  objectId: z.uuid(),
+  seenCoreVersion: z.int().nonnegative(),
+  seenStatement: z.string(),
+});
+
 export type CreateCollectionBody = z.infer<typeof createCollectionBodySchema>;
 export type Collection = z.infer<typeof collectionSchema>;
 export type CollectionList = z.infer<typeof collectionListSchema>;
 export type CollectionRefBody = z.infer<typeof collectionRefBodySchema>;
+export type CollectionPending = z.infer<typeof collectionPendingSchema>;
+export type CollectionDetail = z.infer<typeof collectionDetailSchema>;
+export type ConfirmCollectionReadBody = z.infer<typeof confirmCollectionReadBodySchema>;
+export type CollectionRead = z.infer<typeof collectionReadSchema>;

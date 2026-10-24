@@ -13,6 +13,7 @@ import {
   knowledgeObjects,
   sources,
 } from './db/schema.js';
+import { seedCollectionReads } from './collection-reads.js';
 import { type SessionLookup } from './objects.js';
 import { assignBlockIds, collectBlockIndex, documentNodesAllowed } from './services/document-blocks.js';
 import { syncObjectIndex } from './services/index-sync.js';
@@ -196,6 +197,8 @@ export async function saveDocument(
         })),
       );
     }
+
+    await seedCollectionReads(tx, userId, documentId, indexed);
 
     const revisions = await tx
       .select({ id: documentRevisions.id })
