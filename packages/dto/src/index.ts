@@ -37,10 +37,16 @@ export {
 } from './objects.js';
 export {
   createRelationBodySchema,
+  fanRelationListSchema,
+  fanRelationSchema,
+  relationSchema,
   relationStatusSchema,
   relationTypeSchema,
   updateRelationStatusSchema,
   type CreateRelationBody,
+  type FanRelation,
+  type FanRelationList,
+  type Relation,
   type RelationStatus,
   type RelationType,
   type UpdateRelationStatus,

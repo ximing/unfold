@@ -9,11 +9,11 @@ import {
   updateObjectBodySchema,
   type ObjectSummary,
 } from '@unfold/dto';
-import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, ne, or, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { createDb } from './db/client.js';
-import { blockIndex, domains, documents, knowledgeObjects } from './db/schema.js';
+import { blockIndex, domains, documents, knowledgeObjects, relations } from './db/schema.js';
 
 type Database = ReturnType<typeof createDb>;
 
@@ -400,7 +400,21 @@ export function registerObjectRoutes(app: FastifyInstance, db: Database, session
       .from(blockIndex)
       .innerJoin(documents, eq(blockIndex.documentId, documents.id))
       .where(and(...refFilters));
-    const count = Number(counted[0]?.count ?? 0);
+    const refCount = Number(counted[0]?.count ?? 0);
+
+    const linked = await db
+      .select({ count: sql<string>`count(*)::text` })
+      .from(relations)
+      .where(
+        and(
+          eq(relations.userId, user.id),
+          eq(relations.status, 'accepted'),
+          isNull(relations.deletedAt),
+          or(eq(relations.fromId, current.id), eq(relations.toId, current.id)),
+        ),
+      );
+    const relationCount = Number(linked[0]?.count ?? 0);
+    const count = refCount + relationCount;
     if (count > 0) {
       return reply.code(409).send({
         error: { code: 'referenced', message: `还有 ${count} 处引用这个点`, count },

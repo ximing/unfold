@@ -9,6 +9,7 @@ import { createDb, createPool } from './db/client.js';
 import { users } from './db/schema.js';
 import { registerDocumentRoutes } from './documents.js';
 import { registerObjectRoutes } from './objects.js';
+import { registerRelationRoutes } from './relations.js';
 
 const invalidCredentials = {
   error: { code: 'invalid_credentials', message: '用户名或密码不正确' },
@@ -174,6 +175,7 @@ export async function buildApp() {
 
   registerObjectRoutes(app, db, signedSessionUser);
   registerDocumentRoutes(app, db, signedSessionUser);
+  registerRelationRoutes(app, db, signedSessionUser);
 
   return app;
 }

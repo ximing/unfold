@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   createRelationBodySchema,
+  fanRelationListSchema,
+  relationSchema,
   relationStatusSchema,
   relationTypeSchema,
   updateRelationStatusSchema,
@@ -34,5 +36,34 @@ describe('updateRelationStatusSchema', () => {
       const body = { status } satisfies UpdateRelationStatus;
       expect(updateRelationStatusSchema.parse(body)).toEqual(body);
     }
+  });
+});
+
+describe('relationSchema', () => {
+  it('parses a relation and its fan row', () => {
+    const relation = {
+      id: fromId,
+      fromId,
+      toId,
+      type: 'contrasts' as const,
+      distinction: '一个管状态一个管循环',
+      whatChanged: '',
+      condition: '',
+      boundary: '',
+      note: '',
+      status: 'accepted' as const,
+      origin: 'user' as const,
+      needsCrossDomainConfirm: true,
+    };
+    expect(relationSchema.parse(relation)).toEqual(relation);
+    const fan = {
+      ...relation,
+      sector: 'contrast' as const,
+      otherId: toId,
+      otherName: '循环',
+      otherCore: '',
+    };
+    expect(fanRelationListSchema.parse({ relations: [fan] })).toEqual({ relations: [fan] });
+    expect(relationSchema.safeParse({ ...relation, origin: 'client' }).success).toBe(false);
   });
 });
