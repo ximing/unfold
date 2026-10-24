@@ -261,10 +261,27 @@ function ContrastProjection({
             </div>
           ) : null}
           {relation.type === 'contrasts' ? (
-            <div className="boundary">
-              <h2>区别</h2>
-              <p>{relation.distinction}</p>
-            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th />
+                  <th>{current.canonicalName}</th>
+                  <th>{relation.otherName}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th>核心陈述</th>
+                  <td>{current.coreStatement}</td>
+                  <td>{relation.otherCore}</td>
+                </tr>
+                <tr>
+                  <th>区别</th>
+                  <td>{relation.distinction}</td>
+                  <td>{relation.distinction}</td>
+                </tr>
+              </tbody>
+            </table>
           ) : null}
         </Fragment>
       ))}
@@ -785,6 +802,45 @@ export const FocusPage = observer(function FocusPage() {
               }
             >
               分级提示
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                insert({
+                  type: 'algo_problem',
+                  attrs: { statement: '', constraints: '', examples: '', complexity: '' },
+                })
+              }
+            >
+              算法题
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                insert({
+                  type: 'theorem',
+                  attrs: { proposition: '', condition: '', proof: '', corollary: '' },
+                })
+              }
+            >
+              定理
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                insert({
+                  type: 'lang_pattern',
+                  attrs: { pattern: '', example: '', contrast: '', confusion: '' },
+                })
+              }
+            >
+              句型
+            </button>
+            <button
+              type="button"
+              onClick={() => insert({ type: 'blockMath', attrs: { latex: '' } })}
+            >
+              公式
             </button>
             <button type="button" onClick={() => saveRef.current()}>
               保存

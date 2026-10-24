@@ -451,3 +451,20 @@ p[role='alert'] {
 .graph text { font-size: 13px; fill: var(--ink); }
 .graph .edge { fill: var(--mute); font-size: 12px; }
 .graph a:hover text { fill: var(--cobalt); }
+
+section[data-type='algo-problem'],
+section[data-type='theorem'],
+section[data-type='lang-pattern'] {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--cobalt);
+}
+section[data-type='algo-problem'] input,
+section[data-type='theorem'] input,
+section[data-type='lang-pattern'] input {
+  width: 100%;
+  box-sizing: border-box;
+}
