@@ -15,3 +15,21 @@ export {
   type TodayFocus,
   type TodayResponse,
 } from './api.js';
+export {
+  createDomainBodySchema,
+  createObjectBodySchema,
+  documentBodySchema,
+  documentResponseSchema,
+  domainListSchema,
+  domainSchema,
+  objectSummarySchema,
+  updateObjectBodySchema,
+  type CreateDomainBody,
+  type CreateObjectBody,
+  type DocumentBody,
+  type DocumentResponse,
+  type Domain,
+  type DomainList,
+  type ObjectSummary,
+  type UpdateObjectBody,
+} from './objects.js';
