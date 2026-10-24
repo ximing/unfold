@@ -26,6 +26,7 @@ const TYPES_BY_SECTOR: Record<Sector, { value: RelationType; label: string }[]> 
   ],
   destination: [
     { value: 'evolves_from', label: '演化出去' },
+    { value: 'prerequisite', label: '前提' },
     { value: 'applies', label: '应用到' },
     { value: 'implements', label: '实现' },
   ],
