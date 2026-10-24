@@ -57,4 +57,23 @@ export class SessionService extends Service {
     }
     this.today = todayResponseSchema.parse(await res.json());
   }
+
+  async exportPackage(): Promise<void> {
+    const res = await fetch('/api/export', { credentials: 'include' });
+    if (res.status === 401) {
+      this.username = null;
+      this.ready = true;
+      return;
+    }
+    if (!res.ok) {
+      this.error = '导出没有完成';
+      return;
+    }
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'unfold-export.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 }

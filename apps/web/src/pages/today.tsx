@@ -87,6 +87,9 @@ export const TodayPage = observer(function TodayPage() {
       <p>
         <Link to="/new">新建点</Link>
       </p>
+      <button type="button" onClick={() => void session.exportPackage()}>
+        导出
+      </button>
       <button type="button" onClick={() => void onLogout()}>
         登出
       </button>
