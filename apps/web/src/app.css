@@ -96,3 +96,72 @@ h1 {
 p[role='alert'] {
   color: #b8432f;
 }
+
+.frame {
+  display: grid;
+  grid-template-columns: 14rem minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.rail {
+  display: grid;
+  align-content: start;
+  gap: 0.85rem;
+  padding: 1.5rem 1rem 2rem;
+  border-right: 1px solid var(--line);
+}
+
+.rail a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.rail a[aria-current='page'] {
+  font-weight: 700;
+}
+
+.rail p,
+.rail-domain p {
+  margin: 0;
+}
+
+.rail-domain {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.shell a {
+  color: var(--ink);
+}
+
+.shell select,
+.shell textarea {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  padding: 0.4rem 0;
+  color: var(--ink);
+  font: inherit;
+}
+
+.shell select:focus,
+.shell textarea:focus {
+  outline: none;
+  border-bottom-color: var(--cobalt);
+}
+
+.shell textarea {
+  min-height: 4.5rem;
+  resize: vertical;
+}
+
+@media (max-width: 720px) {
+  .frame {
+    grid-template-columns: 1fr;
+  }
+
+  .rail {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+}

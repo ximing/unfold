@@ -1,6 +1,6 @@
 import { observer, useService } from '@rabjs/react';
 import { useEffect } from 'react';
-import { Navigate, useNavigate } from 'react-router';
+import { Link, Navigate, useNavigate } from 'react-router';
 import { SessionService } from '../services/session.service.js';
 
 export const TodayPage = observer(function TodayPage() {
@@ -81,6 +81,9 @@ export const TodayPage = observer(function TodayPage() {
           <p>未处理的建议：{today.pendingSuggestions}</p>
         </>
       )}
+      <p>
+        <Link to="/new">新建点</Link>
+      </p>
       <button type="button" onClick={() => void onLogout()}>
         登出
       </button>
