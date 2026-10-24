@@ -1,9 +1,9 @@
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
-import { loginBodySchema } from '@unfold/dto';
-import { and, eq, isNull } from 'drizzle-orm';
+import { loginBodySchema, todayResponseSchema } from '@unfold/dto';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import argon2 from 'argon2';
-import Fastify from 'fastify';
+import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { loadConfig } from './config.js';
 import { createDb, createPool } from './db/client.js';
 import { users } from './db/schema.js';
@@ -14,6 +14,10 @@ const invalidCredentials = {
 
 const unauthenticated = {
   error: { code: 'unauthenticated', message: '未登录' },
+};
+
+const databaseUnavailable = {
+  error: { code: 'database_unavailable', message: '数据库暂时不可用' },
 };
 
 export async function buildApp() {
@@ -36,6 +40,34 @@ export async function buildApp() {
     secure: config.isProduction,
     signed: true,
   };
+
+  async function signedSessionUser(request: FastifyRequest, reply: FastifyReply) {
+    const raw = request.cookies.unfold_session;
+    if (!raw) {
+      await reply.code(401).send(unauthenticated);
+      return;
+    }
+
+    const unsigned = reply.unsignCookie(raw);
+    if (unsigned.valid !== true || !unsigned.value) {
+      await reply.code(401).send(unauthenticated);
+      return;
+    }
+
+    const found = await db
+      .select({ username: users.username })
+      .from(users)
+      .where(and(eq(users.id, unsigned.value), isNull(users.deletedAt)))
+      .limit(1);
+
+    const user = found[0];
+    if (!user) {
+      await reply.code(401).send(unauthenticated);
+      return;
+    }
+
+    return user;
+  }
 
   app.post(
     '/api/login',
@@ -98,28 +130,32 @@ export async function buildApp() {
   });
 
   app.get('/api/me', async (request, reply) => {
-    const raw = request.cookies.unfold_session;
-    if (!raw) {
-      return reply.code(401).send(unauthenticated);
-    }
-
-    const unsigned = reply.unsignCookie(raw);
-    if (unsigned.valid !== true || !unsigned.value) {
-      return reply.code(401).send(unauthenticated);
-    }
-
-    const found = await db
-      .select({ username: users.username })
-      .from(users)
-      .where(and(eq(users.id, unsigned.value), isNull(users.deletedAt)))
-      .limit(1);
-
-    const user = found[0];
-    if (!user) {
-      return reply.code(401).send(unauthenticated);
-    }
+    const user = await signedSessionUser(request, reply);
+    if (!user) return;
 
     return reply.code(200).send({ username: user.username });
+  });
+
+  app.get('/api/today', async (request, reply) => {
+    const user = await signedSessionUser(request, reply);
+    if (!user) return;
+
+    try {
+      const result = await db.execute<{ name: string }>(sql`select current_database() as name`);
+      if (result.rows.length === 0) {
+        return reply.code(500).send(databaseUnavailable);
+      }
+    } catch {
+      return reply.code(500).send(databaseUnavailable);
+    }
+
+    return todayResponseSchema.parse({
+      focus: null,
+      due: [],
+      freeCount: 0,
+      pendingSuggestions: 0,
+      openQuestions: [],
+    });
   });
 
   app.get('/health', async () => ({ ok: true }));
