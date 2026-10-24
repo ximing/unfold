@@ -60,6 +60,8 @@ describe('capabilitySchema', () => {
       referenceNote: '',
       primaryObjectId,
       objectIds: [objectId],
+      practiceLocked: false,
+      practiceLockMessage: '',
     } satisfies Capability;
     expect(capabilitySchema.parse(capability)).toEqual(capability);
   });

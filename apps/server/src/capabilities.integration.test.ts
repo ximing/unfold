@@ -214,4 +214,63 @@ describe('capabilities', () => {
     const leaked = await db.select({ id: capabilities.id }).from(capabilities).where(eq(capabilities.statement, statement));
     expect(leaked).toEqual([]);
   });
+
+  it('locks transfer practice on GET /api/capabilities/:id until independent evidence exists', async () => {
+    const createdObject = await app.inject({
+      method: 'POST',
+      url: '/api/objects',
+      headers: { cookie },
+      payload: {
+        domainId,
+        type: 'concept',
+        canonicalName: `点D-${suffix}`,
+        coreStatement: '一句话',
+      },
+    });
+    expect(createdObject.statusCode).toBe(201);
+    const object = objectSummarySchema.parse(createdObject.json());
+    objectIds.push(object.id);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/capabilities',
+      headers: { cookie },
+      payload: {
+        statement: `能迁移-${suffix}`,
+        kind: 'transfer',
+        primaryObjectId: object.id,
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const created = capabilitySchema.parse(res.json());
+    capabilityIds.push(created.id);
+
+    const got = await app.inject({
+      method: 'GET',
+      url: `/api/capabilities/${created.id}`,
+      headers: { cookie },
+    });
+    expect(got.statusCode).toBe(200);
+    const body = capabilitySchema.parse(got.json());
+    expect(body.practiceLocked).toBe(true);
+    expect(body.practiceLockMessage).toBe('迁移练习还没开放：主点上还没有一条独立完成的非迁移证据。');
+
+    const missing = await app.inject({
+      method: 'GET',
+      url: `/api/capabilities/${randomUUID()}`,
+      headers: { cookie },
+    });
+    expect(missing.statusCode).toBe(404);
+    expect(errorOf(missing.json()).message).toBe('没有这个能力');
+
+    const explain = await app.inject({
+      method: 'GET',
+      url: `/api/capabilities/${capabilityId}`,
+      headers: { cookie },
+    });
+    expect(explain.statusCode).toBe(200);
+    const explainBody = capabilitySchema.parse(explain.json());
+    expect(explainBody.practiceLocked).toBe(false);
+    expect(explainBody.practiceLockMessage).toBe('');
+  });
 });

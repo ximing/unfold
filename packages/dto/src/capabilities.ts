@@ -49,6 +49,8 @@ export const capabilitySchema = z.object({
   referenceNote: z.string(),
   primaryObjectId: z.uuid(),
   objectIds: z.array(z.uuid()),
+  practiceLocked: z.boolean(),
+  practiceLockMessage: z.string(),
 });
 
 export const createEvidenceBodySchema = z.object({

@@ -67,7 +67,7 @@ export async function rebuildReviewState(db: Database, userId: string, capabilit
   });
 }
 
-async function siblingHasIndependent(db: Database, userId: string, primaryObjectId: string): Promise<boolean> {
+export async function siblingHasIndependent(db: Database, userId: string, primaryObjectId: string): Promise<boolean> {
   const owned = await db
     .select({ id: capabilities.id })
     .from(capabilities)

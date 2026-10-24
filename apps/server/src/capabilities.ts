@@ -4,15 +4,18 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { createDb } from './db/client.js';
 import { capabilities, capabilityObjects, knowledgeObjects } from './db/schema.js';
+import { siblingHasIndependent } from './evidence.js';
 import type { SessionLookup } from './objects.js';
 
 type Database = ReturnType<typeof createDb>;
 
 const invalidBody = { error: { code: 'invalid_body', message: '请求格式不正确' } };
 const objectNotFound = { error: { code: 'not_found', message: '没有这个点' } };
+const capabilityNotFound = { error: { code: 'not_found', message: '没有这个能力' } };
 const databaseUnavailable = { error: { code: 'database_unavailable', message: '数据库暂时不可用' } };
 
 const capabilityQuerySchema = z.object({ objectId: z.uuid() });
+const capabilityParamsSchema = z.object({ id: z.uuid() });
 
 type CapabilityRow = {
   id: string;
@@ -42,7 +45,12 @@ function orderedObjectIds(primaryObjectId: string, ids: string[]): string[] {
   return [primaryObjectId, ...ids.filter((id) => id !== primaryObjectId)];
 }
 
-function present(row: CapabilityRow, objectIds: string[]) {
+function present(
+  row: CapabilityRow,
+  objectIds: string[],
+  practiceLocked: boolean,
+  practiceLockMessage: string,
+) {
   return capabilitySchema.parse({
     id: row.id,
     statement: row.statement,
@@ -53,7 +61,19 @@ function present(row: CapabilityRow, objectIds: string[]) {
     referenceNote: row.referenceNote,
     primaryObjectId: row.primaryObjectId,
     objectIds: orderedObjectIds(row.primaryObjectId, objectIds),
+    practiceLocked,
+    practiceLockMessage,
   });
+}
+
+async function practiceLock(db: Database, userId: string, kind: string, primaryObjectId: string) {
+  if (kind !== 'transfer') return { practiceLocked: false, practiceLockMessage: '' };
+  const allowed = await siblingHasIndependent(db, userId, primaryObjectId);
+  if (allowed) return { practiceLocked: false, practiceLockMessage: '' };
+  return {
+    practiceLocked: true,
+    practiceLockMessage: '迁移练习还没开放：主点上还没有一条独立完成的非迁移证据。',
+  };
 }
 
 async function linksByCapability(db: Database, userId: string, capabilityIds: string[]) {
@@ -145,7 +165,12 @@ async function listForObject(db: Database, userId: string, objectId: string) {
     userId,
     rows.map((row) => row.id),
   );
-  return rows.map((row) => present(row, grouped.get(row.id) ?? []));
+  const presented = [];
+  for (const row of rows) {
+    const lock = await practiceLock(db, userId, row.kind, row.primaryObjectId);
+    presented.push(present(row, grouped.get(row.id) ?? [], lock.practiceLocked, lock.practiceLockMessage));
+  }
+  return presented;
 }
 
 export function registerCapabilityRoutes(app: FastifyInstance, db: Database, session: SessionLookup) {
@@ -201,7 +226,8 @@ export function registerCapabilityRoutes(app: FastifyInstance, db: Database, ses
             objectId,
           })),
         );
-        return present(created, objectIds);
+        const lock = await practiceLock(tx as unknown as Database, user.id, created.kind, created.primaryObjectId);
+        return present(created, objectIds, lock.practiceLocked, lock.practiceLockMessage);
       });
       if (!outcome) return reply.code(404).send(objectNotFound);
       return reply.code(201).send(outcome);
@@ -220,6 +246,38 @@ export function registerCapabilityRoutes(app: FastifyInstance, db: Database, ses
     try {
       const list = await listForObject(db, user.id, parsed.data.objectId);
       return { capabilities: list };
+    } catch {
+      return reply.code(500).send(databaseUnavailable);
+    }
+  });
+
+  app.get('/api/capabilities/:id', async (request, reply) => {
+    const user = await session(request, reply);
+    if (!user) return;
+
+    const parsed = capabilityParamsSchema.safeParse(request.params);
+    if (!parsed.success) return reply.code(400).send(invalidBody);
+
+    try {
+      const rows = await db
+        .select({
+          id: capabilities.id,
+          statement: capabilities.statement,
+          kind: capabilities.kind,
+          prompt: capabilities.prompt,
+          hints: capabilities.hints,
+          hintThreshold: capabilities.hintThreshold,
+          referenceNote: capabilities.referenceNote,
+          primaryObjectId: capabilities.primaryObjectId,
+        })
+        .from(capabilities)
+        .where(and(eq(capabilities.id, parsed.data.id), eq(capabilities.userId, user.id), isNull(capabilities.deletedAt)))
+        .limit(1);
+      const row = rows[0];
+      if (!row) return reply.code(404).send(capabilityNotFound);
+      const grouped = await linksByCapability(db, user.id, [row.id]);
+      const lock = await practiceLock(db, user.id, row.kind, row.primaryObjectId);
+      return reply.code(200).send(present(row, grouped.get(row.id) ?? [], lock.practiceLocked, lock.practiceLockMessage));
     } catch {
       return reply.code(500).send(databaseUnavailable);
     }
