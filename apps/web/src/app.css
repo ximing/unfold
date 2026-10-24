@@ -434,3 +434,6 @@ p[role='alert'] {
 
 .collection-block { margin: 0.75rem 0; }
 .collection-block small { display: block; }
+
+.place { margin-top: 1.5rem; }
+.place button { margin: 0.25rem 0.5rem 0.25rem 0; }

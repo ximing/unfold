@@ -105,6 +105,29 @@ function readChains(value: unknown): ObjectChain[] | null {
   return chains;
 }
 
+function topLevelObjectRefCites(content: unknown, objectId: string): boolean {
+  if (!isRecord(content) || !isUnknownArray(content.content)) return false;
+  for (const node of content.content) {
+    if (!isRecord(node) || node.type !== 'object_ref' || !isRecord(node.attrs)) continue;
+    if (node.attrs.objectId === objectId) return true;
+  }
+  return false;
+}
+
+async function collectionDocCites(collectionId: string, objectId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/collections/${encodeURIComponent(collectionId)}/doc`, {
+      credentials: 'include',
+    });
+    if (!res.ok) return false;
+    const body: unknown = await res.json();
+    if (!isRecord(body)) return false;
+    return topLevelObjectRefCites(body.content, objectId);
+  } catch {
+    return false;
+  }
+}
+
 export class LibraryService extends Service {
   domains: Domain[] = [];
   objects: ObjectSummary[] = [];
@@ -121,6 +144,8 @@ export class LibraryService extends Service {
   private searchTicket = 0;
   collections: Collection[] = [];
   collectionError = '';
+  filedCollectionIds: string[] = [];
+  private filedTicket = 0;
 
   async loadDomains(): Promise<void> {
     this.error = '';
@@ -394,5 +419,117 @@ export class LibraryService extends Service {
       if (this.collectionError === '') this.collectionError = '文档没有加载出来';
       return null;
     }
+  }
+
+  async loadFiledCollections(objectId: string, domainId: string): Promise<void> {
+    const ticket = ++this.filedTicket;
+    this.filedCollectionIds = [];
+    try {
+      const res = await fetch(`/api/collections?domainId=${encodeURIComponent(domainId)}`, {
+        credentials: 'include',
+      });
+      if (ticket !== this.filedTicket) return;
+      if (!res.ok) {
+        this.error = '合集没有加载出来';
+        this.filedCollectionIds = [];
+        return;
+      }
+      const loaded = collectionListSchema.parse(await res.json()).collections;
+      const cited = await Promise.all(
+        loaded.map((collection) => collectionDocCites(collection.id, objectId)),
+      );
+      if (ticket !== this.filedTicket) return;
+      const filed: string[] = [];
+      for (let index = 0; index < loaded.length; index += 1) {
+        if (!cited[index]) continue;
+        const id = loaded[index]?.id;
+        if (id) filed.push(id);
+      }
+      this.filedCollectionIds = filed;
+      this.collections = [
+        ...this.collections.filter((item) => item.domainId !== domainId),
+        ...loaded,
+      ];
+      if (this.error === '合集没有加载出来') this.error = '';
+    } catch {
+      if (ticket !== this.filedTicket) return;
+      this.error = '合集没有加载出来';
+      this.filedCollectionIds = [];
+    }
+  }
+
+  async fileObject(collectionId: string, objectId: string): Promise<boolean> {
+    this.error = '';
+    const res = await fetch(`/api/collections/${encodeURIComponent(collectionId)}/refs`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ op: 'add', objectId }),
+    });
+    if (!res.ok) {
+      this.error = await errorMessage(res, '归位没有完成');
+      return false;
+    }
+    if (!this.filedCollectionIds.includes(collectionId)) {
+      this.filedCollectionIds = [...this.filedCollectionIds, collectionId];
+    }
+    return true;
+  }
+
+  async unfileObject(collectionId: string, objectId: string): Promise<boolean> {
+    this.error = '';
+    const res = await fetch(`/api/collections/${encodeURIComponent(collectionId)}/refs`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ op: 'remove', objectId }),
+    });
+    if (!res.ok) {
+      this.error = await errorMessage(res, '归位没有完成');
+      return false;
+    }
+    this.filedCollectionIds = this.filedCollectionIds.filter((id) => id !== collectionId);
+    return true;
+  }
+
+  async createCollectionAndFile(
+    domainId: string,
+    title: string,
+    intent: string,
+    objectId: string,
+  ): Promise<boolean> {
+    this.error = '';
+    const res = await fetch('/api/collections', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ domainId, title, intent }),
+    });
+    if (!res.ok) {
+      this.error = await errorMessage(res);
+      return false;
+    }
+    let collection: Collection;
+    try {
+      collection = collectionSchema.parse(await res.json());
+    } catch {
+      this.error = '归位没有完成';
+      return false;
+    }
+    this.collections = [...this.collections.filter((item) => item.id !== collection.id), collection];
+    return this.fileObject(collection.id, objectId);
+  }
+
+  async undoStructure(): Promise<boolean> {
+    const res = await fetch('/api/undo', {
+      method: 'POST',
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      this.error = await errorMessage(res, '没有可撤销的结构命令');
+      return false;
+    }
+    this.error = '';
+    return true;
   }
 }

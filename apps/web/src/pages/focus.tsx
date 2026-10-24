@@ -10,6 +10,7 @@ import {
 import { type FormEvent, Fragment, useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { LibraryService } from '../services/library.service.js';
+import { PlacePanel } from './place-panel.js';
 
 const SECTORS = [
   { value: 'origin', label: '来历' },
@@ -658,6 +659,7 @@ export const FocusPage = observer(function FocusPage() {
           onClose={() => setOpen(false)}
         />
       ) : null}
+      <PlacePanel objectId={current.id} domainId={current.domainId} />
     </main>
   );
 });
