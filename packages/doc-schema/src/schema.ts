@@ -25,6 +25,16 @@ export const BLOCK_ID_TYPES = [
   'horizontalRule',
   'blockMath',
   'mermaid',
+  'derivation_steps',
+  'derivation_step',
+  'tiered_hints',
+  'hint_item',
+  'personal_note',
+  'question',
+  'counterexample',
+  'decision',
+  'object_ref',
+  'collection_ref',
 ] as const;
 
 export const BlockId = Extension.create({
@@ -69,6 +79,99 @@ export const MermaidBlock = Node.create({
   },
 });
 
+function asideBlock(name: string, dataType: string) {
+  return Node.create({
+    name,
+    group: 'block',
+    content: 'paragraph+',
+    defining: true,
+    isolating: true,
+    parseHTML() {
+      return [{ tag: `aside[data-type="${dataType}"]` }];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return ['aside', mergeAttributes(HTMLAttributes, { 'data-type': dataType }), 0];
+    },
+  });
+}
+
+function stepBlock(name: string, dataType: string) {
+  return Node.create({
+    name,
+    content: 'paragraph+',
+    defining: true,
+    parseHTML() {
+      return [{ tag: `div[data-type="${dataType}"]` }];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return ['div', mergeAttributes(HTMLAttributes, { 'data-type': dataType }), 0];
+    },
+  });
+}
+
+function refBlock(name: string, dataType: string, idAttribute: string) {
+  return Node.create({
+    name,
+    group: 'block',
+    atom: true,
+    addAttributes() {
+      return {
+        [idAttribute]: { default: null },
+        label: { default: '' },
+      };
+    },
+    parseHTML() {
+      return [{ tag: `div[data-type="${dataType}"]` }];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return ['div', mergeAttributes(HTMLAttributes, { 'data-type': dataType })];
+    },
+  });
+}
+
+const PersonalNote = asideBlock('personal_note', 'personal-note');
+const Question = asideBlock('question', 'question');
+const Counterexample = asideBlock('counterexample', 'counterexample');
+const Decision = asideBlock('decision', 'decision');
+
+const DerivationStep = stepBlock('derivation_step', 'derivation-step');
+const DerivationSteps = Node.create({
+  name: 'derivation_steps',
+  group: 'block',
+  content: 'derivation_step+',
+  defining: true,
+  isolating: true,
+  parseHTML() {
+    return [{ tag: 'section[data-type="derivation-steps"]' }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ['section', mergeAttributes(HTMLAttributes, { 'data-type': 'derivation-steps' }), 0];
+  },
+});
+
+const HintItem = stepBlock('hint_item', 'hint-item');
+const TieredHints = Node.create({
+  name: 'tiered_hints',
+  group: 'block',
+  content: 'hint_item+',
+  defining: true,
+  isolating: true,
+  addAttributes() {
+    return {
+      collapsed: { default: true },
+    };
+  },
+  parseHTML() {
+    return [{ tag: 'section[data-type="tiered-hints"]' }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ['section', mergeAttributes(HTMLAttributes, { 'data-type': 'tiered-hints' }), 0];
+  },
+});
+
+const ObjectRef = refBlock('object_ref', 'object-ref', 'objectId');
+const CollectionRef = refBlock('collection_ref', 'collection-ref', 'collectionId');
+
 export function getExtensions(): AnyExtension[] {
   return [
     StarterKit.configure({
@@ -84,6 +187,16 @@ export function getExtensions(): AnyExtension[] {
     Image.configure({ inline: false, allowBase64: false }),
     Mathematics,
     MermaidBlock,
+    PersonalNote,
+    Question,
+    Counterexample,
+    Decision,
+    DerivationSteps,
+    DerivationStep,
+    TieredHints,
+    HintItem,
+    ObjectRef,
+    CollectionRef,
     BlockId,
   ];
 }
