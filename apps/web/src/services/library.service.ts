@@ -7,6 +7,7 @@ import {
   fanRelationListSchema,
   objectSummarySchema,
   relationSchema,
+  searchResponseSchema,
   type CreateObjectBody,
   type CreateRelationBody,
   type DocumentResponse,
@@ -14,6 +15,7 @@ import {
   type FanRelation,
   type ObjectSummary,
   type Relation,
+  type SearchGroup,
 } from '@unfold/dto';
 
 async function errorMessage(res: Response, fallback = '请求没有完成'): Promise<string> {
@@ -109,6 +111,10 @@ export class LibraryService extends Service {
   error = '';
   notice = '';
   private chainTicket = 0;
+  searchGroups: SearchGroup[] = [];
+  searchNotice = '';
+  searchError = '';
+  private searchTicket = 0;
 
   async loadDomains(): Promise<void> {
     this.error = '';
@@ -285,5 +291,37 @@ export class LibraryService extends Service {
       return null;
     }
     return relationSchema.parse(await res.json());
+  }
+
+  async search(q: string): Promise<void> {
+    const ticket = ++this.searchTicket;
+    this.searchError = '';
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { credentials: 'include' });
+      if (ticket !== this.searchTicket) return;
+      if (!res.ok) {
+        this.searchGroups = [];
+        this.searchNotice = '';
+        this.searchError = await errorMessage(res, '检索没有完成');
+        return;
+      }
+      const body = searchResponseSchema.parse(await res.json());
+      if (ticket !== this.searchTicket) return;
+      this.searchGroups = body.groups; // 原样保留，禁止按 title 合并
+      this.searchNotice = body.notice;
+      this.searchError = '';
+    } catch {
+      if (ticket !== this.searchTicket) return;
+      this.searchGroups = [];
+      this.searchNotice = '';
+      this.searchError = '检索没有完成';
+    }
+  }
+
+  clearSearch(): void {
+    this.searchTicket += 1;
+    this.searchGroups = [];
+    this.searchNotice = '';
+    this.searchError = '';
   }
 }

@@ -401,3 +401,33 @@ p[role='alert'] {
 .boundary ~ .split {
   margin-top: 32px;
 }
+
+.work { min-width: 0; }
+.search { position: relative; padding: 0.75rem 1.25rem 0; }
+.search input {
+  width: 100%;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  padding: 6px 0;
+  color: var(--ink);
+  font: inherit;
+}
+.search input:focus { outline: none; border-bottom-color: var(--cobalt); }
+.hits {
+  position: absolute;
+  z-index: 6;
+  left: 1.25rem;
+  right: 1.25rem;
+  top: calc(100% + 4px);
+  background: var(--sheet);
+  border: 1px solid var(--line);
+  max-height: 60vh;
+  overflow: auto;
+}
+.hits .group { margin: 0; padding: 6px 12px 2px; color: var(--mute); font-size: 12px; }
+.hits button { display: block; width: 100%; text-align: left; background: transparent; border: 0; padding: 8px 12px; color: var(--ink); font: inherit; }
+.hits button:hover { background: var(--desk); }
+.hits button:disabled { color: var(--mute); }
+.hits small { display: block; color: var(--mute); }
+.hits p { margin: 0; padding: 8px 12px; }
