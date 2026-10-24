@@ -35,3 +35,13 @@ export {
   type PasteBody,
   type UpdateObjectBody,
 } from './objects.js';
+export {
+  createRelationBodySchema,
+  relationStatusSchema,
+  relationTypeSchema,
+  updateRelationStatusSchema,
+  type CreateRelationBody,
+  type RelationStatus,
+  type RelationType,
+  type UpdateRelationStatus,
+} from './relations.js';
