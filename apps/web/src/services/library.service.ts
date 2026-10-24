@@ -498,6 +498,16 @@ export class LibraryService extends Service {
     return true;
   }
 
+  async moveFiledObject(collectionId: string, objectId: string, position: number): Promise<boolean> {
+    const res = await fetch(`/api/collections/${encodeURIComponent(collectionId)}/refs`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ op: 'move', objectId, position }),
+    });
+    return res.ok;
+  }
+
   async createCollectionAndFile(
     domainId: string,
     title: string,

@@ -32,7 +32,15 @@ function stringAttr(node: Record<string, unknown>, key: string): string {
   return typeof value === 'string' ? value : '';
 }
 
-function ObjectRefBlock({ objectId, label }: { objectId: string; label: string }) {
+function ObjectRefBlock({
+  objectId,
+  label,
+  onMove,
+}: {
+  objectId: string;
+  label: string;
+  onMove: (draggedId: string, targetId: string) => void;
+}) {
   const [core, setCore] = useState<string | null>(null);
 
   useEffect(() => {
@@ -55,14 +63,35 @@ function ObjectRefBlock({ objectId, label }: { objectId: string; label: string }
   }, [objectId]);
 
   return (
-    <div className="collection-block">
-      <Link to={'/o/' + objectId}>{label}</Link>
+    <div
+      className="collection-block"
+      draggable
+      data-object-id={objectId}
+      onDragStart={(event) => {
+        event.dataTransfer.setData('text/plain', objectId);
+        event.dataTransfer.effectAllowed = 'move';
+      }}
+      onDragOver={(event) => {
+        event.preventDefault();
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        onMove(event.dataTransfer.getData('text/plain'), objectId);
+      }}
+    >
+      <Link to={'/o/' + objectId} draggable={false}>{label}</Link>
       {core ? <small className="muted">{core}</small> : null}
     </div>
   );
 }
 
-function CollectionDocument({ content }: { content: DocumentResponse['content'] }) {
+function CollectionDocument({
+  content,
+  onMove,
+}: {
+  content: DocumentResponse['content'];
+  onMove: (draggedId: string, targetId: string) => void;
+}) {
   return (
     <>
       {topLevelBlocks(content).map((node, index) => {
@@ -84,7 +113,14 @@ function CollectionDocument({ content }: { content: DocumentResponse['content'] 
             );
           }
           const label = stringAttr(node, 'label');
-          return <ObjectRefBlock key={index} objectId={objectId} label={label === '' ? '点' : label} />;
+          return (
+            <ObjectRefBlock
+              key={index}
+              objectId={objectId}
+              label={label === '' ? '点' : label}
+              onMove={onMove}
+            />
+          );
         }
         return (
           <p key={index} className="muted">
@@ -131,6 +167,25 @@ export const CollectionPage = observer(function CollectionPage() {
     return message ? <p role="alert">{message}</p> : null;
   }
 
+  const moveRef = (draggedId: string, targetId: string): void => {
+    if (!doc) return;
+    const ids = topLevelBlocks(doc.content)
+      .filter((node) => node.type === 'object_ref')
+      .map((node) => stringAttr(node, 'objectId'));
+    const from = ids.indexOf(draggedId);
+    const to = ids.indexOf(targetId);
+    if (from < 0 || to < 0 || from === to) return;
+    const position = from < to ? to - 1 : to;
+    void (async () => {
+      const ok = await library.moveFiledObject(id, draggedId, position);
+      if (!ok) {
+        setMessage('排序没有完成');
+        return;
+      }
+      setDoc(await library.loadCollectionDocument(id));
+    })();
+  };
+
   const domainName = library.domains.find((domain) => domain.id === collection.domainId)?.name;
 
   return (
@@ -140,7 +195,7 @@ export const CollectionPage = observer(function CollectionPage() {
       {collection.intent !== '' ? <p>{collection.intent}</p> : null}
       <p>引用块是活的：点进去就是点本身。点的 ID、关系、证据不因为编入或移出合集而改变。</p>
       {message ? <p role="alert">{message}</p> : null}
-      {doc ? <CollectionDocument content={doc.content} /> : null}
+      {doc ? <CollectionDocument content={doc.content} onMove={moveRef} /> : null}
     </main>
   );
 });
