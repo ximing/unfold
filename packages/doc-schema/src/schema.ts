@@ -224,6 +224,21 @@ const TieredHints = Node.create({
 const ObjectRef = refBlock('object_ref', 'object-ref', 'objectId');
 const CollectionRef = refBlock('collection_ref', 'collection-ref', 'collectionId');
 
+const FIELD_LABELS: Record<string, string> = {
+  statement: '题面',
+  constraints: '约束',
+  examples: '样例',
+  complexity: '复杂度',
+  proposition: '命题',
+  condition: '条件',
+  proof: '证明',
+  corollary: '推论',
+  pattern: '句型',
+  example: '例句',
+  contrast: '对照',
+  confusion: '易混点',
+};
+
 function subjectBlock(name: string, dataType: string, fields: readonly string[]) {
   return Node.create({
     name,
@@ -255,6 +270,55 @@ function subjectBlock(name: string, dataType: string, fields: readonly string[])
     },
     renderHTML({ HTMLAttributes }) {
       return ['section', mergeAttributes(HTMLAttributes, { 'data-type': dataType })];
+    },
+    addNodeView() {
+      return ({ node, getPos, editor }) => {
+        let current = node;
+        const dom = document.createElement('section');
+        dom.setAttribute('data-type', dataType);
+        const inputs = new Map<string, HTMLInputElement>();
+
+        const sync = (next: typeof node) => {
+          current = next;
+          for (const field of fields) {
+            const input = inputs.get(field);
+            if (!input) continue;
+            const raw = next.attrs[field];
+            const value = typeof raw === 'string' ? raw : '';
+            if (input.value !== value) input.value = value;
+          }
+        };
+
+        for (const field of fields) {
+          const label = document.createElement('label');
+          label.textContent = FIELD_LABELS[field] ?? field;
+          const input = document.createElement('input');
+          input.addEventListener('mousedown', (event) => {
+            event.stopPropagation();
+          });
+          input.addEventListener('input', () => {
+            const pos = getPos();
+            if (typeof pos !== 'number') return;
+            editor.commands.command(({ tr }) => {
+              tr.setNodeMarkup(pos, undefined, { ...current.attrs, [field]: input.value });
+              return true;
+            });
+          });
+          inputs.set(field, input);
+          dom.append(label, input);
+        }
+        sync(node);
+
+        return {
+          dom,
+          ignoreMutation: () => true,
+          update(updated) {
+            if (updated.type.name !== name) return false;
+            sync(updated);
+            return true;
+          },
+        };
+      };
     },
   });
 }

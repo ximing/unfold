@@ -14,6 +14,7 @@ import { Shell } from './pages/shell.js';
 import { TodayPage } from './pages/today.js';
 import { PracticePage } from './pages/practice.js';
 import './app.css';
+import 'katex/dist/katex.min.css';
 
 register(SessionService);
 
