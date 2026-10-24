@@ -7,6 +7,7 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { loadConfig } from './config.js';
 import { createDb, createPool } from './db/client.js';
 import { users } from './db/schema.js';
+import { registerChainRoutes } from './chain.js';
 import { registerDocumentRoutes } from './documents.js';
 import { registerObjectRoutes } from './objects.js';
 import { registerRelationRoutes } from './relations.js';
@@ -176,6 +177,7 @@ export async function buildApp() {
   registerObjectRoutes(app, db, signedSessionUser);
   registerDocumentRoutes(app, db, signedSessionUser);
   registerRelationRoutes(app, db, signedSessionUser);
+  registerChainRoutes(app, db, signedSessionUser);
 
   return app;
 }
