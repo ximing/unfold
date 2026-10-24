@@ -14,6 +14,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { createDb } from './db/client.js';
 import { blockIndex, domains, documents, knowledgeObjects, relations } from './db/schema.js';
+import { syncObjectIndex } from './services/index-sync.js';
 
 type Database = ReturnType<typeof createDb>;
 
@@ -210,6 +211,7 @@ export function registerObjectRoutes(app: FastifyInstance, db: Database, session
         return created.id;
       });
 
+      await syncObjectIndex(db, user.id, objectId);
       const summary = await summaries(db, user.id, { objectId });
       const one = summary[0];
       if (!one) return reply.code(404).send(objectNotFound);
@@ -357,6 +359,7 @@ export function registerObjectRoutes(app: FastifyInstance, db: Database, session
       throw error;
     }
 
+    await syncObjectIndex(db, user.id, current.id);
     const summary = await summaries(db, user.id, { objectId: current.id });
     const one = summary[0];
     if (!one) return reply.code(404).send(objectNotFound);
@@ -434,6 +437,7 @@ export function registerObjectRoutes(app: FastifyInstance, db: Database, session
           .where(eq(documents.id, current.documentId));
       }
     });
+    await syncObjectIndex(db, user.id, current.id);
     return reply.code(204).send();
   });
 }

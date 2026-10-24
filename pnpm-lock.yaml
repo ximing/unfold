@@ -42,6 +42,9 @@ importers:
       '@unfold/dto':
         specifier: workspace:*
         version: link:../../packages/dto
+      '@unfold/search':
+        specifier: workspace:*
+        version: link:../../packages/search
       argon2:
         specifier: ^0.45.1
         version: 0.45.1

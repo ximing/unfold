@@ -8,6 +8,7 @@ import type { createDb } from './db/client.js';
 import { blockIndex, documentRevisions, documents, knowledgeObjects, sources } from './db/schema.js';
 import { type SessionLookup } from './objects.js';
 import { assignBlockIds, collectBlockIndex, documentNodesAllowed } from './services/document-blocks.js';
+import { syncObjectIndex } from './services/index-sync.js';
 
 type Database = ReturnType<typeof createDb>;
 
@@ -223,6 +224,7 @@ export function registerDocumentRoutes(app: FastifyInstance, db: Database, sessi
     }
 
     const saved = await saveDocument(db, user.id, doc.id, content, parsed.data.plainText);
+    await syncObjectIndex(db, user.id, objectId);
     return reply.code(200).send(
       toDocumentResponse({
         schemaVersion: SCHEMA_VERSION,
@@ -264,6 +266,7 @@ export function registerDocumentRoutes(app: FastifyInstance, db: Database, sessi
         contentHash: hashPaste(plainText, html),
       },
     );
+    await syncObjectIndex(db, user.id, objectId);
 
     return reply.code(200).send(
       toDocumentResponse({
