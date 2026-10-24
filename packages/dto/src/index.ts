@@ -36,6 +36,14 @@ export {
   type UpdateObjectBody,
 } from './objects.js';
 export {
+  collectionListSchema,
+  collectionSchema,
+  createCollectionBodySchema,
+  type Collection,
+  type CollectionList,
+  type CreateCollectionBody,
+} from './collections.js';
+export {
   createRelationBodySchema,
   fanRelationListSchema,
   fanRelationSchema,
@@ -51,6 +59,24 @@ export {
   type RelationType,
   type UpdateRelationStatus,
 } from './relations.js';
+export {
+  personalNotePayloadSchema,
+  relationSuggestionPayloadSchema,
+  resolveSuggestionBodySchema,
+  suggestionKindSchema,
+  suggestionListSchema,
+  suggestionOriginSchema,
+  suggestionSchema,
+  suggestionStatusSchema,
+  type PersonalNotePayload,
+  type RelationSuggestionPayload,
+  type ResolveSuggestionBody,
+  type Suggestion,
+  type SuggestionKind,
+  type SuggestionList,
+  type SuggestionOrigin,
+  type SuggestionStatus,
+} from './suggestions.js';
 export {
   searchGroupSchema,
   searchHitSchema,

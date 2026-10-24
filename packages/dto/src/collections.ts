@@ -1,0 +1,26 @@
+import { z } from 'zod';
+
+export const createCollectionBodySchema = z.object({
+  domainId: z.uuid(),
+  title: z.string().trim().min(1).max(200),
+  intent: z.string().trim().max(500).default(''),
+  parentCollectionId: z.uuid().nullable().optional(),
+});
+
+export const collectionSchema = z.object({
+  id: z.uuid(),
+  domainId: z.uuid(),
+  title: z.string(),
+  intent: z.string(),
+  parentCollectionId: z.uuid().nullable(),
+  position: z.int().nonnegative(),
+  documentId: z.uuid().nullable(),
+});
+
+export const collectionListSchema = z.object({
+  collections: z.array(collectionSchema),
+});
+
+export type CreateCollectionBody = z.infer<typeof createCollectionBodySchema>;
+export type Collection = z.infer<typeof collectionSchema>;
+export type CollectionList = z.infer<typeof collectionListSchema>;

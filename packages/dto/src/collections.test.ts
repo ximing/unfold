@@ -1,0 +1,71 @@
+import { describe, expect, it } from 'vitest';
+import {
+  collectionListSchema,
+  collectionSchema,
+  createCollectionBodySchema,
+  type Collection,
+  type CollectionList,
+  type CreateCollectionBody,
+} from './index.js';
+
+const domainId = '550e8400-e29b-41d4-a716-446655440000';
+const collectionId = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
+const parentId = '6ba7b811-9dad-11d1-80b4-00c04fd430c8';
+
+describe('createCollectionBodySchema', () => {
+  it('rejects a blank or overlong title and defaults a missing intent to an empty string', () => {
+    expect(createCollectionBodySchema.safeParse({ domainId, title: '   ' }).success).toBe(false);
+    expect(createCollectionBodySchema.safeParse({ domainId, title: '' }).success).toBe(false);
+    expect(
+      createCollectionBodySchema.safeParse({ domainId, title: 'a'.repeat(201) }).success,
+    ).toBe(false);
+
+    const parsed = createCollectionBodySchema.parse({
+      domainId,
+      title: `  ${'a'.repeat(200)}  `,
+      parentCollectionId: parentId,
+    });
+    const body = {
+      domainId,
+      title: 'a'.repeat(200),
+      intent: '',
+      parentCollectionId: parentId,
+    } satisfies CreateCollectionBody;
+    expect(parsed).toEqual(body);
+  });
+
+  it('accepts a null parentCollectionId', () => {
+    const parsed = createCollectionBodySchema.parse({
+      domainId,
+      title: '线性代数',
+      intent: '  复习主线  ',
+      parentCollectionId: null,
+    });
+    const body = {
+      domainId,
+      title: '线性代数',
+      intent: '复习主线',
+      parentCollectionId: null,
+    } satisfies CreateCollectionBody;
+    expect(parsed).toEqual(body);
+  });
+});
+
+describe('collectionSchema', () => {
+  it('parses a collection whose parent is null', () => {
+    const collection = {
+      id: collectionId,
+      domainId,
+      title: '线性代数',
+      intent: '',
+      parentCollectionId: null,
+      position: 0,
+      documentId: null,
+    } satisfies Collection;
+    expect(collectionSchema.parse(collection)).toEqual(collection);
+    expect(collectionSchema.safeParse({ ...collection, position: -1 }).success).toBe(false);
+
+    const list = { collections: [collection] } satisfies CollectionList;
+    expect(collectionListSchema.parse(list)).toEqual(list);
+  });
+});
