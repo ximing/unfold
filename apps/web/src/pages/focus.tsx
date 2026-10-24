@@ -113,6 +113,69 @@ function relationBody(
   return body;
 }
 
+function GraphProjection({
+  graph,
+  currentId,
+}: {
+  graph: LibraryService['graph'];
+  currentId: string;
+}) {
+  const nodes = graph?.nodes ?? [];
+  const edges = graph?.edges ?? [];
+  const focus = nodes.find((node) => node.id === currentId);
+  const neighbors = nodes.filter((node) => node.id !== currentId);
+  return (
+    <>
+      {edges.length === 0 ? (
+        <p className="muted">这个点还没有已接受的连接。接受右侧托盘的建议，或从扇区发起一条，图上才会长出来。</p>
+      ) : null}
+      <svg className="graph" viewBox="0 0 800 560" role="img" aria-label="以焦点为中心的局部图">
+        <g transform="translate(400 280)">
+          {edges.map((edge) => {
+            const target = nodes.find((node) => node.id === edge.toId);
+            if (!target) return null;
+            return (
+              <g key={`${edge.fromId}-${edge.toId}`}>
+                <line x1={0} y1={0} x2={target.x} y2={target.y} stroke="#1d4e8f" strokeWidth={1} />
+                <text className="edge" x={target.x / 2} y={target.y / 2 - 6}>
+                  {edge.label}
+                </text>
+              </g>
+            );
+          })}
+          {neighbors.map((node) => {
+            const core =
+              node.coreStatement.length > 18 ? `${node.coreStatement.slice(0, 18)}…` : node.coreStatement;
+            return (
+              <a key={node.id} href={`/o/${node.id}?proj=graph`}>
+                <text x={node.x} y={node.y}>
+                  {node.canonicalName}
+                </text>
+                <text x={node.x} y={node.y + 16}>
+                  {TYPE_LABEL[node.type]}
+                </text>
+                <text x={node.x} y={node.y + 32}>
+                  {core}
+                </text>
+              </a>
+            );
+          })}
+          {focus ? (
+            <g>
+              <rect x={-70} y={-22} width={140} height={44} fill="none" stroke="#1a2230" strokeWidth={2} />
+              <text x={-60} y={4} fontWeight={700}>
+                {focus.canonicalName}
+              </text>
+            </g>
+          ) : null}
+        </g>
+      </svg>
+      {graph?.truncated ? <p className="muted">邻居超过 50，这里只画前 50 个。</p> : null}
+      <p className="muted">只画一跳邻居，按扇区方位摆放，上限 50。点任意节点换焦点。图是导航，不是装饰画。</p>
+    </>
+  );
+}
+
 function ChainProjection({
   chains,
   currentId,
@@ -460,6 +523,7 @@ export const FocusPage = observer(function FocusPage() {
   const { id = '' } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const proj = searchParams.get('proj');
+  const showGraph = proj === 'graph';
   const showChain = proj === 'chain';
   const showContrast = proj === 'contrast';
   const showCaps = proj === 'caps';
@@ -470,6 +534,7 @@ export const FocusPage = observer(function FocusPage() {
   const [open, setOpen] = useState(false);
   const [relationsReady, setRelationsReady] = useState(false);
   const [chainReadyId, setChainReadyId] = useState('');
+  const [graphReadyId, setGraphReadyId] = useState('');
   const [capsReadyId, setCapsReadyId] = useState('');
 
   const editor = useEditor({
@@ -529,6 +594,17 @@ export const FocusPage = observer(function FocusPage() {
   }, [showChain, id, library]);
 
   useEffect(() => {
+    if (!showGraph || !id) return;
+    let alive = true;
+    void library.loadGraph(id).then(() => {
+      if (alive) setGraphReadyId(id);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [showGraph, id, library]);
+
+  useEffect(() => {
     if (!showCaps || !id) return;
     let alive = true;
     void library.loadCapabilities(id).then(() => {
@@ -571,7 +647,7 @@ export const FocusPage = observer(function FocusPage() {
     setSaved(false);
   }
 
-  function selectProjection(nextProj: 'chain' | 'contrast' | 'caps' | null) {
+  function selectProjection(nextProj: 'chain' | 'contrast' | 'caps' | 'graph' | null) {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       if (nextProj === null) next.delete('proj');
@@ -606,10 +682,18 @@ export const FocusPage = observer(function FocusPage() {
         <button
           type="button"
           role="tab"
-          aria-selected={!showChain && !showContrast && !showCaps}
+          aria-selected={!showGraph && !showChain && !showContrast && !showCaps}
           onClick={() => selectProjection(null)}
         >
           内容
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={showGraph}
+          onClick={() => selectProjection('graph')}
+        >
+          图
         </button>
         <button
           type="button"
@@ -637,7 +721,18 @@ export const FocusPage = observer(function FocusPage() {
         </button>
       </div>
       {seed ? <p>这个点还是种子：只有一句话核心陈述。内容、连接、归位都后补。</p> : null}
-      {showChain ? (
+      {showGraph ? (
+        graphReadyId === id ? (
+          <>
+            {library.error && library.error !== '没有这个点' && !open ? (
+              <p role="alert">{library.error}</p>
+            ) : null}
+            <GraphProjection graph={library.graph} currentId={current.id} />
+          </>
+        ) : (
+          <p className="muted">正在读取…</p>
+        )
+      ) : showChain ? (
         chainReadyId === id ? (
           <>
             {library.error && library.error !== '没有这个点' && !open ? (

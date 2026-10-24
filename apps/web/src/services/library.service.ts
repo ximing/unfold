@@ -52,6 +52,28 @@ type ObjectChain = {
   edges: ChainEdgeView[];
 };
 
+type GraphNodeView = {
+  id: string;
+  canonicalName: string;
+  coreStatement: string;
+  type: 'concept' | 'principle' | 'method' | 'model' | 'problem';
+  x: number;
+  y: number;
+};
+
+type GraphEdgeView = {
+  fromId: string;
+  toId: string;
+  type: string;
+  label: string;
+};
+
+type GraphView = {
+  truncated: boolean;
+  nodes: GraphNodeView[];
+  edges: GraphEdgeView[];
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -109,6 +131,60 @@ function readChains(value: unknown): ObjectChain[] | null {
   return chains;
 }
 
+function readGraphNode(value: unknown): GraphNodeView | null {
+  if (!isRecord(value)) return null;
+  const { id, canonicalName, coreStatement, type, x, y } = value;
+  if (typeof id !== 'string' || typeof canonicalName !== 'string' || typeof coreStatement !== 'string') {
+    return null;
+  }
+  if (
+    type !== 'concept' &&
+    type !== 'principle' &&
+    type !== 'method' &&
+    type !== 'model' &&
+    type !== 'problem'
+  ) {
+    return null;
+  }
+  if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) {
+    return null;
+  }
+  return { id, canonicalName, coreStatement, type, x, y };
+}
+
+function readGraphEdge(value: unknown): GraphEdgeView | null {
+  if (!isRecord(value)) return null;
+  const { fromId, toId, type, label } = value;
+  if (
+    typeof fromId !== 'string' ||
+    typeof toId !== 'string' ||
+    typeof type !== 'string' ||
+    typeof label !== 'string'
+  ) {
+    return null;
+  }
+  return { fromId, toId, type, label };
+}
+
+function readGraph(value: unknown): GraphView | null {
+  if (!isRecord(value)) return null;
+  const { truncated, nodes, edges } = value;
+  if (typeof truncated !== 'boolean' || !isUnknownArray(nodes) || !isUnknownArray(edges)) return null;
+  const parsedNodes: GraphNodeView[] = [];
+  for (const node of nodes) {
+    const parsed = readGraphNode(node);
+    if (!parsed) return null;
+    parsedNodes.push(parsed);
+  }
+  const parsedEdges: GraphEdgeView[] = [];
+  for (const edge of edges) {
+    const parsed = readGraphEdge(edge);
+    if (!parsed) return null;
+    parsedEdges.push(parsed);
+  }
+  return { truncated, nodes: parsedNodes, edges: parsedEdges };
+}
+
 function topLevelObjectRefCites(content: unknown, objectId: string): boolean {
   if (!isRecord(content) || !isUnknownArray(content.content)) return false;
   for (const node of content.content) {
@@ -138,9 +214,11 @@ export class LibraryService extends Service {
   current: ObjectSummary | null = null;
   relations: FanRelation[] = [];
   chains: ObjectChain[] = [];
+  graph: GraphView | null = null;
   error = '';
   notice = '';
   private chainTicket = 0;
+  private graphTicket = 0;
   searchGroups: SearchGroup[] = [];
   searchNotice = '';
   searchError = '';
@@ -315,6 +393,37 @@ export class LibraryService extends Service {
       if (ticket !== this.chainTicket) return;
       this.chains = [];
       this.error = '链没有加载出来';
+    }
+  }
+
+  async loadGraph(id: string): Promise<void> {
+    const ticket = ++this.graphTicket;
+    this.error = '';
+    try {
+      const res = await fetch(`/api/objects/${encodeURIComponent(id)}/graph`, {
+        credentials: 'include',
+      });
+      if (ticket !== this.graphTicket) return;
+      if (!res.ok) {
+        const message = await errorMessage(res, '图没有加载出来');
+        if (ticket !== this.graphTicket) return;
+        this.error = message;
+        this.graph = null;
+        return;
+      }
+      const body: unknown = await res.json();
+      if (ticket !== this.graphTicket) return;
+      const graph = readGraph(body);
+      if (!graph) {
+        this.graph = null;
+        this.error = '图没有加载出来';
+        return;
+      }
+      this.graph = graph;
+    } catch {
+      if (ticket !== this.graphTicket) return;
+      this.graph = null;
+      this.error = '图没有加载出来';
     }
   }
 

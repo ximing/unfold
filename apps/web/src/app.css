@@ -446,3 +446,8 @@ p[role='alert'] {
 .fail { color: #b8432f; }
 .practice-actions button { margin: 0.25rem 0.5rem 0.25rem 0; }
 .practice-actions button:disabled { color: var(--mute); }
+
+.graph { width: 100%; height: auto; }
+.graph text { font-size: 13px; fill: var(--ink); }
+.graph .edge { fill: var(--mute); font-size: 12px; }
+.graph a:hover text { fill: var(--cobalt); }
