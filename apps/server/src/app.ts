@@ -7,6 +7,7 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { loadConfig } from './config.js';
 import { createDb, createPool } from './db/client.js';
 import { users } from './db/schema.js';
+import { registerObjectRoutes } from './objects.js';
 
 const invalidCredentials = {
   error: { code: 'invalid_credentials', message: '用户名或密码不正确' },
@@ -55,7 +56,7 @@ export async function buildApp() {
     }
 
     const found = await db
-      .select({ username: users.username })
+      .select({ id: users.id, username: users.username })
       .from(users)
       .where(and(eq(users.id, unsigned.value), isNull(users.deletedAt)))
       .limit(1);
@@ -145,20 +146,32 @@ export async function buildApp() {
       if (result.rows.length === 0) {
         return reply.code(500).send(databaseUnavailable);
       }
+      const counted = await db.execute<{ count: string }>(sql`
+        select count(*)::text as count
+        from knowledge_objects
+        where user_id = ${user.id}
+          and status = 'active'
+          and deleted_at is null
+      `);
+      const freeCount = Number(counted.rows[0]?.count ?? 0);
+      if (!Number.isInteger(freeCount) || freeCount < 0) {
+        return reply.code(500).send(databaseUnavailable);
+      }
+      return todayResponseSchema.parse({
+        focus: null,
+        due: [],
+        freeCount,
+        pendingSuggestions: 0,
+        openQuestions: [],
+      });
     } catch {
       return reply.code(500).send(databaseUnavailable);
     }
-
-    return todayResponseSchema.parse({
-      focus: null,
-      due: [],
-      freeCount: 0,
-      pendingSuggestions: 0,
-      openQuestions: [],
-    });
   });
 
   app.get('/health', async () => ({ ok: true }));
+
+  registerObjectRoutes(app, db, signedSessionUser);
 
   return app;
 }
