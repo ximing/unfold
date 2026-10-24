@@ -14,6 +14,7 @@ import { registerDocumentRoutes } from './documents.js';
 import { registerObjectRoutes } from './objects.js';
 import { registerRelationRoutes } from './relations.js';
 import { registerSearchRoutes } from './search.js';
+import { registerSuggestionRoutes } from './suggestions.js';
 import { registerUndoRoutes } from './undo.js';
 
 const invalidCredentials = {
@@ -186,6 +187,7 @@ export async function buildApp() {
   registerCollectionRoutes(app, db, signedSessionUser);
   registerCollectionRefRoutes(app, db, signedSessionUser);
   registerUndoRoutes(app, db, signedSessionUser);
+  registerSuggestionRoutes(app, db, signedSessionUser);
 
   return app;
 }

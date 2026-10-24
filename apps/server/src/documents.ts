@@ -16,6 +16,7 @@ import {
 import { type SessionLookup } from './objects.js';
 import { assignBlockIds, collectBlockIndex, documentNodesAllowed } from './services/document-blocks.js';
 import { syncObjectIndex } from './services/index-sync.js';
+import { recordRuleSuggestions } from './suggest/record.js';
 
 type Database = ReturnType<typeof createDb>;
 
@@ -211,6 +212,14 @@ export async function saveDocument(
   return { content: assigned, plainText, savedAt };
 }
 
+async function recordSavedObjectSuggestions(db: Database, userId: string, objectId: string) {
+  try {
+    await recordRuleSuggestions(db, userId, objectId);
+  } catch {
+    // 建议写失败仍返回已保存的文档。
+  }
+}
+
 export function registerDocumentRoutes(app: FastifyInstance, db: Database, session: SessionLookup) {
   app.get('/api/objects/:id/doc', async (request, reply) => {
     const user = await session(request, reply);
@@ -256,6 +265,7 @@ export function registerDocumentRoutes(app: FastifyInstance, db: Database, sessi
 
     const saved = await saveDocument(db, user.id, doc.id, content, parsed.data.plainText);
     await syncObjectIndex(db, user.id, objectId);
+    await recordSavedObjectSuggestions(db, user.id, objectId);
     return reply.code(200).send(
       toDocumentResponse({
         schemaVersion: SCHEMA_VERSION,
@@ -298,6 +308,7 @@ export function registerDocumentRoutes(app: FastifyInstance, db: Database, sessi
       },
     );
     await syncObjectIndex(db, user.id, objectId);
+    await recordSavedObjectSuggestions(db, user.id, objectId);
 
     return reply.code(200).send(
       toDocumentResponse({
