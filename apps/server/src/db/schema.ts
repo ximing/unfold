@@ -251,3 +251,89 @@ export const indexOutbox = pgTable(
       .where(sql`${table.deletedAt} IS NULL`),
   ],
 );
+
+export const collections = pgTable(
+  'collections',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    domainId: uuid('domain_id')
+      .notNull()
+      .references(() => domains.id),
+    title: text('title').notNull(),
+    intent: text('intent').notNull().default(''),
+    parentCollectionId: uuid('parent_collection_id').references((): AnyPgColumn => collections.id),
+    position: integer('position').notNull().default(0),
+    documentId: uuid('document_id').references(() => documents.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex('collections_root_position_active')
+      .on(table.userId, table.domainId, table.position)
+      .where(sql`${table.parentCollectionId} IS NULL AND ${table.deletedAt} IS NULL`),
+    uniqueIndex('collections_child_position_active')
+      .on(table.userId, table.domainId, table.parentCollectionId, table.position)
+      .where(sql`${table.parentCollectionId} IS NOT NULL AND ${table.deletedAt} IS NULL`),
+  ],
+);
+
+export const revisions = pgTable(
+  'revisions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    command: text('command').notNull(),
+    payload: jsonb('payload').notNull(),
+    inverse: jsonb('inverse').notNull(),
+    undoneAt: timestamp('undone_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('revisions_user_open')
+      .on(table.userId)
+      .where(sql`${table.deletedAt} IS NULL AND ${table.undoneAt} IS NULL`),
+  ],
+);
+
+// §4 表清单没有 suggestions；§7 与 POST /api/suggest/:id/resolve 要逐条接受/延后/忽略。个人理解块建议不是 relations 行，忽略后同片段不重提需要稳定键。
+export const suggestions = pgTable(
+  'suggestions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    objectId: uuid('object_id')
+      .notNull()
+      .references(() => knowledgeObjects.id),
+    fragmentKey: text('fragment_key').notNull(),
+    kind: text('kind').notNull(),
+    origin: text('origin').notNull(),
+    status: text('status').notNull().default('pending'),
+    summary: text('summary').notNull().default(''),
+    acceptLabel: text('accept_label').notNull().default(''),
+    payload: jsonb('payload').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    check('suggestions_kind_check', sql`${table.kind} IN ('relation', 'personal_note')`),
+    check('suggestions_origin_check', sql`${table.origin} IN ('rule', 'model')`),
+    check(
+      'suggestions_status_check',
+      sql`${table.status} IN ('pending', 'accepted', 'deferred', 'rejected')`,
+    ),
+    uniqueIndex('suggestions_object_fragment_active')
+      .on(table.userId, table.objectId, table.fragmentKey)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
+);

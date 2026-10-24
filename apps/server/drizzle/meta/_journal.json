@@ -29,6 +29,13 @@
       "when": 1792824056232,
       "tag": "0003_index_outbox",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792829842214,
+      "tag": "0004_collections_revisions_suggestions",
+      "breakpoints": true
     }
   ]
 }
