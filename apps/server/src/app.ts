@@ -19,6 +19,7 @@ import { registerSearchRoutes } from './search.js';
 import { registerSuggestionRoutes } from './suggestions.js';
 import { registerUndoRoutes } from './undo.js';
 import { registerCapabilityRoutes } from './capabilities.js';
+import { registerEvidenceRoutes } from './evidence.js';
 
 const invalidCredentials = {
   error: { code: 'invalid_credentials', message: '用户名或密码不正确' },
@@ -267,6 +268,7 @@ export async function buildApp() {
   registerExportRoutes(app, db, signedSessionUser);
   registerImportRoutes(app, db, signedSessionUser);
   registerCapabilityRoutes(app, db, signedSessionUser);
+  registerEvidenceRoutes(app, db, signedSessionUser);
 
   return app;
 }
