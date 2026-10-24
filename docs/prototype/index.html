@@ -1,0 +1,1246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unfold 原型 · 焦点扇形</title>
+<style>
+  :root {
+    --desk: #e4e9ef;
+    --sheet: #f6f7f9;
+    --ink: #1a2230;
+    --mute: #5c6675;
+    --line: #c9d1db;
+    --cobalt: #1d4e8f;
+    --decision: #b8432f;
+    --code: #1a2230;
+    --sans: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", sans-serif;
+    --serif: "Songti SC", "Noto Serif SC", "Source Han Serif SC", Palatino, serif;
+    --mono: "SF Mono", Menlo, ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    color: var(--ink);
+    background: var(--sheet);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  button, input, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--cobalt); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+  header {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr) 400px;
+    align-items: center;
+    gap: 16px;
+    height: 52px;
+    padding: 0 12px 0 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; gap: 14px; align-items: baseline; }
+  .brand button, .textish { background: transparent; border: 0; padding: 4px 0; }
+  #brand { font-weight: 600; }
+  #go-today[aria-current="page"] { box-shadow: inset 0 -2px 0 var(--cobalt); }
+  #crumb { margin: 0; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head-right { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+  .search { position: relative; }
+  .search input { width: 100%; background: transparent; border: 0; border-bottom: 1px solid var(--line); padding: 6px 0; }
+  .hits {
+    position: absolute; z-index: 6; left: 0; right: 0; top: calc(100% + 4px);
+    background: var(--sheet); border: 1px solid var(--line); padding: 4px 0;
+    max-height: 60vh; overflow: auto;
+  }
+  .hits .group { padding: 6px 12px 2px; color: var(--mute); font-size: 12px; }
+  .hits button { display: block; width: 100%; text-align: left; background: transparent; border: 0; padding: 8px 12px; }
+  .hits button:hover { background: var(--desk); }
+  .hits small { display: block; color: var(--mute); }
+
+  .app { height: calc(100% - 52px); display: grid; grid-template-columns: 230px minmax(0, 1fr) 350px; }
+  nav, main, aside { min-height: 0; overflow: auto; }
+  nav { background: var(--desk); padding: 18px 14px 40px; }
+  main { padding: 18px 28px 64px; }
+  aside { border-left: 1px solid var(--line); padding: 16px 16px 40px; }
+
+  .dom { margin: 18px 0 4px; font-weight: 600; }
+  .dom:first-child { margin-top: 0; }
+  nav button.item {
+    display: block; width: 100%; text-align: left;
+    background: transparent; border: 0; border-left: 2px solid transparent;
+    padding: 5px 8px 5px 10px; color: var(--ink);
+  }
+  nav button.item.minor { color: var(--mute); }
+  nav button.item[aria-current="true"] { border-left-color: var(--cobalt); font-family: var(--serif); font-size: 16px; }
+  nav .sub { padding-left: 12px; }
+  nav .mark { float: right; color: var(--mute); font-size: 12px; }
+
+  .views { display: flex; flex-wrap: wrap; gap: 2px; margin: 0 0 14px; }
+  .views button { background: transparent; border: 0; padding: 4px 8px; color: var(--mute); }
+  .views button[aria-selected="true"], .views button[aria-pressed="true"] { color: var(--ink); box-shadow: inset 0 -2px 0 var(--cobalt); }
+  .views button:disabled { color: var(--line); cursor: not-allowed; box-shadow: none; }
+
+  .toast { margin: 0 0 14px; padding: 10px 14px; border-left: 2px solid var(--cobalt); background: var(--desk); max-width: 68ch; }
+  .due { margin: 0 0 16px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .fail { color: var(--decision); }
+  .muted { color: var(--mute); }
+
+  .corebox { border-left: 2px solid var(--ink); padding: 4px 0 4px 14px; margin: 10px 0 18px; max-width: 62ch; }
+  .corebox p { margin: 0 0 4px; font-family: var(--serif); font-size: 19px; line-height: 1.6; }
+  .hero { font-family: var(--serif); font-weight: 600; line-height: 1.35; margin: 0 0 12px; font-size: 32px; max-width: 14em; }
+
+  .prose { font-family: var(--serif); font-size: 17px; line-height: 1.75; max-width: 66ch; }
+  .prose p { margin: 0 0 14px; }
+  .blk { position: relative; margin: 0 0 14px; max-width: 66ch; }
+  .blk .bt {
+    position: absolute; left: -4px; top: 2px; transform: translateX(-100%);
+    font-family: var(--sans); font-size: 11px; color: var(--mute);
+    writing-mode: horizontal-tb; white-space: nowrap; display: none;
+  }
+  .blk:hover .bt, .blk.tagged .bt { display: block; }
+  .blk.tagged .bt { position: static; transform: none; display: inline-block; margin-bottom: 4px; }
+  .blk.mine { font-family: var(--serif); font-weight: 600; }
+  .blk.question, .blk.note-block {
+    font-family: var(--sans); font-size: 14px; border-top: 1px solid var(--line); padding: 10px 0;
+  }
+  .blk.hints { border-top: 1px solid var(--line); padding: 10px 0; font-family: var(--sans); font-size: 14px; }
+  .blk.formula {
+    font-family: var(--mono); font-size: 15px; text-align: center;
+    padding: 14px; background: #eef1f5; margin: 0 0 14px;
+  }
+  .blk.theorem { border: 1px solid var(--line); border-left: 3px solid var(--cobalt); padding: 10px 14px; margin: 0 0 14px; }
+  .blk.theorem h4 { margin: 0 0 6px; font-size: 14px; }
+  .steps { list-style: none; margin: 0 0 14px; padding: 0; counter-reset: step; }
+  .steps li { padding: 9px 0; border-top: 1px solid var(--line); font-family: var(--sans); font-size: 14.5px; }
+  .steps strong { display: block; font-family: var(--serif); font-size: 17px; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; font-family: var(--sans); font-size: 14px; line-height: 1.45; margin: 4px 0 16px; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 12px 8px 0; }
+  th { color: var(--cobalt); font-weight: 600; border-bottom: 1px solid var(--ink); }
+  td { border-bottom: 1px solid var(--line); }
+  pre {
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
+    background: var(--code); color: #e6edf5; padding: 14px 16px; overflow: auto; margin: 0 0 16px;
+  }
+
+  .btn { background: transparent; border: 1px solid var(--ink); padding: 6px 10px; margin: 0 8px 8px 0; }
+  .btn.primary { background: var(--ink); color: #fff; }
+  .btn:disabled { color: var(--mute); border-color: var(--line); background: transparent; cursor: not-allowed; }
+  .btn.link { border: 0; padding: 0; margin: 0; color: var(--cobalt); background: transparent; }
+
+  .tag { display: inline-block; font-size: 12px; color: var(--mute); border: 1px solid var(--line); padding: 0 6px; margin-right: 6px; vertical-align: 1px; }
+  .tag.kind { color: var(--cobalt); border-color: var(--cobalt); }
+  .tag.pending { color: var(--decision); border-color: var(--decision); }
+  .verb { color: var(--cobalt); }
+
+  aside h2 { font-size: 14px; font-weight: 600; margin: 18px 0 8px; }
+  aside h2:first-child { margin-top: 0; }
+  .sector { margin: 0 0 14px; }
+  .sector h3 { font-size: 13px; color: var(--mute); margin: 0 0 2px; font-weight: 600; }
+  .conn {
+    display: block; width: 100%; text-align: left;
+    background: transparent; border: 0; border-top: 1px solid var(--line);
+    padding: 8px 0;
+  }
+  .conn:hover { background: var(--desk); }
+  .conn small { display: block; color: var(--mute); }
+  .conn .to { font-family: var(--serif); font-size: 16px; }
+
+  .tray-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .tray-head h2 { margin: 0; }
+  .sug { display: grid; grid-template-columns: 8px minmax(0, 1fr); gap: 8px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .dot { width: 8px; height: 8px; margin-top: 7px; background: var(--decision); }
+  .sug.is-deferred .dot { background: var(--line); }
+  .sug p { margin: 0 0 8px; }
+  .sug .origin { font-size: 12px; color: var(--mute); }
+  .row { padding: 10px 0; border-top: 1px solid var(--line); }
+  .name { font-family: var(--serif); font-size: 18px; margin: 0; }
+  .cap { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .cap button { background: transparent; border: 0; padding: 0; text-align: left; }
+
+  .graph { width: 100%; height: auto; max-width: 760px; }
+  .graph text { font-family: var(--sans); font-size: 14px; fill: var(--ink); }
+  .graph .edge { font-size: 12px; fill: var(--cobalt); }
+  .graph .node { cursor: pointer; }
+  .graph .node:hover text { fill: var(--cobalt); }
+  .graph .core { font-size: 11px; fill: var(--mute); }
+
+  .chainflow { display: flex; align-items: stretch; flex-wrap: wrap; gap: 0; max-width: 900px; }
+  .chain-node {
+    border: 1px solid var(--line); padding: 10px 14px; background: transparent; text-align: left; max-width: 220px;
+  }
+  .chain-node.now { border-color: var(--cobalt); border-width: 2px; }
+  .chain-node .nm { font-family: var(--serif); font-size: 17px; font-weight: 600; display: block; }
+  .chain-node small { color: var(--mute); display: block; margin-top: 4px; }
+  .chain-edge { align-self: center; padding: 0 10px; max-width: 200px; color: var(--cobalt); font-size: 13px; }
+  .chain-edge .arrow { display: block; font-size: 18px; }
+
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; max-width: 960px; }
+  .split h2 { font-family: var(--serif); font-size: 26px; margin: 0 0 8px; font-weight: 600; }
+  .boundary { margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--ink); max-width: 72ch; }
+  .work { max-width: 68ch; }
+  textarea {
+    width: 100%; min-height: 96px; background: transparent; border: 0;
+    border-bottom: 1px solid var(--line); resize: vertical; line-height: 1.55; margin: 8px 0 12px;
+  }
+  .hint-list { list-style: none; margin: 8px 0 12px; padding: 0; }
+  .hint-list li { padding: 8px 0; border-top: 1px solid var(--line); }
+  fieldset { border: 0; margin: 8px 0 12px; padding: 0; }
+  legend { padding: 0 0 6px; }
+  .note { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--ink); max-width: 62ch; }
+  .refblock {
+    display: block; width: 100%; text-align: left; background: transparent;
+    border: 0; border-left: 2px solid var(--cobalt); padding: 8px 12px; margin: 0 0 10px;
+  }
+  .refblock:hover { background: var(--desk); }
+  .refblock .nm { font-family: var(--serif); font-size: 17px; font-weight: 600; }
+  .refblock small { display: block; color: var(--mute); }
+
+  .overlay { position: fixed; inset: 0; background: rgba(26, 34, 48, 0.35); z-index: 10; display: grid; place-items: start center; padding-top: 8vh; }
+  .guide { background: var(--sheet); border: 1px solid var(--line); width: min(760px, 92vw); max-height: 80vh; overflow: auto; padding: 22px 26px 30px; }
+  .guide h2 { font-family: var(--serif); font-size: 24px; margin: 0 0 6px; font-weight: 600; }
+  .guide h3 { font-size: 15px; margin: 18px 0 4px; }
+  .guide p { margin: 0 0 6px; }
+  .guide ol { margin: 4px 0 10px; padding-left: 20px; }
+  .kbd { font-family: var(--mono); font-size: 12px; border: 1px solid var(--line); padding: 0 5px; }
+
+  @media (max-width: 960px) {
+    header, .app { grid-template-columns: 1fr; height: auto; }
+    .app { display: block; }
+    nav { display: flex; gap: 4px 12px; flex-wrap: wrap; align-items: center; }
+    .dom { margin: 0; }
+    aside { border-left: 0; border-top: 1px solid var(--line); }
+    .split { grid-template-columns: 1fr; }
+    .hero { font-size: 26px; }
+    .blk .bt { display: none !important; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <button type="button" id="brand" data-act="today">Unfold</button>
+    <button type="button" id="go-today" data-act="today">今日</button>
+  </div>
+  <p id="crumb"></p>
+  <div class="head-right">
+    <div class="search">
+      <input id="q" type="search" placeholder="搜索点、疑问或决定　⌘K" aria-label="搜索" autocomplete="off">
+      <div id="hits" class="hits" hidden></div>
+    </div>
+    <button type="button" class="textish" data-act="guide">导览</button>
+  </div>
+</header>
+<div class="app">
+  <nav id="outline" aria-label="领域与合集"></nav>
+  <main id="main"></main>
+  <aside id="rail"></aside>
+</div>
+<div class="overlay" id="overlay" hidden>
+  <div class="guide" role="dialog" aria-label="演示导览" id="guide-box"></div>
+</div>
+<script>
+/* ================= 数据：点 ================= */
+
+const OBJECTS = {
+  tree:      { name: "决策树",       type: "模型", domain: "算法", core: "每一条从根到叶子的路径，是一次完整决策。" },
+  eq:        { name: "状态等价",     type: "概念", domain: "算法", core: "若两个历史对未来的可选决策和目标值没有区别，它们就是同一状态。" },
+  memo:      { name: "记忆化搜索",   type: "方法", domain: "算法", core: "自顶向下，某个状态第一次算完就记住。" },
+  bottomup:  { name: "Bottom-up",    type: "方法", domain: "算法", core: "按依赖的反方向填表，不再走递归。" },
+  bt:        { name: "回溯",         type: "方法", domain: "算法", core: "保留整条路径，枚举或找到一条。" },
+  dp:        { name: "动态规划",     type: "模型", domain: "算法", core: "合并对未来无区别的历史，每个状态只算一次。" },
+  opt:       { name: "最优子结构",   type: "原理", domain: "算法", core: "局部最优能拼成全局最优。" },
+  overlap:   { name: "重叠子问题",   type: "原理", domain: "算法", core: "同一个子问题会被反复遇到。" },
+  lc131:     { name: "LC131 分割回文", type: "问题", domain: "算法", core: "把字符串分割成若干回文子串，返回所有方案。" },
+  lc132:     { name: "LC132 最少分割", type: "问题", domain: "算法", core: "同样切成回文子串，只问最少分割数。" },
+  lc139:     { name: "LC139 能否拆开", type: "问题", domain: "算法", core: "字符串能不能被单词表拆开，一个是或否。" },
+  lc140:     { name: "LC140 全部拆法", type: "问题", domain: "算法", core: "返回所有拆法。状态落在下标 i，存的是全部方案。" },
+  bag01:     { name: "0/1 背包",     type: "问题", domain: "算法", core: "每个物品至多选一次，内层容量从大到小。" },
+  bagfull:   { name: "完全背包",     type: "问题", domain: "算法", core: "物品可重复选，内层容量从小到大。" },
+  queue:     { name: "单调队列",     type: "方法", domain: "算法", core: "队列里只留还可能成为未来最优左端点的下标。" },
+  dominance: { name: "候选支配",     type: "原理", domain: "算法", core: "只保留对未来有贡献的候选；被支配者提前淘汰。" },
+  algoState: { name: "状态",         type: "概念", domain: "算法", core: "对未来决策有影响的历史摘要。可以比较，可以哈希。" },
+  agentState:{ name: "状态",         type: "概念", domain: "Agent", core: "一次执行在中断之后仍能恢复的持久事实：消息、工具结果、检查点。" },
+  agentLoop: { name: "Agent Loop",   type: "模型", domain: "Agent", core: "等工具结果回来，再决定下一步调用什么。" },
+  deriv:     { name: "导数",         type: "概念", domain: "数学", core: "函数在某点的瞬时变化率，是差商的极限。" },
+  eng:       { name: "It is not until…that…", type: "概念", domain: "英语", core: "强调「直到某时才发生某事」的句型。" }
+};
+
+/* 块文档（种子阶段为空或极少；状态等价在粘贴后生长） */
+const DOCS = {
+  eq: [],
+  tree: [{ t: "p", text: "暴力枚举的形状。每个结点是一次选择，每条边是一个决定。它的价值是：让「重复」第一次变得可见。" }],
+  memo: [{ t: "p", text: "在递归入口查表，出口写表。正确性来自：同一个状态无论被哪条路径到达，答案相同。" }],
+  bottomup: [{ t: "p", text: "把依赖图画出来，按反方向填。好处是没有递归开销；代价是要自己想清楚顺序。" }],
+  lc140: [
+    { t: "p", text: "题面：给定 s 和 wordDict，返回 s 的全部拆法。同一单词可重复使用。界面不写算法类别。" },
+    { t: "hints", items: [
+      "先写暴力：从当前位置尝试每一个能匹配的单词，再处理剩下的字符串。",
+      "画出递归树。同一个前缀会在不同分支里被重复展开。",
+      "状态可以收成「处理到下标 i」。再往下看，这次就不能记为独立完成。",
+      "把每个 i 的全部拆法存下来。自顶向下用记忆化，或自底向上填表。"
+    ] }
+  ],
+  queue: [
+    { t: "p", text: "在 LC862 里，前缀和更小、位置更靠右的下标，支配队尾那个前缀和更大的下标。新前缀和小于或等于队尾时，队尾被淘汰。" },
+    { t: "p", text: "队头被淘汰是另一件事：它已经不能作为当前的左端点。" }
+  ],
+  agentLoop: [
+    { t: "decision", text: "放弃的方案：把 Agent Loop 设计成 Workflow。Workflow 在开工前写死步骤；Loop 要等工具结果回来再决定下一步。步骤依赖观察，就不能在运行前展开成固定的图。" }
+  ],
+  deriv: [
+    { t: "formula", text: "f′(x) = lim (Δx→0)  [ f(x+Δx) − f(x) ] / Δx" },
+    { t: "theorem", title: "可导与连续", body: "可导 ⇒ 连续；连续 ⇏ 可导。反例：f(x)=|x| 在 x=0 处。" },
+    { t: "p", text: "导数不是「斜率公式」，是「用极限把平均变化率收成瞬时变化率」这个想法。" }
+  ],
+  eng: [
+    { t: "pattern", pattern: "It is not until + 时间/条件 + that + 主句", rows: [
+      ["It is not until midnight that he sleeps.", "他直到半夜才睡。"],
+      ["It was not until I saw the proof that I believed it.", "直到看到证明我才相信。"]
+    ] },
+    { t: "p", text: "易混：not...until 的强调式；倒装只发生在 until 从句提前到句首时（Not until... did he...）。" }
+  ]
+};
+
+const EQ_PASTE_BLOCKS = [
+  { t: "p", text: "每一条从根走到叶子的路径，是一次完整决策。路径上的信息如果不再影响后面还能做什么、以及最好能得到什么，这些路径在未来就是同一处。" },
+  { t: "steps", items: [
+    ["决策树", "每一条从根到叶子的路径，是一次完整决策。"],
+    ["状态", "路径上对剩余决策仍有影响的那些信息。"],
+    ["状态等价", "如果两个历史对未来没有影响，它们就是同一状态。"],
+    ["状态合并", "等价结点并成一个，解空间变小。"],
+    ["DAG", "合并之后同一个结点可以被多条路径到达，不再是树。"],
+    ["Memo", "自顶向下，某个状态第一次算完就记住。"],
+    ["Bottom-up", "按依赖的反方向填表，不再走递归。"]
+  ] },
+  { t: "table", head: ["历史", "未来", "是否等价"], rows: [
+    ["选了 A，剩余容量 5", "继续选后面的物品", "是"],
+    ["选了 B 再退回，剩余容量 5", "继续选后面的物品", "是"]
+  ] },
+  { t: "code", code: `function knapsack(items, cap) {
+  const memo = new Map();
+  function dfs(i, rest) {
+    if (i === items.length || rest === 0) return 0;
+    const key = i + "," + rest;
+    if (memo.has(key)) return memo.get(key);
+    let best = dfs(i + 1, rest);
+    const it = items[i];
+    if (it.w <= rest) {
+      best = Math.max(best, it.v + dfs(i + 1, rest - it.w));
+    }
+    memo.set(key, best);
+    return best;
+  }
+  return dfs(0, cap);
+}` },
+  { t: "p", text: "最优子结构说的是局部最优能拼成全局最优。重叠子问题说的是同一个状态会被反复遇到。两件事经常一起出现，但是两个原理。" },
+  { t: "question", text: "为什么区间 DP 的状态定义容易混乱——区间端点、长度和分割点被写成了三个互不相干的维度。" }
+];
+
+/* ================= 数据：关系（扇形的来源） ================= */
+/* type ∈ evolves_from | applies | implements | contrasts | variant | analogous | prerequisite | part_of */
+const RELATIONS = [
+  { from: "bt",      to: "dp",        type: "contrasts",    note: "回溯保留整条路径；DP 合并对未来无区别的历史。", status: "accepted" },
+  { from: "lc132",   to: "lc131",     type: "variant",      note: "目标从「全部方案」变成「最少刀数」。", status: "accepted" },
+  { from: "lc140",   to: "lc139",     type: "variant",      note: "目标从「能否拆开」变成「全部拆法」。", status: "accepted" },
+  { from: "bagfull", to: "bag01",     type: "variant",      note: "物品可以重复选，内层循环换方向。", status: "accepted" },
+  { from: "algoState", to: "agentState", type: "analogous", note: "边界：算法状态可合并当且仅当未来决策不变；Agent 恢复不能把副作用再执行一遍。", status: "accepted" },
+  { from: "queue",   to: "dominance", type: "implements",   note: "单调队列实现候选支配：只留对未来有贡献的下标。", status: "accepted" },
+  { from: "eq",      to: "algoState", type: "part_of",      note: "状态等价是「状态」上的等价关系。", status: "accepted" }
+];
+
+/* 粘贴后的连接建议（场景 A）：接受后才进 RELATIONS */
+const SUGS = [
+  ["evolve", "接受", "模型", "认出已有「决策树」。建议演化关系，变化条件预填：重复子问题被合并成同一状态。",
+    { from: "eq", to: "tree", type: "evolves_from", note: "重复子问题被合并成同一状态。", status: "accepted" }],
+  ["impl", "接受", "模型", "认出「记忆化搜索」。建议实现关系：记忆化搜索实现状态等价。",
+    { from: "memo", to: "eq", type: "implements", note: "同一个状态第一次算完就记住。", status: "accepted" }],
+  ["apply", "接受", "规则", "文中 LC139、LC140 是已有问题点。建议「应用于」关系。",
+    { from: "eq", to: "lc139", type: "applies", note: "同一前缀被重复展开。", status: "accepted" },
+    { from: "eq", to: "lc140", type: "applies", note: "i 上存全部拆法。", status: "accepted" }],
+  ["mine", "转成个人理解块", "规则", "「如果两个历史对未来没有影响，它们就是同一状态。」是第一人称判断句。转成这个点的个人理解块，不新建点。", null],
+  ["pair", "建成对比", "规则", "「最优子结构」和「重叠子问题」同段出现，是两个原理。建议对比：一个管能不能拼，一个管会不会重复算。不提供合并，也不互为别名。",
+    { from: "opt", to: "overlap", type: "contrasts", note: "一个管能不能拼，一个管会不会重复算。", status: "accepted" }]
+];
+
+/* ================= 数据：链（关系的线性投影，不另存数据） ================= */
+const CHAINS = [
+  { id: "evo",  label: "从决策树到 Bottom-up", nodes: ["tree", "eq", "memo", "bottomup"] },
+  { id: "word", label: "单词拆分", nodes: ["lc139", "lc140"] },
+  { id: "pal",  label: "分割回文", nodes: ["lc131", "lc132"] },
+  { id: "bag",  label: "背包", nodes: ["bag01", "bagfull"] }
+];
+
+/* ================= 数据：合集 ================= */
+const COLLECTIONS = {
+  dp: {
+    title: "动态规划", domain: "算法", intent: "先读模型，再读题。",
+    doc: [
+      { t: "p", text: "这个合集按依赖顺序读：先看决策树的形状，再用一道具体的题碰到重复。" },
+      { t: "ref", id: "tree" },
+      { t: "p", text: "读 LC139 时留意：同一段前缀会被反复展开。" },
+      { t: "ref", id: "lc139" }
+    ]
+  }
+};
+
+/* ================= 数据：能力 ================= */
+const CAPS = {
+  eq: [
+    { kind: "解释", text: "能解释状态等价的定义", status: () => "上次独立完成" },
+    { kind: "推导", text: "能从决策树重建到 Memo 的推导", status: () => "上次独立完成" },
+    { kind: "识别", text: "能识别重复子问题", status: () => repeatLabel(), act: "practice" },
+    { kind: "推导", text: "能独立设计 Memo 状态", status: () => "还没有证据" },
+    { kind: "迁移", text: "能在陌生题里找到可压缩的状态", status: () => "迁移练习未开放：「能识别重复子问题」还没有独立通过", locked: true }
+  ],
+  dominance: [
+    { kind: "解释", text: "队列只保留对未来有贡献的下标", status: () => tailLabel(), act: "review" }
+  ],
+  queue: [
+    { kind: "解释", text: "队列只保留对未来有贡献的下标", status: () => tailLabel(), act: "review" }
+  ],
+  lc140: [
+    { kind: "识别", text: "能识别重复子问题", status: () => repeatLabel(), act: "practice" },
+    { kind: "实现", text: "能写出 LC140 的记忆化", status: () => "还没有证据", act: "practice" }
+  ]
+};
+
+const FIND = [
+  ["状态等价", "概念 · 算法", "eq", "点"],
+  ["状态", "概念 · 算法 · 对未来决策有影响的历史摘要", "algoState", "点"],
+  ["状态", "概念 · Agent · 中断后仍能恢复的持久事实", "agentState", "点"],
+  ["记忆化搜索", "方法 · 算法", "memo", "点"],
+  ["导数", "概念 · 数学 · 游离", "deriv", "点"],
+  ["能识别重复子问题", "能力 · LC140 用来检验它", "practice", "能力"],
+  ["队列只保留对未来有贡献的下标", "能力 · 上次失败在队尾淘汰", "review", "能力"],
+  ["为什么放弃把 Agent Loop 设计成 Workflow", "决定 · 挂在 Agent Loop", "agentLoop", "决定"],
+  ["为什么区间 DP 的状态定义容易混乱", "未解疑问 · 挂在状态等价", "eq", "疑问"],
+  ["动态规划", "合集 · 算法 · 2 个点", "col:dp", "合集"],
+  ["LC140 全部拆法", "问题 · 算法 · 游离", "lc140", "点"],
+  ["同一段前缀会反复出现", "合集「动态规划」里的句子 · 还没有点，可提升", "col:dp", "合集里的句子"]
+];
+
+const HINTS = DOCS.lc140[1].items;
+const RHINTS = [
+  "队列里的下标按前缀和保持单调。",
+  "新下标进来时，问谁对未来任何右端点都不再更好。",
+  "和滑动窗口淘汰队头是另一件事：队头是不能再当左端点。"
+];
+
+/* ================= 状态 ================= */
+const S = {
+  mode: "today",          // today | focus | collection | free | practice | review
+  focus: "eq",
+  proj: "content",        // content | graph | chain | contrast | caps
+  collection: "dp",
+  freeDomain: "算法",
+  pasted: false,
+  trayOpen: true,
+  toast: "",
+  sug: { evolve: "pending", impl: "pending", apply: "pending", mine: "pending", pair: "pending" },
+  hint: 0, attempt: "", obstacle: "", repeat: "due", repeatNote: "", practiceNote: "", hungBack: false,
+  rhint: 0, principle: false,
+  rewrite: "队尾被丢掉，是因为它已经被新下标支配，对未来任何右端点都不会更好。",
+  reviewNote: "", tail: "fail",
+  coreVersion: 1,
+  coreSeen: { dp: 1 },
+  undoStack: [],
+  guide: false
+};
+
+/* ================= 工具 ================= */
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+function repeatLabel() {
+  if (S.repeat === "independent") return "上次独立完成";
+  if (S.repeat === "hinted") return "上次用了提示";
+  if (S.repeat === "fail") return S.repeatNote ? "上次失败：" + S.repeatNote : "上次失败";
+  return "到了建议复查日";
+}
+function tailLabel() {
+  if (S.tail === "recheck") return "已记入证据，下次再问这句能力";
+  if (S.tail === "rewritten") return "解释已重写，还没再次检验";
+  return "上次没能独立解释队尾淘汰";
+}
+function pendingCount() { return SUGS.filter(([id]) => S.sug[id] === "pending" || S.sug[id] === "deferred").length; }
+function acceptedRels() { return RELATIONS.filter((r) => r.status === "accepted"); }
+function objName(id) { return OBJECTS[id] ? OBJECTS[id].name : id; }
+function filedIn(id) {
+  return Object.keys(COLLECTIONS).filter((c) => COLLECTIONS[c].doc.some((b) => b.t === "ref" && b.id === id));
+}
+function freeObjects(domain) {
+  return Object.keys(OBJECTS).filter((id) => OBJECTS[id].domain === domain && filedIn(id).length === 0);
+}
+
+/* 扇形：把已接受关系按方向分四个扇区 */
+function sectors(id) {
+  const sec = { origin: [], forward: [], contrast: [], change: [] };
+  for (const r of acceptedRels()) {
+    if (r.type === "evolves_from" && r.from === id) sec.origin.push({ verb: "演化自", other: r.to, note: r.note });
+    else if (r.type === "prerequisite" && r.from === id) sec.origin.push({ verb: "前置", other: r.to, note: r.note });
+    else if (r.type === "evolves_from" && r.to === id) sec.forward.push({ verb: "演化出", other: r.from, note: r.note });
+    else if (r.type === "applies" && r.from === id) sec.forward.push({ verb: "应用于", other: r.to, note: r.note });
+    else if (r.type === "applies" && r.to === id) sec.forward.push({ verb: "被用于", other: r.from, note: r.note });
+    else if (r.type === "implements" && r.from === id) sec.forward.push({ verb: "实现", other: r.to, note: r.note });
+    else if (r.type === "implements" && r.to === id) sec.forward.push({ verb: "被实现于", other: r.from, note: r.note });
+    else if (r.type === "part_of" && r.from === id) sec.origin.push({ verb: "属于", other: r.to, note: r.note });
+    else if (r.type === "contrasts" || r.type === "analogous") {
+      if (r.from === id) sec.contrast.push({ verb: r.type === "contrasts" ? "对比" : "类比", other: r.to, note: r.note });
+      if (r.to === id) sec.contrast.push({ verb: r.type === "contrasts" ? "对比" : "类比", other: r.from, note: r.note });
+    } else if (r.type === "variant") {
+      if (r.from === id) sec.change.push({ verb: "变体自", other: r.to, note: r.note });
+      if (r.to === id) sec.change.push({ verb: "变体出", other: r.from, note: r.note });
+    }
+  }
+  return sec;
+}
+
+function crumb() {
+  if (S.mode === "today") return "今日";
+  if (S.mode === "collection") return COLLECTIONS[S.collection].domain + " / 合集 / " + COLLECTIONS[S.collection].title;
+  if (S.mode === "free") return S.freeDomain + " / 游离的点";
+  if (S.mode === "practice") return "练习 / LC140 / 先不看方法";
+  if (S.mode === "review") return "回查 / 队列只保留对未来有贡献的下标";
+  const o = OBJECTS[S.focus];
+  return o.domain + " / " + o.name + " · " + o.type;
+}
+
+/* ================= 左栏：领域 → 合集 + 游离 ================= */
+function outlineHTML() {
+  const domains = ["算法", "Agent", "数学", "英语"];
+  return domains.map((d) => {
+    const cols = Object.keys(COLLECTIONS).filter((c) => COLLECTIONS[c].domain === d);
+    const free = freeObjects(d);
+    const colBtns = cols.map((c) =>
+      `<button type="button" class="item${S.mode === "collection" && S.collection === c ? '" aria-current="true' : ""}" data-act="collection" data-id="${c}">合集 · ${esc(COLLECTIONS[c].title)}<span class="mark">${COLLECTIONS[c].doc.filter((b) => b.t === "ref").length} 点</span></button>`
+    ).join("");
+    const freeBtn = free.length
+      ? `<button type="button" class="item minor${S.mode === "free" && S.freeDomain === d ? '" aria-current="true' : ""}" data-act="free" data-id="${d}">游离 · ${free.length} 个点</button>` : "";
+    return `<p class="dom">${esc(d)}</p>${colBtns}${freeBtn}`;
+  }).join("");
+}
+
+/* ================= 块渲染 ================= */
+function blockHTML(b) {
+  if (b.t === "p") return `<div class="blk prose" style="font-family:var(--serif)"><span class="bt">段落</span><p>${esc(b.text)}</p></div>`;
+  if (b.t === "mine") return `<div class="blk mine tagged"><span class="bt">个人理解</span><div class="prose"><p style="font-weight:600">${esc(b.text)}</p></div></div>`;
+  if (b.t === "question") return `<div class="blk question tagged"><span class="bt">疑问</span><span class="tag">未解疑问</span>${esc(b.text)}</div>`;
+  if (b.t === "decision") return `<div class="blk note-block tagged"><span class="bt">决定</span><span class="tag">决定</span>${esc(b.text)}</div>`;
+  if (b.t === "steps") return `<div class="blk tagged"><span class="bt">推导步骤</span><ol class="steps">${b.items.map(([label, text]) => `<li><strong>${esc(label)}</strong>${esc(text)}</li>`).join("")}</ol></div>`;
+  if (b.t === "table") return `<div class="blk tagged"><span class="bt">表格</span><table><thead><tr>${b.head.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${b.rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+  if (b.t === "code") return `<div class="blk tagged"><span class="bt">代码</span><pre>${esc(b.code)}</pre></div>`;
+  if (b.t === "hints") return `<div class="blk hints tagged"><span class="bt">分级提示</span><span class="tag">分级提示 · 默认折叠</span><span class="muted">${b.items.length} 级，练习时逐级展开。提示到第 3 级后不能记独立完成。</span></div>`;
+  if (b.t === "formula") return `<div class="blk tagged"><span class="bt">公式</span><div class="blk formula" style="margin:0">${esc(b.text)}</div></div>`;
+  if (b.t === "theorem") return `<div class="blk theorem tagged"><span class="bt">定理</span><h4>${esc(b.title)}</h4><p style="margin:0">${esc(b.body)}</p></div>`;
+  if (b.t === "pattern") return `<div class="blk tagged"><span class="bt">句型</span><p style="font-weight:600;margin:0 0 6px">${esc(b.pattern)}</p><table><thead><tr><th>例句</th><th>对照</th></tr></thead><tbody>${b.rows.map((r) => `<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td></tr>`).join("")}</tbody></table></div>`;
+  if (b.t === "ref") {
+    const o = OBJECTS[b.id];
+    const pending = b.id === "eq" && (S.coreSeen[S.collection] || 1) < S.coreVersion;
+    return `<button type="button" class="refblock" data-act="focus" data-id="${b.id}">
+      <span class="nm">${esc(o.name)}</span> <span class="tag">${esc(o.type)}</span>
+      ${pending ? `<span class="tag pending">核心定义已更新 · 待确认</span>` : ""}
+      <small>${esc(o.core)}</small></button>
+      ${pending ? `<p style="margin:-6px 0 10px"><button type="button" class="btn link" data-act="core-ok">确认已读（只改这个合集的已读版本）</button></p>` : ""}`;
+  }
+  return "";
+}
+
+/* ================= 焦点页 ================= */
+const PROJS = [["content", "内容"], ["graph", "图"], ["chain", "链"], ["contrast", "对比"], ["caps", "能力"]];
+
+function projsHTML() {
+  return `<div class="views" role="tablist">${PROJS.map(([id, label]) =>
+    `<button type="button" role="tab" data-act="proj" data-id="${id}" aria-selected="${S.proj === id ? "true" : "false"}">${label}</button>`
+  ).join("")}</div>`;
+}
+
+function toastHTML() { return S.toast ? `<p class="toast">${esc(S.toast)}</p>` : ""; }
+
+function contentProjHTML() {
+  const o = OBJECTS[S.focus];
+  const blocks = DOCS[S.focus] || [];
+  const pasteBtn = S.focus === "eq" && !S.pasted
+    ? `<p class="due">刚从 ChatGPT 复制了一段关于「状态等价」的回答（含推导、表格、JS 代码和个人句子）。
+       <button type="button" class="btn primary" data-act="paste">粘贴进这个点（演示）</button></p>` : "";
+  const seedNote = !blocks.length
+    ? `<p class="muted">这个点还是种子：只有一句话核心陈述。内容、连接、归位都后补。</p>` : "";
+  const coreEdit = S.focus === "eq"
+    ? ` · <button type="button" class="btn link" data-act="bump-core">修改核心陈述（演示）</button>` : "";
+  return `${pasteBtn}${seedNote}
+    <div class="corebox"><p>${esc(o.core)}</p>
+    <p class="muted" style="font-family:var(--sans);font-size:13px">核心陈述 v${S.focus === "eq" ? S.coreVersion : 1} · 图和扇区里显示的就是这句话${coreEdit}</p></div>
+    ${blocks.map(blockHTML).join("")}
+    ${S.pasted && S.focus === "eq" && S.sug.mine !== "accepted" ? `<p class="muted" style="font-size:13px">粘贴内容里有一句你的判断，托盘建议转成「个人理解块」。</p>` : ""}`;
+}
+
+function graphProjHTML() {
+  const sec = sectors(S.focus);
+  const groups = [
+    { key: "origin", label: "来历", x: 110, y0: 110, dy: 90 },
+    { key: "forward", label: "去向", x: 630, y0: 110, dy: 90 },
+    { key: "contrast", label: "对照", x: 240, y0: 30, dy: 0, dx: 150 },
+    { key: "change", label: "变化", x: 240, y0: 372, dy: 0, dx: 150 }
+  ];
+  const cx = 370, cy = 200;
+  let svg = "";
+  let any = false;
+  for (const g of groups) {
+    svg += `<text class="edge" x="${g.x - 30}" y="${g.key === "contrast" ? g.y0 - 8 : g.key === "change" ? g.y0 + 34 : g.y0 - 34}">${g.label}</text>`;
+    g.list = sec[g.key];
+    g.list.forEach((c, i) => {
+      any = true;
+      const nx = g.x + (g.dx ? g.dx * i : 0);
+      const ny = g.y0 + (g.dy ? g.dy * i : 0);
+      const short = { 演化自: "演化", 前置: "前置", 属于: "属于", 演化出: "演化", 应用于: "应用", 被用于: "应用", 实现: "实现", 被实现于: "实现", 对比: "对比", 类比: "类比", 变体自: "变体", 变体出: "变体" }[c.verb] || "";
+      svg += `<line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="#1d4e8f" stroke-width="1"/>`;
+      svg += `<text class="edge" x="${(cx + nx) / 2 - 10}" y="${(cy + ny) / 2 - 4}">${short}</text>`;
+      const core = OBJECTS[c.other].core;
+      svg += `<g class="node" data-act="focus" data-id="${c.other}">
+        <text x="${nx - 40}" y="${ny}">${esc(OBJECTS[c.other].name)}</text>
+        <text class="core" x="${nx - 40}" y="${ny + 16}">${esc(core.length > 18 ? core.slice(0, 18) + "…" : core)}</text>
+      </g>`;
+    });
+  }
+  const o = OBJECTS[S.focus];
+  svg += `<g><rect x="${cx - 60}" y="${cy - 18}" width="120" height="40" fill="none" stroke="#1a2230" stroke-width="2"/>
+    <text x="${cx - 40}" y="${cy + 4}" font-weight="700">${esc(o.name)}</text>
+    <text class="core" x="${cx - 40}" y="${cy + 34}">${esc(o.core.length > 16 ? o.core.slice(0, 16) + "…" : o.core)}</text></g>`;
+  const empty = any ? "" : `<p class="muted">这个点还没有已接受的连接。接受右侧托盘的建议，或从扇区发起一条，图上才会长出来。</p>`;
+  return `${empty}<svg class="graph" viewBox="0 0 760 420" role="img" aria-label="以焦点为中心的局部图">${svg}</svg>
+  <p class="muted">只画一跳邻居，按扇区方位摆放，上限 50。点任意节点换焦点。图是导航，不是装饰画。</p>`;
+}
+
+function chainEdgeNote(a, b) {
+  const r = acceptedRels().find((r) =>
+    (r.type === "evolves_from" && r.from === b && r.to === a) ||
+    (r.type === "variant" && r.from === b && r.to === a) ||
+    (r.type === "implements" && r.from === b && r.to === a) ||
+    (r.type === "applies" && r.from === a && r.to === b));
+  return r ? r.note : "（边上还没有写条件变化）";
+}
+
+function chainProjHTML() {
+  const chains = CHAINS.filter((c) => c.nodes.includes(S.focus));
+  if (!chains.length) return `<p class="muted">经过这个点的演化链或变体链还没有成形。链是关系的线性投影：evolves_from 和 variant 连起来，边上写条件变化。</p>`;
+  return chains.map((c) => {
+    const parts = [];
+    c.nodes.forEach((id, i) => {
+      if (i > 0) parts.push(`<span class="chain-edge"><span class="arrow">→</span>${esc(chainEdgeNote(c.nodes[i - 1], id))}</span>`);
+      parts.push(`<button type="button" class="chain-node${id === S.focus ? " now" : ""}" data-act="focus" data-id="${id}">
+        <span class="nm">${esc(objName(id))}</span><small>${esc(OBJECTS[id].type)}</small></button>`);
+    });
+    return `<h3 style="font-size:14px;color:var(--mute);margin:18px 0 8px">${esc(c.label)}</h3><div class="chainflow">${parts.join("")}</div>`;
+  }).join("") + `<p class="muted">链不另存数据。边上的话逐字来自关系上的 what_changed。断开的链说明中间还缺一条演化关系。</p>`;
+}
+
+function contrastProjHTML() {
+  const sec = sectors(S.focus);
+  const rel = sec.contrast[0];
+  if (!rel) return `<p class="muted">这个点还没有对比或类比关系。</p>`;
+  const other = OBJECTS[rel.other];
+  const me = OBJECTS[S.focus];
+  const isAnalogy = rel.verb === "类比";
+  const pairKey = [S.focus, rel.other].sort().join("+");
+  let body = "";
+  if (pairKey.includes("bt") && pairKey.includes("dp")) {
+    body = `<table>
+      <thead><tr><th></th><th>回溯</th><th>动态规划</th></tr></thead>
+      <tbody>
+        <tr><td>解空间</td><td>保留整条路径</td><td>合并等价历史</td></tr>
+        <tr><td>重复</td><td>同一前缀可以反复展开</td><td>同一状态只算一次</td></tr>
+        <tr><td>目标</td><td>枚举方案，或找到一条</td><td>最优、计数，或按状态存放全部方案</td></tr>
+        <tr><td>何时失效</td><td>只问最优，却仍展开全部路径</td><td>没有最优子结构，或必须区分全部历史</td></tr>
+        <tr><td>代表</td><td>LC131 全部回文分割</td><td>LC132 最少分割；LC139 能否拆开</td></tr>
+      </tbody>
+    </table>`;
+  } else if (pairKey.includes("opt") && pairKey.includes("overlap")) {
+    body = `<table>
+      <thead><tr><th></th><th>最优子结构</th><th>重叠子问题</th></tr></thead>
+      <tbody>
+        <tr><td>回答的问题</td><td>答案能不能由子问题的答案拼出来</td><td>同一个子问题会不会被反复计算</td></tr>
+        <tr><td>缺了它会怎样</td><td>局部选择拼不出全局最优</td><td>合并没有收益，Memo 省不下时间</td></tr>
+        <tr><td>典型误用</td><td colspan="2">把它们当成彼此的别名。对比关系的 distinction 写明了区别。</td></tr>
+      </tbody>
+    </table>`;
+  } else if (isAnalogy) {
+    body = `<table>
+      <thead><tr><th></th><th>Retry</th><th>Resume</th><th>Replay</th></tr></thead>
+      <tbody>
+        <tr><td>失败后做什么</td><td>同一段再执行一次</td><td>从检查点往下走</td><td>按记录把过程再放一遍</td></tr>
+        <tr><td>副作用</td><td>可能再次发生</td><td>不重复已完成的部分</td><td>默认不再对外执行</td></tr>
+      </tbody>
+    </table>
+    <p class="muted">三者是 Agent 侧三个方法的对比，不并进「状态」的别名。</p>`;
+  }
+  return `<div class="split">
+      <article><p class="muted">${esc(me.type)} · ${esc(me.domain)}</p><h2>${esc(me.name)}</h2><p>${esc(me.core)}</p>
+        <p><button type="button" class="btn link" data-act="focus" data-id="${S.focus}">打开这个点</button></p></article>
+      <article><p class="muted">${esc(other.type)} · ${esc(other.domain)}</p><h2>${esc(other.name)}</h2><p>${esc(other.core)}</p>
+        <p><button type="button" class="btn link" data-act="focus" data-id="${rel.other}">打开这个点</button></p></article>
+    </div>
+    <div class="boundary">
+      <h2>${isAnalogy ? "边界（必填）" : "区别（distinction）"}</h2>
+      <p>${esc(rel.note)}</p>
+      ${isAnalogy ? `<p class="muted">边界为空时这条类比拒绝保存。名称相同，两个点保持独立：界面没有「合并这两个点」，这一对也不进「可能重复」列表。搜索「状态」时两条并列返回。</p>` : ""}
+    </div>
+    ${body}`;
+}
+
+function capRow(kind, text, status, act, locked) {
+  const kindTag = kind ? `<span class="tag kind">${esc(kind)}</span>` : "";
+  const label = act ? `<button type="button" data-act="${act}">${kindTag}${esc(text)}</button>` : `<span>${kindTag}${esc(text)}</span>`;
+  const cls = locked ? "muted" : (/失败/.test(status) ? "fail" : "muted");
+  return `<div class="cap">${label}<span class="${cls}">${esc(status)}</span></div>`;
+}
+
+function capsProjHTML() {
+  const caps = CAPS[S.focus] || [];
+  if (!caps.length) return `<p class="muted">这个点还没有能力目标。能力是一句可观察的「能做什么」，挂到点上，可以横跨多个点。</p>`;
+  return `<div class="work"><h2 class="hero" style="font-size:26px">这个点要练的能力</h2>
+    ${caps.map((c) => capRow(c.kind, c.text, c.status(), c.act, c.locked)).join("")}
+    <p class="muted">能力是最小学习单元。开放回答自评，提示到第 3 级不能记独立完成。不出现掌握度百分比。</p></div>`;
+}
+
+function focusMain() {
+  const o = OBJECTS[S.focus];
+  const proj = { content: contentProjHTML, graph: graphProjHTML, chain: chainProjHTML, contrast: contrastProjHTML, caps: capsProjHTML }[S.proj]();
+  return `${toastHTML()}
+    <p class="muted" style="margin:0 0 4px">${esc(o.type)} · ${esc(o.domain)} · ${S.focus === "eq" ? "obj_7f3a" : ""}${filedIn(S.focus).length ? " · 编入于 " + filedIn(S.focus).map((c) => COLLECTIONS[c].title).join("、") : " · 游离"}</p>
+    <h2 class="hero" style="font-size:30px">${esc(o.name)}</h2>
+    ${projsHTML()}${proj}`;
+}
+
+/* ================= 今日 ================= */
+function todayMain() {
+  const left = pendingCount();
+  const free = freeObjects("算法").length + freeObjects("数学").length + freeObjects("英语").length + freeObjects("Agent").length;
+  const paste = !S.pasted
+    ? `<p>ChatGPT 里那段关于「状态等价」的回答还没进来。</p><button type="button" class="btn" data-act="focus" data-id="eq">去这个点粘贴</button>`
+    : (left
+      ? `<p>粘贴已保存成块，还有 ${left} 条连接建议没处理。内容一个字不少。</p><button type="button" class="btn" data-act="focus" data-id="eq">去处理</button>`
+      : `<p>这段推导的连接都处理完了。这个点已经长在图上。</p><button type="button" class="btn" data-act="focus" data-id="eq">打开状态等价</button>`);
+  return `<div class="work">
+    ${toastHTML()}
+    <p class="muted">算法 · 上次停在「状态等价」</p>
+    <p class="hero">如果两个历史对未来没有影响，它们就是同一状态。</p>
+    <button type="button" class="btn primary" data-act="focus" data-id="eq">回到这个点</button>
+    <div class="row"><h2>该复查</h2>
+      <p class="${S.tail === "fail" ? "fail" : ""}">队列只保留对未来有贡献的下标</p>
+      <p class="muted">${esc(tailLabel())} · 可提前复习</p>
+      <button type="button" class="btn" data-act="review">回到这条能力</button></div>
+    <div class="row"><h2>游离的点</h2>
+      <p><button type="button" class="btn link" data-act="focus" data-id="deriv">导数（数学）</button>　<button type="button" class="btn link" data-act="focus" data-id="eng">It is not until…that…（英语）</button></p>
+      <p class="muted">共 ${free} 个点还没编进任何合集。不挡学习，想成体系时再归位。</p></div>
+    <div class="row"><h2>粘贴</h2>${paste}</div>
+    <div class="row"><h2>还没想通</h2>
+      <p>为什么区间 DP 的状态定义容易混乱</p>
+      <p class="muted">挂在「状态等价」上的疑问块，搜索「区间 DP」能命中。</p></div>
+  </div>`;
+}
+
+/* ================= 合集与游离 ================= */
+function collectionMain() {
+  const c = COLLECTIONS[S.collection];
+  return `${toastHTML()}
+    <p class="muted" style="margin:0 0 4px">合集 · ${esc(c.domain)}</p>
+    <h2 class="hero" style="font-size:30px">${esc(c.title)}</h2>
+    <p class="muted">${esc(c.intent)}</p>
+    <div style="max-width:66ch;margin-top:12px">
+      ${c.doc.map(blockHTML).join("")}
+    </div>
+    <p class="muted">引用块是活的：点进去就是点本身。点的 ID、关系、证据不因为编入或移出合集而改变。合集可以嵌套，平铺就够用。</p>`;
+}
+
+function freeMain() {
+  const free = freeObjects(S.freeDomain);
+  return `${toastHTML()}
+    <h2 class="hero" style="font-size:30px">${esc(S.freeDomain)} · 游离的点</h2>
+    <p class="muted">先学后整理：这些点已经能粘贴、连接、练习、被搜索到，只是还没编进合集。游离是合法状态，不是错误。</p>
+    ${free.map((id) => {
+      const o = OBJECTS[id];
+      return `<button type="button" class="refblock" data-act="focusc" data-id="${id}">
+        <span class="nm">${esc(o.name)}</span> <span class="tag">${esc(o.type)}</span>
+        <small>${esc(o.core)}</small></button>`;
+    }).join("")}`;
+}
+
+/* ================= 练习与回查（机制沿用） ================= */
+function practiceMain() {
+  const locked = S.hint >= 3;
+  const hints = HINTS.slice(0, S.hint).map((text, i) => `<li>${i + 1}. ${esc(text)}</li>`).join("");
+  const obstacles = S.practiceNote.startsWith("已记下失败") ? `<fieldset>
+      <legend>这次具体卡在哪里</legend>
+      ${["没看出相同前缀被重复展开", "把全部方案误当成最少拆分数", "状态写成了整段子串，而不是下标 i"].map((text) =>
+        `<label><input type="radio" name="obs" value="${esc(text)}"${S.obstacle === text ? " checked" : ""}> ${esc(text)}</label><br>`
+      ).join("")}
+    </fieldset>` : "";
+  const hangBack = S.practiceNote && !S.hungBack
+    ? `<button type="button" class="btn" data-act="hang-back">把这次理解挂回「状态等价」</button>` : "";
+  return `${toastHTML()}<article class="work">
+    <p class="muted">题面只有问题，不写「动态规划」「记忆化」。做完再回去。</p>
+    <h2>LC140 单词拆分 II</h2>
+    <p>给定字符串 s 和单词表 wordDict。把 s 拆成一个或多个出现在单词表里的单词，返回所有拆法。同一个单词可以重复使用。</p>
+    <p>s = "catsanddog"。单词表里有 cat、cats、and、sand、dog。</p>
+    <p>先写两件事：每一步的决策是什么；做到哪里就可以停下来复用。</p>
+    <textarea id="attempt" aria-label="这次的尝试">${esc(S.attempt)}</textarea>
+    <p>提示 ${S.hint} / 4（键盘 1–4 直接展开到对应级）</p>
+    <ol class="hint-list">${hints}</ol>
+    <button type="button" class="btn" id="next-hint" data-act="hint" ${S.hint >= 4 ? "disabled" : ""}>看下一条提示</button>
+    <p class="fail" ${locked ? "" : "hidden"}>第 3 级揭示了状态定义。这次不能记为独立完成——阈值写在这条能力上，默认 3。</p>
+    <p>
+      <button type="button" class="btn primary" data-act="rate" data-id="independent" ${locked ? "disabled" : ""}>独立完成</button>
+      <button type="button" class="btn" data-act="rate" data-id="hinted">有提示地完成</button>
+      <button type="button" class="btn" data-act="rate" data-id="fail">没做出来</button>
+    </p>
+    ${obstacles}
+    <p class="note" id="practice-note" ${S.practiceNote ? "" : "hidden"}>${esc(S.practiceNote)}</p>
+    ${hangBack}
+  </article>`;
+}
+
+function reviewMain() {
+  const rlocked = S.rhint >= 2;
+  const rhints = RHINTS.slice(0, S.rhint).map((text, i) => `<li>${i + 1}. ${esc(text)}</li>`).join("");
+  const principle = S.principle ? `<div class="note">
+      <p>队列里只留还可能成为未来最优左端点的下标。</p>
+      <p>在 LC862 里，新前缀和小于或等于队尾时，队尾被淘汰。它已经被更小、更靠右的前缀和支配，对未来任何右端点都不会更好。</p>
+      <p>队头被淘汰是另一件事。上次失败的是队尾。</p>
+    </div>` : "";
+  return `${toastHTML()}<article class="work">
+    <p class="muted">LC862 只是当时的题目。「单调队列」这个点没有被整体打回。</p>
+    <h2 class="hero" style="font-size:28px">队列只保留对未来有贡献的下标</h2>
+    <p class="${S.tail === "fail" ? "fail" : ""}">${esc(tailLabel())}</p>
+    <p>这条能力挂在原理「候选支配」上。先不看材料，独立说出队尾淘汰的条件。</p>
+    <p>提示 ${S.rhint} / 3</p>
+    <ol class="hint-list">${rhints}</ol>
+    <button type="button" class="btn" data-act="rhint" ${S.rhint >= 3 ? "disabled" : ""}>看提示</button>
+    <p>
+      <button type="button" class="btn primary" data-act="rrate" data-id="independent" ${rlocked ? "disabled" : ""}>独立说出来了</button>
+      <button type="button" class="btn" data-act="rrate" data-id="hinted">看了提示才说出</button>
+      <button type="button" class="btn" data-act="rrate" data-id="fail">仍说不出</button>
+    </p>
+    ${rlocked ? `<p class="fail">已经看到第 2 级提示，这次不能记独立完成。</p>` : ""}
+    <button type="button" class="btn" data-act="principle">回到原理解释</button>
+    ${principle}
+    <p>重写一句自己的解释，挂到「候选支配」的个人理解块上。</p>
+    <textarea id="rewrite" aria-label="重写解释">${esc(S.rewrite)}</textarea>
+    <button type="button" class="btn primary" data-act="save-rewrite">保存这句解释</button>
+    <p class="note" ${S.reviewNote ? "" : "hidden"}>${esc(S.reviewNote)}</p>
+  </article>`;
+}
+
+function mainHTML() {
+  if (S.mode === "today") return todayMain();
+  if (S.mode === "collection") return collectionMain();
+  if (S.mode === "free") return freeMain();
+  if (S.mode === "practice") return practiceMain();
+  if (S.mode === "review") return reviewMain();
+  return focusMain();
+}
+
+/* ================= 右栏：扇形挖掘 + 托盘 + 能力 ================= */
+function sectorHTML(title, key, list) {
+  const rows = list.map((c) => `<button type="button" class="conn" data-act="focus" data-id="${c.other}">
+      <span class="verb">${esc(c.verb)}</span> <span class="to">${esc(objName(c.other))}</span>
+      ${c.note ? `<small>${esc(c.note)}</small>` : ""}
+    </button>`).join("");
+  const empty = `<p class="muted" style="margin:4px 0;font-size:13px">还没有</p>`;
+  return `<div class="sector"><h3>${esc(title)}</h3>${list.length ? rows : empty}</div>`;
+}
+
+function trayHTML() {
+  if (!S.pasted || S.focus !== "eq") return "";
+  const open = SUGS.filter(([id]) => S.sug[id] === "pending" || S.sug[id] === "deferred");
+  if (!open.length) return "";
+  if (!S.trayOpen) {
+    return `<h2>建议托盘</h2><p class="muted">${open.length} 条建议收在「稍后」。<button type="button" class="btn link" data-act="tray-open">展开</button></p>`;
+  }
+  const items = open.map(([id, accept, origin, text]) => {
+    const deferred = S.sug[id] === "deferred";
+    return `<div class="sug${deferred ? " is-deferred" : ""}">
+      <span class="dot" aria-hidden="true"></span>
+      <div>
+        <p>${esc(text)}</p>
+        <p class="origin">来源：${origin}${deferred ? " · 先放着" : ""}</p>
+        <button type="button" class="btn primary" data-act="sug" data-id="${id}" data-to="accepted">${esc(accept)}</button>
+        ${deferred ? "" : `<button type="button" class="btn" data-act="sug" data-id="${id}" data-to="deferred">先不</button>`}
+        <button type="button" class="btn" data-act="sug" data-id="${id}" data-to="ignored">忽略</button>
+      </div>
+    </div>`;
+  }).join("");
+  return `<div class="tray-head"><h2>连接建议</h2><button type="button" class="btn link" data-act="tray-close">整层稍后</button></div>
+    ${items}
+    <p class="muted">建议只提连接和块，不提分类。一次最多 5 条，逐条决定；接受前可以改预填的条件说明。模型建议被接受前不是事实；本次送出范围只是这段正文加候选点名单。没有密钥时只有规则建议，手工连接始终可用。</p>`;
+}
+
+function filePanelHTML() {
+  if (S.mode !== "focus") return "";
+  const cols = Object.keys(COLLECTIONS);
+  const filed = filedIn(S.focus);
+  const opts = cols.filter((c) => !filed.includes(c)).map((c) =>
+    `<button type="button" class="btn" data-act="file" data-id="${c}">编入「${esc(COLLECTIONS[c].title)}」</button>`).join("");
+  const newCol = `<button type="button" class="btn" data-act="file-new">新建合集「状态等价与状态空间压缩」并编入</button>`;
+  const unfile = filed.map((c) =>
+    `<button type="button" class="btn link" data-act="unfile" data-id="${c}">移出「${esc(COLLECTIONS[c].title)}」</button>`).join(" ");
+  return `<h2>归位</h2>
+    <p class="muted">${filed.length ? "已编入：" + filed.map((c) => COLLECTIONS[c].title).join("、") : "这个点现在是游离的。归位不改变 ID、关系和证据。"}</p>
+    ${opts}${!COLLECTIONS.compress ? newCol : ""}
+    <p>${unfile}</p>
+    ${S.undoStack.length ? `<p><button type="button" class="btn link" data-act="undo">撤销上一条结构命令（⌘Z）</button></p>` : ""}`;
+}
+
+function newLinkHTML() {
+  if (S.mode !== "focus" || S.focus !== "memo") return "";
+  const exists = acceptedRels().some((r) => r.type === "evolves_from" && r.from === "bottomup" && r.to === "memo");
+  if (exists) return "";
+  return `<h2>发起新连接</h2>
+    <p class="muted">站在「记忆化搜索」上，它的去向还缺一条。</p>
+    <button type="button" class="btn" data-act="link-demo">演化出 Bottom-up（预填：按依赖的反方向填表）</button>`;
+}
+
+function capsRailHTML() {
+  const caps = CAPS[S.focus] || [];
+  if (!caps.length) return "";
+  return `<h2>能力</h2>${caps.map((c) => capRow(c.kind, c.text, c.status(), c.act, c.locked)).join("")}
+    <p class="muted">证据挂在这些句子上，不挂在点上，更不挂在合集上。</p>`;
+}
+
+function railHTML() {
+  if (S.mode === "today") {
+    return `<h2>还没想通</h2><p>为什么区间 DP 的状态定义容易混乱</p>
+      <h2>找得到的决定</h2><p>我之前为什么放弃把 Agent Loop 设计成 Workflow？</p>
+      <button type="button" class="btn link" data-act="focus" data-id="agentLoop">打开这条决定</button>
+      <h2>跨领域</h2><p>算法和 Agent 各有一个「状态」。</p>
+      <button type="button" class="btn link" data-act="focus" data-id="algoState">从算法这个过去</button>`;
+  }
+  if (S.mode === "practice") {
+    return `<h2>证据会写在这句上</h2><p>能识别重复子问题</p><p class="${S.repeat === "fail" ? "fail" : "muted"}">${esc(repeatLabel())}</p>
+      <p class="muted">不写在 LC140 这个题号上。提示到第 3 级之后，「独立完成」被锁住。</p>
+      ${S.practiceNote ? `<h2>回去</h2><button type="button" class="btn link" data-act="focus" data-id="eq">回到这条能力所在的点</button>` : ""}`;
+  }
+  if (S.mode === "review") {
+    return `<h2>挂在</h2><p>候选支配</p>
+      <p class="muted">这次失败没有新建点，证据加在原能力上。复查日由这次的自评和提示层级重算，权威是证据本身，可以整表重放。</p>
+      <button type="button" class="btn link" data-act="focus" data-id="queue">回到「单调队列」这个点</button>`;
+  }
+  if (S.mode === "collection") {
+    return `<h2>合集是编排，不是身份</h2>
+      <p class="muted">引用块指向点。同一个点可以出现在多个合集里，身份只有一行。</p>
+      <p><button type="button" class="btn link" data-act="free" data-id="${COLLECTIONS[S.collection].domain}">看这个领域游离的点</button></p>`;
+  }
+  if (S.mode === "free") {
+    return `<h2>整理债务的诚实度量</h2>
+      <p class="muted">游离点数多不是错误。想学时不被归位挡住；想成体系时，从点的「归位」面板编进合集。</p>`;
+  }
+  /* focus */
+  const sec = sectors(S.focus);
+  const analogyEntry = sec.contrast.find((c) => c.verb === "类比");
+  return `${trayHTML()}
+    <h2>扇形挖掘</h2>
+    ${sectorHTML("来历 · 它从哪来", "origin", sec.origin)}
+    ${sectorHTML("去向 · 它到哪去", "forward", sec.forward)}
+    ${sectorHTML("对照 · 和什么容易混", "contrast", sec.contrast)}
+    ${sectorHTML("变化 · 条件变了会怎样", "change", sec.change)}
+    ${analogyEntry ? `<p><button type="button" class="btn link" data-act="proj" data-id="contrast">并排看这条类比（带边界）</button></p>` : ""}
+    ${newLinkHTML()}
+    ${capsRailHTML()}
+    ${filePanelHTML()}`;
+}
+
+/* ================= 导览 ================= */
+function guideHTML() {
+  return `<h2>演示导览</h2>
+    <p class="muted">这个原型按焦点扇形模型走 PRD 的场景：点即文档，扇形挖掘，链写条件变化，合集可选，游离合法。</p>
+    <h3>场景 A · 从 GPT 长出一个点</h3>
+    <ol><li>打开「状态等价」，它现在只有一句话（种子）。</li>
+    <li>点「粘贴进这个点」：推导步骤、表格、代码、疑问都成块。</li>
+    <li>右侧托盘 5 条连接建议，逐条接受——扇区和图当场长出来。</li></ol>
+    <p><button type="button" class="btn" data-act="goto" data-id="a">去场景 A</button></p>
+    <h3>场景 B · 扇形挖掘与补链</h3>
+    <ol><li>在「状态等价」右侧扇区点「演化自 决策树」，焦点转移。</li>
+    <li>切到「链」投影，走 决策树→状态等价→记忆化搜索。</li>
+    <li>走到「记忆化搜索」，右栏「发起新连接」补上 →Bottom-up，链变长。</li></ol>
+    <p><button type="button" class="btn" data-act="goto" data-id="b">去场景 B</button></p>
+    <h3>场景 C · 归位：编进合集</h3>
+    <ol><li>在任意点的右栏「归位」面板，编进合集或新建合集。</li>
+    <li>合集页里引用块是活的，上下文写在引用块之间。</li>
+    <li>⌘Z 撤销。点的 ID、关系、证据全程不变。</li></ol>
+    <p><button type="button" class="btn" data-act="goto" data-id="c">去场景 C</button></p>
+    <h3>场景 D · 练习与失败回查</h3>
+    <ol><li>LC140 的「能力」投影 → 开始做：题面不写算法类别，提示 1–4 级，第 3 级锁独立。</li>
+    <li>失败记具体障碍。今日页「该复查」回到能力原句，不整章打回。</li></ol>
+    <p><button type="button" class="btn" data-act="goto" data-id="d">去场景 D</button></p>
+    <h3>场景 E · 跨领域类比</h3>
+    <ol><li>搜索「状态」，两个领域并列返回。</li><li>对照扇区 → 并排，中间是必填边界，没有合并。</li></ol>
+    <p><button type="button" class="btn" data-act="goto" data-id="e">去场景 E</button></p>
+    <h3>场景 F · 换一个学科</h3>
+    <ol><li>左栏「数学」或「英语」→ 游离。</li><li>导数有公式块和定理块；英语有句型块。扇形、链、能力机制完全一样。</li></ol>
+    <p><button type="button" class="btn" data-act="goto" data-id="f">去场景 F</button></p>
+    <h3>键盘</h3>
+    <p><span class="kbd">⌘K</span> 搜索　<span class="kbd">[</span> <span class="kbd">]</span> 切换投影　<span class="kbd">1</span>–<span class="kbd">4</span> 提示　<span class="kbd">A</span> 接受建议　<span class="kbd">S</span> 延后　<span class="kbd">⌘Z</span> 撤销结构命令　<span class="kbd">Esc</span> 关闭本层</p>
+    <p><button type="button" class="btn primary" data-act="guide-close">开始</button></p>`;
+}
+
+/* ================= 渲染与交互 ================= */
+let focusSel = "";
+function render() {
+  document.getElementById("crumb").textContent = crumb();
+  document.getElementById("go-today").setAttribute("aria-current", S.mode === "today" ? "page" : "false");
+  document.getElementById("outline").innerHTML = outlineHTML();
+  document.getElementById("main").innerHTML = mainHTML();
+  document.getElementById("rail").innerHTML = railHTML();
+  const overlay = document.getElementById("overlay");
+  if (S.guide) {
+    document.getElementById("guide-box").innerHTML = guideHTML();
+    overlay.hidden = false;
+  } else overlay.hidden = true;
+  if (focusSel) {
+    const el = document.querySelector(focusSel);
+    if (el) el.focus();
+    focusSel = "";
+  }
+}
+
+function applyFind(kind) {
+  if (kind === "practice") { S.mode = "practice"; }
+  else if (kind === "review") { S.mode = "review"; }
+  else if (kind.startsWith("col:")) { S.mode = "collection"; S.collection = kind.slice(4); }
+  else { S.mode = "focus"; S.focus = kind; S.proj = "content"; }
+  document.getElementById("q").value = "";
+  document.getElementById("hits").hidden = true;
+  render();
+}
+
+function gotoScenario(id) {
+  S.guide = false;
+  if (id === "a") { S.mode = "focus"; S.focus = "eq"; S.proj = "content"; }
+  if (id === "b") { S.mode = "focus"; S.focus = "eq"; S.proj = "graph"; }
+  if (id === "c") { S.mode = "focus"; S.focus = "eq"; }
+  if (id === "d") { S.mode = "practice"; }
+  if (id === "e") { S.mode = "focus"; S.focus = "algoState"; S.proj = "contrast"; }
+  if (id === "f") { S.mode = "free"; S.freeDomain = "数学"; }
+  render();
+}
+
+document.body.addEventListener("click", (event) => {
+  const hit = event.target.closest("[data-act='find']");
+  if (hit) { applyFind(hit.dataset.id); return; }
+  const el = event.target.closest("[data-act]");
+  if (!el) {
+    if (!event.target.closest(".search")) document.getElementById("hits").hidden = true;
+    return;
+  }
+  const act = el.dataset.act;
+  const id = el.dataset.id;
+  S.toast = "";
+  if (act === "today") S.mode = "today";
+  else if (act === "guide") S.guide = true;
+  else if (act === "guide-close") S.guide = false;
+  else if (act === "goto") { gotoScenario(id); return; }
+  else if (act === "focus") { S.mode = "focus"; S.focus = id; }
+  else if (act === "focusc") { S.mode = "focus"; S.focus = id; S.proj = "content"; }
+  else if (act === "collection") { S.mode = "collection"; S.collection = id; }
+  else if (act === "free") { S.mode = "free"; S.freeDomain = id; }
+  else if (act === "proj") { S.proj = id; }
+  else if (act === "practice") S.mode = "practice";
+  else if (act === "review") S.mode = "review";
+  else if (act === "principle") S.principle = true;
+  else if (act === "paste") {
+    S.pasted = true;
+    S.trayOpen = true;
+    DOCS.eq = EQ_PASTE_BLOCKS.slice();
+    S.toast = "已保存为块：推导步骤、2×3 表格、JS 代码、疑问，都在。脚本和事件属性没有进入文档。右侧托盘有 5 条连接建议。";
+  }
+  else if (act === "tray-close") S.trayOpen = false;
+  else if (act === "tray-open") S.trayOpen = true;
+  else if (act === "sug") {
+    S.sug[id] = el.dataset.to;
+    if (el.dataset.to === "accepted") {
+      const sug = SUGS.find(([sid]) => sid === id);
+      const rels = sug.slice(4).filter(Boolean);
+      for (const r of rels) RELATIONS.push(r);
+      if (id === "mine") DOCS.eq.splice(1, 0, { t: "mine", text: "如果两个历史对未来没有影响，它们就是同一状态。" });
+      S.toast = "已接受。扇形、图、链三个投影同步更新——它们读的是同一份关系表。";
+    }
+  }
+  else if (act === "link-demo") {
+    RELATIONS.push({ from: "bottomup", to: "memo", type: "evolves_from", note: "按依赖的反方向填表，不再走递归。", status: "accepted" });
+    S.undoStack.push({ kind: "link" });
+    S.toast = "已连接：记忆化搜索 演化出 Bottom-up。链投影里这一段补上了。";
+  }
+  else if (act === "file") {
+    COLLECTIONS[id].doc.push({ t: "ref", id: S.focus });
+    S.coreSeen[id] = S.coreSeen[id] || S.coreVersion;
+    S.undoStack.push({ kind: "file", col: id, focus: S.focus });
+    S.toast = `已编入「${COLLECTIONS[id].title}」。点的 ID、关系、证据不变；移出只是删一个引用块。`;
+  }
+  else if (act === "file-new") {
+    COLLECTIONS.compress = {
+      title: "状态等价与状态空间压缩", domain: "算法", intent: "先收成同一个状态，再谈怎么存。",
+      doc: [{ t: "p", text: "这个合集从「状态等价」开始长。" }, { t: "ref", id: S.focus }]
+    };
+    S.coreSeen.compress = S.coreVersion;
+    S.undoStack.push({ kind: "file-new", focus: S.focus });
+    S.toast = "已新建合集并编入。左栏出现这个合集；点的身份不变。";
+  }
+  else if (act === "unfile") {
+    const c = COLLECTIONS[id];
+    const idx = c.doc.map((b, i) => [b, i]).filter(([b]) => b.t === "ref" && b.id === S.focus).map(([, i]) => i).pop();
+    if (idx !== undefined) {
+      c.doc.splice(idx, 1);
+      S.undoStack.push({ kind: "unfile", col: id, focus: S.focus });
+      S.toast = "已移出。只是删了一个引用块，点本身没动。";
+    }
+  }
+  else if (act === "undo") {
+    const cmd = S.undoStack.pop();
+    if (cmd) {
+      if (cmd.kind === "link") {
+        const i = RELATIONS.findIndex((r) => r.from === "bottomup" && r.to === "memo" && r.type === "evolves_from");
+        if (i >= 0) RELATIONS.splice(i, 1);
+      } else if (cmd.kind === "file") {
+        const c = COLLECTIONS[cmd.col];
+        const i = c.doc.map((b, j) => [b, j]).filter(([b]) => b.t === "ref" && b.id === cmd.focus).map(([, j]) => j).pop();
+        if (i !== undefined) c.doc.splice(i, 1);
+      } else if (cmd.kind === "unfile") {
+        COLLECTIONS[cmd.col].doc.push({ t: "ref", id: cmd.focus });
+      } else if (cmd.kind === "file-new") {
+        delete COLLECTIONS.compress;
+      }
+      S.toast = "已撤销上一条结构命令。";
+    }
+  }
+  else if (act === "bump-core") {
+    S.coreVersion += 1;
+    S.toast = `核心陈述已到 v${S.coreVersion}。编入这个点的合集里，引用块会标「核心定义已更新 · 待确认」。正文一个字没动。`;
+  }
+  else if (act === "core-ok") {
+    S.coreSeen[S.collection] = S.coreVersion;
+    S.toast = "这个合集确认已读。其他合集的待确认不受影响。";
+  }
+  else if (act === "hint") {
+    if (S.hint < 4) S.hint += 1;
+    focusSel = "#next-hint";
+  }
+  else if (act === "rate") {
+    const attempt = document.getElementById("attempt");
+    if (attempt) S.attempt = attempt.value;
+    if (id === "independent" && S.hint < 3) {
+      S.repeat = "independent";
+      S.practiceNote = "已记下：独立完成。证据挂在「能识别重复子问题」。";
+    } else if (id === "hinted") {
+      S.repeat = "hinted";
+      S.practiceNote = "已记下：有提示地完成。提示用到第 " + S.hint + " 级。";
+    } else if (id === "fail") {
+      S.repeat = "fail";
+      S.repeatNote = S.obstacle || "还没有写下具体障碍";
+      S.practiceNote = "已记下失败：" + S.repeatNote + "。下次复查问的是这个障碍，不是「LC140」。";
+    }
+  }
+  else if (act === "hang-back") {
+    S.hungBack = true;
+    DOCS.eq.push({ t: "mine", text: "LC140 里想通的：状态落在下标 i 上，i 处要留全部拆法。" });
+    S.toast = "这次理解已挂到「状态等价」的个人理解块，没有新建点。";
+  }
+  else if (act === "rhint") { if (S.rhint < 3) S.rhint += 1; }
+  else if (act === "rrate") {
+    if (id === "fail") {
+      S.tail = "fail";
+      S.reviewNote = "仍说不出。证据记为失败，这条能力排进下一次今日。";
+    } else {
+      S.tail = "recheck";
+      S.reviewNote = id === "independent"
+        ? "已记下：独立解释。复查日按这次表现重算（演示：约 6 天后），可提前复习。"
+        : "已记下：看了提示才说出。间隔按较短一侧重算。";
+    }
+  }
+  else if (act === "save-rewrite") {
+    const box = document.getElementById("rewrite");
+    if (box) S.rewrite = box.value;
+    S.reviewNote = S.rewrite.trim()
+      ? "这句解释已挂到「候选支配」的个人理解块。能力原句不变，没有新建点。"
+      : "先写下那句解释。";
+    if (S.rewrite.trim() && S.tail === "fail") S.tail = "rewritten";
+  }
+  render();
+});
+
+document.body.addEventListener("change", (event) => {
+  if (event.target.name === "obs") {
+    S.obstacle = event.target.value;
+    S.repeat = "fail";
+    S.repeatNote = S.obstacle;
+    S.practiceNote = "已记下失败：" + S.obstacle + "。下次复查问的是这个障碍。";
+    render();
+  }
+});
+
+document.body.addEventListener("input", (event) => {
+  if (event.target.id === "attempt") S.attempt = event.target.value;
+  if (event.target.id === "rewrite") S.rewrite = event.target.value;
+  if (event.target.id !== "q") return;
+  const q = event.target.value.trim();
+  const box = document.getElementById("hits");
+  if (!q) { box.hidden = true; box.innerHTML = ""; return; }
+  const found = FIND.filter((item) => item.join(" ").toLowerCase().includes(q.toLowerCase()));
+  if (!found.length) {
+    box.innerHTML = `<p class="muted" style="padding:8px 12px">没有这条记录</p>`;
+    box.hidden = false;
+    return;
+  }
+  const order = ["点", "能力", "决定", "疑问", "合集", "合集里的句子"];
+  let html = "", lastGroup = "";
+  const sorted = found.slice().sort((a, b) => order.indexOf(a[3]) - order.indexOf(b[3]));
+  for (const [title, meta, kind, group] of sorted) {
+    if (group !== lastGroup) { html += `<p class="group">${esc(group)}</p>`; lastGroup = group; }
+    html += `<button type="button" data-act="find" data-id="${esc(kind)}"><span>${esc(title)}</span><small>${esc(meta)}</small></button>`;
+  }
+  box.innerHTML = html;
+  box.hidden = false;
+});
+
+document.body.addEventListener("keydown", (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    document.getElementById("q").focus();
+    return;
+  }
+  if (event.key === "Escape") {
+    if (S.guide) { S.guide = false; render(); }
+    document.getElementById("hits").hidden = true;
+    return;
+  }
+  if (event.target.matches("input, textarea")) return;
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+    const btn = document.querySelector("[data-act='undo']");
+    if (btn) btn.click();
+    return;
+  }
+  if (S.mode === "focus" && (event.key === "[" || event.key === "]")) {
+    const order = PROJS.map(([id]) => id);
+    const index = order.indexOf(S.proj);
+    S.proj = order[(index + (event.key === "]" ? 1 : order.length - 1)) % order.length];
+    render();
+    return;
+  }
+  if (S.mode === "practice" && ["1", "2", "3", "4"].includes(event.key)) {
+    S.hint = Number(event.key);
+    render();
+    return;
+  }
+  if (S.mode === "focus" && S.focus === "eq" && S.pasted && S.trayOpen) {
+    const first = SUGS.find(([id]) => S.sug[id] === "pending");
+    if (!first) return;
+    if (event.key.toLowerCase() === "a") { S.sug[first[0]] = "accepted"; RELATIONS.push(...first.slice(4).filter(Boolean)); render(); }
+    if (event.key.toLowerCase() === "s") { S.sug[first[0]] = "deferred"; render(); }
+  }
+});
+
+render();
+</script>
+</body>
+</html>

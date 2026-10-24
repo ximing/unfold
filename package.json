@@ -1,0 +1,26 @@
+{
+  "name": "unfold",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.30.3",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @unfold/web dev",
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "@tiptap/core": "3.31.3",
+      "@tiptap/pm": "3.31.3",
+      "@tiptap/html": "3.31.3",
+      "@tiptap/starter-kit": "3.31.3",
+      "@tiptap/react": "3.31.3"
+    }
+  }
+}
