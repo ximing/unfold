@@ -3,6 +3,13 @@ import { useEffect } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router';
 import { SessionService } from '../services/session.service.js';
 
+function formatDueLabel(dueAt: string): string {
+  const date = new Date(dueAt);
+  if (Number.isNaN(date.getTime())) return dueAt;
+  const pad = (value: number, width: number) => String(value).padStart(width, '0');
+  return `${pad(date.getFullYear(), 4)}-${pad(date.getMonth() + 1, 2)}-${pad(date.getDate(), 2)} ${pad(date.getHours(), 2)}:${pad(date.getMinutes(), 2)}`;
+}
+
 export const TodayPage = observer(function TodayPage() {
   const session = useService(SessionService);
   const navigate = useNavigate();
@@ -59,9 +66,16 @@ export const TodayPage = observer(function TodayPage() {
               <>
                 <h2>该复查</h2>
                 <ul>
-                  {today.due.map((item) => (
-                    <li key={item.capabilityId}>{item.statement}</li>
-                  ))}
+                  {today.due.map((item) => {
+                    const label = formatDueLabel(item.dueAt);
+                    return (
+                      <li key={item.capabilityId}>
+                        <Link to={`/practice/${item.capabilityId}?mode=review`}>{item.statement}</Link>
+                        {item.evidenceNote !== '' ? <p>{item.evidenceNote}</p> : null}
+                        <p className="muted">复查日 {label}</p>
+                      </li>
+                    );
+                  })}
                 </ul>
               </>
             )}
