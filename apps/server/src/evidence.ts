@@ -130,7 +130,7 @@ function presentEvidence(row: {
   obstacle: string;
   body: string;
   createdAt: Date;
-}): Evidence {
+}, dueAt?: Date): Evidence {
   return evidenceSchema.parse({
     id: row.id,
     capabilityId: row.capabilityId,
@@ -140,6 +140,7 @@ function presentEvidence(row: {
     obstacle: row.obstacle,
     body: row.body,
     createdAt: row.createdAt.toISOString(),
+    ...(dueAt ? { dueAt: dueAt.toISOString() } : {}),
   });
 }
 
@@ -208,7 +209,18 @@ export function registerEvidenceRoutes(app: FastifyInstance, db: Database, sessi
         const created = inserted[0];
         if (!created) throw new Error('insert evidence failed');
         await rebuildReviewState(query, user.id, capability.id);
-        return { type: 'created' as const, evidence: presentEvidence(created) };
+        const reviewed = await query
+          .select({ dueAt: reviewStates.dueAt })
+          .from(reviewStates)
+          .where(
+            and(
+              eq(reviewStates.userId, user.id),
+              eq(reviewStates.capabilityId, capability.id),
+              isNull(reviewStates.deletedAt),
+            ),
+          )
+          .limit(1);
+        return { type: 'created' as const, evidence: presentEvidence(created, reviewed[0]?.dueAt) };
       });
 
       if (outcome.type === 'missing') return reply.code(404).send(capabilityNotFound);

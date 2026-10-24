@@ -442,3 +442,7 @@ p[role='alert'] {
 .tray button { margin: 0.25rem 0.5rem 0.25rem 0; }
 
 .collection-block[draggable='true'] { cursor: grab; }
+
+.fail { color: #b8432f; }
+.practice-actions button { margin: 0.25rem 0.5rem 0.25rem 0; }
+.practice-actions button:disabled { color: var(--mute); }

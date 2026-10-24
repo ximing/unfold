@@ -70,6 +70,7 @@ export const evidenceSchema = z.object({
   obstacle: z.string(),
   body: z.string(),
   createdAt: z.string(),
+  dueAt: z.string().optional(),
 });
 
 export type CapabilityKind = z.infer<typeof capabilityKindSchema>;

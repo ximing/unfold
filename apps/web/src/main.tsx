@@ -12,6 +12,7 @@ import { HomePage } from './pages/home.js';
 import { LoginPage } from './pages/login.js';
 import { Shell } from './pages/shell.js';
 import { TodayPage } from './pages/today.js';
+import { PracticePage } from './pages/practice.js';
 import './app.css';
 
 register(SessionService);
@@ -32,6 +33,7 @@ createRoot(root).render(
           <Route path="/free/:domainId" element={<FreePage />} />
           <Route path="/o/:id" element={<FocusPage />} />
           <Route path="/c/:id" element={<CollectionPage />} />
+          <Route path="/practice/:capabilityId" element={<PracticePage />} />
         </Route>
       </Routes>
     </BrowserRouter>
