@@ -223,3 +223,69 @@ p[role='alert'] {
 .doc .ProseMirror section[data-type='tiered-hints'] > button {
   margin-top: 0.25rem;
 }
+
+.sectors {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 1.75rem;
+  color: var(--ink);
+}
+
+.sector {
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--line);
+}
+
+.shell .sector h2 {
+  margin: 0 0 0.45rem;
+  color: var(--ink);
+  font-family: "Songti SC", "Noto Serif SC", Palatino, serif;
+  font-size: 1.15rem;
+  font-weight: 500;
+}
+
+.sector ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sector li + li {
+  margin-top: 0.75rem;
+}
+
+.sector li p {
+  margin: 0.12rem 0 0;
+  color: var(--mute);
+}
+
+.sector > p {
+  margin: 0.15rem 0 0;
+  color: var(--mute);
+}
+
+.shell .sector-open {
+  margin-top: 1.25rem;
+}
+
+.shell form.sector-form {
+  margin-top: 0.75rem;
+}
+
+.shell form.sector-form button {
+  margin-top: 0.25rem;
+}
+
+.shell label.sector-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  color: var(--ink);
+}
+
+.shell label.sector-confirm input {
+  width: auto;
+  margin: 0.28rem 0 0;
+  padding: 0;
+  border: none;
+}

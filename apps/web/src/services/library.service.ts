@@ -4,19 +4,24 @@ import {
   domainListSchema,
   domainSchema,
   errorBodySchema,
+  fanRelationListSchema,
   objectSummarySchema,
+  relationSchema,
   type CreateObjectBody,
+  type CreateRelationBody,
   type DocumentResponse,
   type Domain,
+  type FanRelation,
   type ObjectSummary,
+  type Relation,
 } from '@unfold/dto';
 
-async function errorMessage(res: Response): Promise<string> {
+async function errorMessage(res: Response, fallback = '请求没有完成'): Promise<string> {
   try {
     const body: unknown = await res.json();
     return errorBodySchema.parse(body).error.message;
   } catch {
-    return '请求没有完成';
+    return fallback;
   }
 }
 
@@ -24,6 +29,7 @@ export class LibraryService extends Service {
   domains: Domain[] = [];
   objects: ObjectSummary[] = [];
   current: ObjectSummary | null = null;
+  relations: FanRelation[] = [];
   error = '';
   notice = '';
 
@@ -140,5 +146,36 @@ export class LibraryService extends Service {
       this.error = '保存结果无法读取';
       return null;
     }
+  }
+
+  async loadRelations(id: string): Promise<void> {
+    this.error = '';
+    try {
+      const res = await fetch(`/api/objects/${encodeURIComponent(id)}/relations`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        this.error = await errorMessage(res, '连接没有加载出来');
+        return;
+      }
+      this.relations = fanRelationListSchema.parse(await res.json()).relations;
+    } catch {
+      this.error = '连接没有加载出来';
+    }
+  }
+
+  async createRelation(body: CreateRelationBody): Promise<Relation | null> {
+    this.error = '';
+    const res = await fetch('/api/relations', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      this.error = await errorMessage(res);
+      return null;
+    }
+    return relationSchema.parse(await res.json());
   }
 }
