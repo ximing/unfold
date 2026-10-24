@@ -1,6 +1,7 @@
 import { Service } from '@rabjs/react';
 import {
   collectionListSchema,
+  capabilitySchema,
   collectionSchema,
   documentResponseSchema,
   domainListSchema,
@@ -12,6 +13,7 @@ import {
   searchResponseSchema,
   suggestionListSchema,
   type Collection,
+  type Capability,
   type CreateObjectBody,
   type CreateRelationBody,
   type DocumentResponse,
@@ -152,6 +154,7 @@ export class LibraryService extends Service {
   suggestionNotice = '';
   suggestionError = '';
   private suggestionTicket = 0;
+  capabilities: Capability[] = [];
 
   async loadDomains(): Promise<void> {
     this.error = '';
@@ -618,6 +621,32 @@ export class LibraryService extends Service {
       if (ticket !== this.suggestionTicket) return false;
       this.suggestionError = '建议没有处理完';
       return false;
+    }
+  }
+
+  async loadCapabilities(objectId: string): Promise<void> {
+    this.error = '';
+    try {
+      const res = await fetch(`/api/capabilities?objectId=${encodeURIComponent(objectId)}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        this.error = '能力没有加载出来';
+        this.capabilities = [];
+        return;
+      }
+      const body: unknown = await res.json();
+      if (!body || typeof body !== 'object' || !('capabilities' in body)) {
+        this.error = '能力没有加载出来';
+        this.capabilities = [];
+        return;
+      }
+      this.capabilities = capabilitySchema.array().parse(
+        (body as { capabilities: unknown }).capabilities,
+      );
+    } catch {
+      this.error = '能力没有加载出来';
+      this.capabilities = [];
     }
   }
 }

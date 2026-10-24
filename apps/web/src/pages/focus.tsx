@@ -4,6 +4,7 @@ import { SCHEMA_VERSION, getExtensions } from '@unfold/doc-schema';
 import {
   type CreateRelationBody,
   type FanRelation,
+  type CapabilityKind,
   type ObjectSummary,
   type RelationType,
 } from '@unfold/dto';
@@ -408,6 +409,52 @@ const ConnectForm = observer(function ConnectForm({
   );
 });
 
+const CAPABILITY_KIND: Record<CapabilityKind, string> = {
+  explain: '解释',
+  derive: '推导',
+  discriminate: '辨别',
+  vary: '变体',
+  counter: '反例',
+  implement: '实现',
+  transfer: '迁移',
+  tradeoff: '取舍',
+};
+
+function CapabilityProjection() {
+  const library = useService(LibraryService);
+  return (
+    <section>
+      <h2>能力</h2>
+      {library.capabilities.length === 0 ? (
+        <p>还没有能力。</p>
+      ) : (
+        <ul>
+          {library.capabilities.map((cap) => (
+            <li key={cap.id}>
+              <p>
+                <span className="muted">{CAPABILITY_KIND[cap.kind]}</span> {cap.statement}
+              </p>
+              {cap.hints.length > 0 ? (
+                <p className="muted">
+                  {cap.hints.length} 级，练习时逐级展开。提示到第 {cap.hintThreshold} 级后不能记独立完成。
+                </p>
+              ) : null}
+              {cap.practiceLocked ? (
+                <p>{cap.practiceLockMessage}</p>
+              ) : (
+                <p>
+                  <Link to={`/practice/${cap.id}`}>开始做</Link>
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="muted">能力是最小学习单元。开放回答自评，提示到第 3 级不能记独立完成。不出现掌握度百分比。</p>
+    </section>
+  );
+}
+
 export const FocusPage = observer(function FocusPage() {
   const library = useService(LibraryService);
   const { id = '' } = useParams();
@@ -415,6 +462,7 @@ export const FocusPage = observer(function FocusPage() {
   const proj = searchParams.get('proj');
   const showChain = proj === 'chain';
   const showContrast = proj === 'contrast';
+  const showCaps = proj === 'caps';
   const saveRef = useRef<() => void>(() => {});
   const [saved, setSaved] = useState(false);
   const [noSuggestion, setNoSuggestion] = useState(false);
@@ -422,6 +470,7 @@ export const FocusPage = observer(function FocusPage() {
   const [open, setOpen] = useState(false);
   const [relationsReady, setRelationsReady] = useState(false);
   const [chainReadyId, setChainReadyId] = useState('');
+  const [capsReadyId, setCapsReadyId] = useState('');
 
   const editor = useEditor({
     extensions: getExtensions(),
@@ -480,6 +529,17 @@ export const FocusPage = observer(function FocusPage() {
   }, [showChain, id, library]);
 
   useEffect(() => {
+    if (!showCaps || !id) return;
+    let alive = true;
+    void library.loadCapabilities(id).then(() => {
+      if (alive) setCapsReadyId(id);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [showCaps, id, library]);
+
+  useEffect(() => {
     if (library.suggestions.length > 0 || library.suggestionNotice !== '') {
       setNoSuggestion(false);
     }
@@ -511,7 +571,7 @@ export const FocusPage = observer(function FocusPage() {
     setSaved(false);
   }
 
-  function selectProjection(nextProj: 'chain' | 'contrast' | null) {
+  function selectProjection(nextProj: 'chain' | 'contrast' | 'caps' | null) {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       if (nextProj === null) next.delete('proj');
@@ -546,7 +606,7 @@ export const FocusPage = observer(function FocusPage() {
         <button
           type="button"
           role="tab"
-          aria-selected={!showChain && !showContrast}
+          aria-selected={!showChain && !showContrast && !showCaps}
           onClick={() => selectProjection(null)}
         >
           内容
@@ -566,6 +626,14 @@ export const FocusPage = observer(function FocusPage() {
           onClick={() => selectProjection('contrast')}
         >
           对比
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={showCaps}
+          onClick={() => selectProjection('caps')}
+        >
+          能力
         </button>
       </div>
       {seed ? <p>这个点还是种子：只有一句话核心陈述。内容、连接、归位都后补。</p> : null}
@@ -587,6 +655,17 @@ export const FocusPage = observer(function FocusPage() {
               <p role="alert">{library.error}</p>
             ) : null}
             <ContrastProjection current={current} relations={library.relations} />
+          </>
+        ) : (
+          <p className="muted">正在读取…</p>
+        )
+      ) : showCaps ? (
+        capsReadyId === id ? (
+          <>
+            {library.error && library.error !== '没有这个点' && !open ? (
+              <p role="alert">{library.error}</p>
+            ) : null}
+            <CapabilityProjection />
           </>
         ) : (
           <p className="muted">正在读取…</p>
