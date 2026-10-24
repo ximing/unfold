@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   collectionListSchema,
+  collectionRefBodySchema,
   collectionSchema,
   createCollectionBodySchema,
   type Collection,
   type CollectionList,
+  type CollectionRefBody,
   type CreateCollectionBody,
 } from './index.js';
 
@@ -48,6 +50,17 @@ describe('createCollectionBodySchema', () => {
       parentCollectionId: null,
     } satisfies CreateCollectionBody;
     expect(parsed).toEqual(body);
+  });
+});
+
+describe('collectionRefBodySchema', () => {
+  it('parses add, rejects a move without position, and rejects merge', () => {
+    const objectId = '6ba7b812-9dad-11d1-80b4-00c04fd430c8';
+    const parsed = collectionRefBodySchema.parse({ op: 'add', objectId });
+    const body = { op: 'add', objectId } satisfies CollectionRefBody;
+    expect(parsed).toEqual(body);
+    expect(collectionRefBodySchema.safeParse({ op: 'move', objectId }).success).toBe(false);
+    expect(collectionRefBodySchema.safeParse({ op: 'merge', objectId }).success).toBe(false);
   });
 });
 

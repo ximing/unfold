@@ -37,10 +37,12 @@ export {
 } from './objects.js';
 export {
   collectionListSchema,
+  collectionRefBodySchema,
   collectionSchema,
   createCollectionBodySchema,
   type Collection,
   type CollectionList,
+  type CollectionRefBody,
   type CreateCollectionBody,
 } from './collections.js';
 export {

@@ -131,7 +131,7 @@ function hashPaste(plainText: string, html: string): string {
   return createHash('sha256').update(plainText).update('\0').update(html).digest('hex');
 }
 
-async function saveDocument(
+export async function saveDocument(
   db: Database,
   userId: string,
   documentId: string,

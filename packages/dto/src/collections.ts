@@ -21,6 +21,13 @@ export const collectionListSchema = z.object({
   collections: z.array(collectionSchema),
 });
 
+export const collectionRefBodySchema = z.discriminatedUnion('op', [
+  z.object({ op: z.literal('add'), objectId: z.uuid() }),
+  z.object({ op: z.literal('remove'), objectId: z.uuid() }),
+  z.object({ op: z.literal('move'), objectId: z.uuid(), position: z.int().nonnegative() }),
+]);
+
 export type CreateCollectionBody = z.infer<typeof createCollectionBodySchema>;
 export type Collection = z.infer<typeof collectionSchema>;
 export type CollectionList = z.infer<typeof collectionListSchema>;
+export type CollectionRefBody = z.infer<typeof collectionRefBodySchema>;

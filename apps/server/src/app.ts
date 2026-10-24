@@ -8,6 +8,7 @@ import { loadConfig } from './config.js';
 import { createDb, createPool } from './db/client.js';
 import { users } from './db/schema.js';
 import { registerChainRoutes } from './chain.js';
+import { registerCollectionRefRoutes } from './collection-refs.js';
 import { registerCollectionRoutes } from './collections.js';
 import { registerDocumentRoutes } from './documents.js';
 import { registerObjectRoutes } from './objects.js';
@@ -182,6 +183,7 @@ export async function buildApp() {
   registerChainRoutes(app, db, signedSessionUser);
   registerSearchRoutes(app, db, signedSessionUser);
   registerCollectionRoutes(app, db, signedSessionUser);
+  registerCollectionRefRoutes(app, db, signedSessionUser);
 
   return app;
 }
