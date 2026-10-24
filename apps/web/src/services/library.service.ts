@@ -315,6 +315,28 @@ export class LibraryService extends Service {
     this.current = objectSummarySchema.parse(await res.json());
   }
 
+  async updateObject(id: string, body: { coreStatement: string }): Promise<ObjectSummary | null> {
+    this.error = '';
+    const res = await fetch(`/api/objects/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      this.error = await errorMessage(res);
+      return null;
+    }
+    try {
+      const summary = objectSummarySchema.parse(await res.json());
+      if (this.current?.id === id) this.current = summary;
+      return summary;
+    } catch {
+      this.error = '保存结果无法读取';
+      return null;
+    }
+  }
+
   // 文档接口可能还没部署；解析失败只返回 null，不把页面打崩。
   async loadDocument(id: string): Promise<DocumentResponse | null> {
     try {

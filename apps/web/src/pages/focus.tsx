@@ -553,6 +553,9 @@ export const FocusPage = observer(function FocusPage() {
   const [chainReadyId, setChainReadyId] = useState('');
   const [graphReadyId, setGraphReadyId] = useState('');
   const [capsReadyId, setCapsReadyId] = useState('');
+  const [editingStatement, setEditingStatement] = useState(false);
+  const [statementDraft, setStatementDraft] = useState('');
+  const [savingStatement, setSavingStatement] = useState(false);
 
   const editor = useEditor({
     extensions: getExtensions(),
@@ -578,6 +581,9 @@ export const FocusPage = observer(function FocusPage() {
     setSeed(false);
     setOpen(false);
     setRelationsReady(false);
+    setEditingStatement(false);
+    setStatementDraft('');
+    setSavingStatement(false);
     library.relations = [];
     void (async () => {
       await library.loadObject(id);
@@ -695,6 +701,45 @@ export const FocusPage = observer(function FocusPage() {
       <h1>{current.canonicalName}</h1>
       <p>{current.coreStatement}</p>
       <p className="muted">核心陈述 v{current.coreVersion}</p>
+      <button
+        type="button"
+        onClick={() => {
+          if (!editingStatement) setStatementDraft(current.coreStatement);
+          setEditingStatement(true);
+        }}
+      >
+        修改核心陈述
+      </button>
+      {editingStatement ? (
+        <>
+          <textarea
+            aria-label="核心陈述"
+            value={statementDraft}
+            onChange={(event) => setStatementDraft(event.target.value)}
+          />
+          <button
+            type="button"
+            disabled={savingStatement}
+            onClick={() => {
+              if (savingStatement) return;
+              setSavingStatement(true);
+              void (async () => {
+                try {
+                  const summary = await library.updateObject(id, {
+                    coreStatement: statementDraft,
+                  });
+                  if (summary) setEditingStatement(false);
+                } finally {
+                  setSavingStatement(false);
+                }
+              })();
+            }}
+          >
+            保存
+          </button>
+          {library.error ? <p role="alert">{library.error}</p> : null}
+        </>
+      ) : null}
       <div className="views" role="tablist">
         <button
           type="button"
