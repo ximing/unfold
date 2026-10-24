@@ -88,3 +88,19 @@ export {
   type SearchResponse,
 } from './search.js';
 export { exportPackageSchema, type ExportPackage } from './export.js';
+export {
+  capabilityKindSchema,
+  capabilitySchema,
+  createCapabilityBodySchema,
+  createEvidenceBodySchema,
+  evidenceModeSchema,
+  evidenceRatingSchema,
+  evidenceSchema,
+  type Capability,
+  type CapabilityKind,
+  type CreateCapabilityBody,
+  type CreateEvidenceBody,
+  type Evidence,
+  type EvidenceMode,
+  type EvidenceRating,
+} from './capabilities.js';
