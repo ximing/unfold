@@ -1,5 +1,5 @@
 import { bindServices, observer, useService } from '@rabjs/react';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { NavLink, Navigate, Outlet, useNavigate } from 'react-router';
 import { LibraryService } from '../services/library.service.js';
 import { SessionService } from '../services/session.service.js';
@@ -134,6 +134,33 @@ const SearchBox = observer(function SearchBox() {
   );
 });
 
+function CollectionLinks({
+  items,
+  parentId,
+  depth,
+}: {
+  items: LibraryService['collections'];
+  parentId: string | null;
+  depth: number;
+}) {
+  const nodes = items.filter((item) => item.parentCollectionId === parentId);
+  return (
+    <>
+      {nodes.map((item) => (
+        <Fragment key={item.id}>
+          <NavLink
+            to={'/c/' + item.id}
+            style={depth > 0 ? { paddingLeft: `${depth * 0.75}rem` } : undefined}
+          >
+            合集 · {item.title}
+          </NavLink>
+          <CollectionLinks items={items} parentId={item.id} depth={depth + 1} />
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
 const ShellView = observer(function ShellView() {
   const session = useService(SessionService);
   const library = useService(LibraryService);
@@ -141,7 +168,13 @@ const ShellView = observer(function ShellView() {
   useEffect(() => {
     void (async () => {
       if (!session.username) await session.restore();
-      if (session.username) await library.loadDomains();
+      if (session.username) {
+        await library.loadDomains();
+        if (library.error === '领域没有加载出来') return;
+        for (const domain of library.domains) {
+          await library.loadCollections(domain.id);
+        }
+      }
     })();
   }, [library, session]);
 
@@ -154,10 +187,18 @@ const ShellView = observer(function ShellView() {
         {library.domains.map((domain) => (
           <div key={domain.id} className="rail-domain">
             <p>{domain.name}</p>
+            {library.collections.some((item) => item.domainId === domain.id) ? (
+              <CollectionLinks
+                items={library.collections.filter((item) => item.domainId === domain.id)}
+                parentId={null}
+                depth={0}
+              />
+            ) : (
+              <p className="muted">还没有合集</p>
+            )}
             <NavLink to={`/free/${domain.id}`}>游离 · {domain.freeCount} 个点</NavLink>
           </div>
         ))}
-        <p className="muted">还没有合集</p>
         <NavLink to="/new">新建点</NavLink>
         {library.error === '领域没有加载出来' ? <p role="alert">{library.error}</p> : null}
       </aside>

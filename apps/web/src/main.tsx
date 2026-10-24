@@ -4,6 +4,7 @@ import { register } from '@rabjs/react';
 import { BrowserRouter, Route, Routes } from 'react-router';
 import { PasteBench } from './paste-bench.js';
 import { SessionService } from './services/session.service.js';
+import { CollectionPage } from './pages/collection.js';
 import { CreateObjectPage } from './pages/create-object.js';
 import { FocusPage } from './pages/focus.js';
 import { FreePage } from './pages/free.js';
@@ -30,6 +31,7 @@ createRoot(root).render(
           <Route path="/new" element={<CreateObjectPage />} />
           <Route path="/free/:domainId" element={<FreePage />} />
           <Route path="/o/:id" element={<FocusPage />} />
+          <Route path="/c/:id" element={<CollectionPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

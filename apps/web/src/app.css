@@ -431,3 +431,6 @@ p[role='alert'] {
 .hits button:disabled { color: var(--mute); }
 .hits small { display: block; color: var(--mute); }
 .hits p { margin: 0; padding: 8px 12px; }
+
+.collection-block { margin: 0.75rem 0; }
+.collection-block small { display: block; }

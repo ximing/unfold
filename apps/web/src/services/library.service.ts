@@ -1,5 +1,7 @@
 import { Service } from '@rabjs/react';
 import {
+  collectionListSchema,
+  collectionSchema,
   documentResponseSchema,
   domainListSchema,
   domainSchema,
@@ -8,6 +10,7 @@ import {
   objectSummarySchema,
   relationSchema,
   searchResponseSchema,
+  type Collection,
   type CreateObjectBody,
   type CreateRelationBody,
   type DocumentResponse,
@@ -116,6 +119,8 @@ export class LibraryService extends Service {
   searchError = '';
   searchQuery = '';
   private searchTicket = 0;
+  collections: Collection[] = [];
+  collectionError = '';
 
   async loadDomains(): Promise<void> {
     this.error = '';
@@ -329,5 +334,65 @@ export class LibraryService extends Service {
     this.searchNotice = '';
     this.searchError = '';
     this.searchQuery = '';
+  }
+
+  async loadCollections(domainId: string): Promise<Collection[]> {
+    try {
+      const res = await fetch(`/api/collections?domainId=${encodeURIComponent(domainId)}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        this.collectionError = '合集没有加载出来';
+        return [];
+      }
+      const loaded = collectionListSchema.parse(await res.json()).collections;
+      this.collections = [
+        ...this.collections.filter((item) => item.domainId !== domainId),
+        ...loaded,
+      ];
+      return loaded;
+    } catch {
+      this.collectionError = '合集没有加载出来';
+      return [];
+    }
+  }
+
+  async loadCollection(id: string): Promise<Collection | null> {
+    this.collectionError = '';
+    try {
+      const res = await fetch(`/api/collections/${encodeURIComponent(id)}`, {
+        credentials: 'include',
+      });
+      if (res.status === 404) {
+        this.collectionError = '没有这个合集';
+        return null;
+      }
+      if (!res.ok) {
+        this.collectionError = '合集没有加载出来';
+        return null;
+      }
+      const collection = collectionSchema.parse(await res.json());
+      this.collectionError = '';
+      return collection;
+    } catch {
+      this.collectionError = '合集没有加载出来';
+      return null;
+    }
+  }
+
+  async loadCollectionDocument(id: string): Promise<DocumentResponse | null> {
+    try {
+      const res = await fetch(`/api/collections/${encodeURIComponent(id)}/doc`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        if (this.collectionError === '') this.collectionError = '文档没有加载出来';
+        return null;
+      }
+      return documentResponseSchema.parse(await res.json());
+    } catch {
+      if (this.collectionError === '') this.collectionError = '文档没有加载出来';
+      return null;
+    }
   }
 }
