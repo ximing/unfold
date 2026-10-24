@@ -1,6 +1,6 @@
 import { observer, useService } from '@rabjs/react';
 import { objectSummarySchema } from '@unfold/dto';
-import type { Collection, DocumentResponse } from '@unfold/dto';
+import type { CollectionDetail, DocumentResponse } from '@unfold/dto';
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { LibraryService } from '../services/library.service.js';
@@ -36,10 +36,14 @@ function ObjectRefBlock({
   objectId,
   label,
   onMove,
+  pending,
+  onConfirm,
 }: {
   objectId: string;
   label: string;
   onMove: (draggedId: string, targetId: string) => void;
+  pending?: boolean;
+  onConfirm?: (objectId: string) => void;
 }) {
   const [core, setCore] = useState<string | null>(null);
 
@@ -81,6 +85,12 @@ function ObjectRefBlock({
     >
       <Link to={'/o/' + objectId} draggable={false}>{label}</Link>
       {core ? <small className="muted">{core}</small> : null}
+      {pending ? (
+        <>
+          <p>核心定义已更新，待确认</p>
+          <button type="button" onClick={() => onConfirm?.(objectId)}>确认</button>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -88,9 +98,13 @@ function ObjectRefBlock({
 function CollectionDocument({
   content,
   onMove,
+  pendingItems,
+  onConfirm,
 }: {
   content: DocumentResponse['content'];
   onMove: (draggedId: string, targetId: string) => void;
+  pendingItems: CollectionDetail['pending'];
+  onConfirm: (objectId: string) => void;
 }) {
   return (
     <>
@@ -119,6 +133,8 @@ function CollectionDocument({
               objectId={objectId}
               label={label === '' ? '点' : label}
               onMove={onMove}
+              pending={pendingItems.some((item) => item.objectId === objectId)}
+              onConfirm={onConfirm}
             />
           );
         }
@@ -135,7 +151,7 @@ function CollectionDocument({
 export const CollectionPage = observer(function CollectionPage() {
   const library = useService(LibraryService);
   const { id = '' } = useParams();
-  const [collection, setCollection] = useState<Collection | null>(null);
+  const [collection, setCollection] = useState<CollectionDetail | null>(null);
   const [doc, setDoc] = useState<DocumentResponse | null>(null);
   const [message, setMessage] = useState('');
 
@@ -186,6 +202,17 @@ export const CollectionPage = observer(function CollectionPage() {
     })();
   };
 
+  const confirmRead = (objectId: string): void => {
+    void (async () => {
+      const ok = await library.confirmCollectionRead(id, objectId);
+      if (!ok) {
+        setMessage('确认没有完成');
+        return;
+      }
+      setCollection(await library.loadCollection(id));
+    })();
+  };
+
   const domainName = library.domains.find((domain) => domain.id === collection.domainId)?.name;
 
   return (
@@ -195,7 +222,14 @@ export const CollectionPage = observer(function CollectionPage() {
       {collection.intent !== '' ? <p>{collection.intent}</p> : null}
       <p>引用块是活的：点进去就是点本身。点的 ID、关系、证据不因为编入或移出合集而改变。</p>
       {message ? <p role="alert">{message}</p> : null}
-      {doc ? <CollectionDocument content={doc.content} onMove={moveRef} /> : null}
+      {doc ? (
+        <CollectionDocument
+          content={doc.content}
+          onMove={moveRef}
+          pendingItems={collection.pending}
+          onConfirm={confirmRead}
+        />
+      ) : null}
     </main>
   );
 });

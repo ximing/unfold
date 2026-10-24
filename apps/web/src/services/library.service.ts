@@ -3,6 +3,7 @@ import {
   collectionListSchema,
   capabilitySchema,
   collectionSchema,
+  collectionDetailSchema,
   documentResponseSchema,
   domainListSchema,
   domainSchema,
@@ -13,6 +14,7 @@ import {
   searchResponseSchema,
   suggestionListSchema,
   type Collection,
+  type CollectionDetail,
   type Capability,
   type CreateObjectBody,
   type CreateRelationBody,
@@ -500,7 +502,7 @@ export class LibraryService extends Service {
     }
   }
 
-  async loadCollection(id: string): Promise<Collection | null> {
+  async loadCollection(id: string): Promise<CollectionDetail | null> {
     this.collectionError = '';
     try {
       const res = await fetch(`/api/collections/${encodeURIComponent(id)}`, {
@@ -514,13 +516,23 @@ export class LibraryService extends Service {
         this.collectionError = '合集没有加载出来';
         return null;
       }
-      const collection = collectionSchema.parse(await res.json());
+      const collection = collectionDetailSchema.parse(await res.json());
       this.collectionError = '';
       return collection;
     } catch {
       this.collectionError = '合集没有加载出来';
       return null;
     }
+  }
+
+  async confirmCollectionRead(collectionId: string, objectId: string): Promise<boolean> {
+    const res = await fetch(`/api/collections/${encodeURIComponent(collectionId)}/reads`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ objectId }),
+    });
+    return res.ok;
   }
 
   async loadCollectionDocument(id: string): Promise<DocumentResponse | null> {
