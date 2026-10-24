@@ -35,6 +35,9 @@ export const BLOCK_ID_TYPES = [
   'decision',
   'object_ref',
   'collection_ref',
+  'algo_problem',
+  'theorem',
+  'lang_pattern',
 ] as const;
 
 export const BlockId = Extension.create({
@@ -221,6 +224,60 @@ const TieredHints = Node.create({
 const ObjectRef = refBlock('object_ref', 'object-ref', 'objectId');
 const CollectionRef = refBlock('collection_ref', 'collection-ref', 'collectionId');
 
+function subjectBlock(name: string, dataType: string, fields: readonly string[]) {
+  return Node.create({
+    name,
+    group: 'block',
+    atom: true,
+    defining: true,
+    addAttributes() {
+      const attributes: Record<
+        string,
+        {
+          default: string;
+          parseHTML: (element: HTMLElement) => string;
+          renderHTML: (attrs: Record<string, unknown>) => Record<string, string>;
+        }
+      > = {};
+      for (const field of fields) {
+        attributes[field] = {
+          default: '',
+          parseHTML: (element) => element.getAttribute(`data-${field}`) ?? '',
+          renderHTML: (attrs) => ({
+            [`data-${field}`]: typeof attrs[field] === 'string' ? attrs[field] : '',
+          }),
+        };
+      }
+      return attributes;
+    },
+    parseHTML() {
+      return [{ tag: `section[data-type="${dataType}"]` }];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return ['section', mergeAttributes(HTMLAttributes, { 'data-type': dataType })];
+    },
+  });
+}
+
+const AlgoProblem = subjectBlock('algo_problem', 'algo-problem', [
+  'statement',
+  'constraints',
+  'examples',
+  'complexity',
+]);
+const Theorem = subjectBlock('theorem', 'theorem', [
+  'proposition',
+  'condition',
+  'proof',
+  'corollary',
+]);
+const LangPattern = subjectBlock('lang_pattern', 'lang-pattern', [
+  'pattern',
+  'example',
+  'contrast',
+  'confusion',
+]);
+
 export function getExtensions(): AnyExtension[] {
   return [
     StarterKit.configure({
@@ -246,6 +303,9 @@ export function getExtensions(): AnyExtension[] {
     HintItem,
     ObjectRef,
     CollectionRef,
+    AlgoProblem,
+    Theorem,
+    LangPattern,
     BlockId,
   ];
 }

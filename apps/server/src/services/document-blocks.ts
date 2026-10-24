@@ -31,6 +31,9 @@ const ALLOWED_NODE_TYPES: ReadonlySet<string> = new Set([
   'decision',
   'object_ref',
   'collection_ref',
+  'algo_problem',
+  'theorem',
+  'lang_pattern',
 ]);
 
 const ALLOWED_MARK_TYPES: ReadonlySet<string> = new Set(['bold', 'italic', 'strike', 'code', 'link']);

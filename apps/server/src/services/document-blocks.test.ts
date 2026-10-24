@@ -65,6 +65,19 @@ describe('collectBlockIndex', () => {
     expect(rows[0]?.textPreview).not.toBe('状态等价');
   });
 
+  it('previews a theorem from its proposition', () => {
+    const rows = collectBlockIndex({
+      type: 'doc',
+      content: [
+        {
+          type: 'theorem',
+          attrs: { id: externalId, proposition: '可导则连续' },
+        },
+      ],
+    });
+    expect(rows[0]?.textPreview).toContain('可导则连续');
+  });
+
   it('uses the paragraph text as the preview', () => {
     const rows = collectBlockIndex({
       type: 'doc',
@@ -91,5 +104,9 @@ describe('documentNodesAllowed', () => {
         content: [{ type: 'text', text: '你好', marks: [{ type: 'bold' }] }],
       }),
     ).toBe(true);
+  });
+
+  it('allows a theorem node', () => {
+    expect(documentNodesAllowed({ type: 'theorem', attrs: { proposition: '可导则连续' } })).toBe(true);
   });
 });

@@ -2,6 +2,7 @@ import { getSchema } from '@tiptap/core';
 import { generateJSON } from '@tiptap/html';
 import { Node } from '@tiptap/pm/model';
 import { looksLikeMarkdown, markdownToHtml } from '@unfold/markdown';
+import { getBlockType } from './block-types.js';
 import { prepareHtml } from './prepare-html.js';
 import { BLOCK_ID_TYPES, getExtensions } from './schema.js';
 import { SCHEMA_VERSION, type PmNode, type UnfoldDocument } from './types.js';
@@ -84,14 +85,28 @@ function emptyDocument(nextId: () => string): PmNode {
   };
 }
 
+const SUBJECT_PASTE_TYPES = ['algo_problem', 'theorem', 'lang_pattern'] as const;
+
 /**
  * Clipboard HTML + plain text → a validated document.
- * Markdown wins only when the plain text has a block-level Markdown signal,
+ * Plain text whose first line is 题面/命题/句型 wins over HTML and Markdown.
+ * Otherwise Markdown wins only when the plain text has a block-level Markdown signal,
  * or when there is no rich HTML and the plain text still has inline Markdown.
  */
 export function parsePaste(html: string, plainText: string, options: ParsePasteOptions = {}): UnfoldDocument {
   const nextId = options.id ?? randomId;
   const plain = plainText.replace(/\r\n/g, '\n');
+  for (const name of SUBJECT_PASTE_TYPES) {
+    const subject = getBlockType(name)?.parsePaste(plain);
+    if (!subject) continue;
+    const content: PmNode = { type: 'doc', content: [subject] };
+    assignIds(content, nextId);
+    const validated = Node.fromJSON(schema, content);
+    return {
+      schemaVersion: SCHEMA_VERSION,
+      content: validated.toJSON() as PmNode,
+    };
+  }
   let sourceHtml = '';
   if (looksLikeMarkdown(plain, html)) sourceHtml = markdownToHtml(plain);
   else if (html.trim()) sourceHtml = prepareHtml(html);

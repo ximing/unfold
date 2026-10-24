@@ -1,3 +1,4 @@
+import { subjectBlockToMarkdown } from './block-types.js';
 import type { PmMark, PmNode } from './types.js';
 
 function marksAround(text: string, marks: PmMark[] | undefined): string {
@@ -74,6 +75,12 @@ function block(node: PmNode): string {
       return table(node);
     case 'horizontalRule':
       return '---';
+    case 'algo_problem':
+      return subjectBlockToMarkdown(node);
+    case 'theorem':
+      return subjectBlockToMarkdown(node);
+    case 'lang_pattern':
+      return subjectBlockToMarkdown(node);
     default:
       return (node.content ?? []).map(block).filter(Boolean).join('\n\n');
   }

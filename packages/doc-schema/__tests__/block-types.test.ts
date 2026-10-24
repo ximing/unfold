@@ -23,6 +23,9 @@ const NAMES = [
   'decision',
   'object_ref',
   'collection_ref',
+  'algo_problem',
+  'theorem',
+  'lang_pattern',
 ];
 
 function textOf(node: PmNode | null | undefined): string {
@@ -33,7 +36,7 @@ function textOf(node: PmNode | null | undefined): string {
 }
 
 describe('BLOCK_TYPES', () => {
-  it('registers exactly the base, learning, and reference blocks', () => {
+  it('registers exactly the base, learning, subject, and reference blocks', () => {
     expect(BLOCK_TYPES.map((spec) => spec.name).sort()).toEqual([...NAMES].sort());
     expect(new Set(BLOCK_TYPES.map((spec) => spec.name)).size).toBe(NAMES.length);
   });
