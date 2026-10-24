@@ -1,0 +1,98 @@
+:root {
+  --desk: #e4e9ef;
+  --sheet: #f6f7f9;
+  --ink: #1a2230;
+  --mute: #5c6675;
+  --line: #c9d1db;
+  --cobalt: #1d4e8f;
+}
+
+body {
+  margin: 0;
+  background: var(--sheet);
+  color: var(--ink);
+  font-family: "Avenir Next", "PingFang SC", "Noto Sans SC", sans-serif;
+}
+
+.shell {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 2rem;
+  background:
+    linear-gradient(var(--desk), var(--desk)) top / 100% 0.35rem no-repeat,
+    var(--sheet);
+  border-top: 2px solid var(--cobalt);
+}
+
+h1 {
+  font-family: "Songti SC", "Noto Serif SC", Palatino, serif;
+}
+
+.shell h1 {
+  margin: 0.6rem 0 0.35rem;
+  font-size: 2rem;
+  font-weight: 500;
+}
+
+.shell h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.shell p {
+  line-height: 1.6;
+}
+
+.shell form {
+  display: grid;
+  gap: 1rem;
+  max-width: 22rem;
+  margin-top: 1.5rem;
+}
+
+.shell label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--mute);
+  font-size: 0.9rem;
+}
+
+.shell input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  padding: 0.4rem 0;
+  color: var(--ink);
+  font: inherit;
+}
+
+.shell input:focus {
+  outline: none;
+  border-bottom-color: var(--cobalt);
+}
+
+.shell button {
+  width: fit-content;
+  margin-top: 1.25rem;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid var(--ink);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.shell .row {
+  margin-top: 1.15rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--line);
+}
+
+.muted {
+  color: var(--mute);
+}
+
+p[role='alert'] {
+  color: #b8432f;
+}

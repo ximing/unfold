@@ -7,7 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "pnpm --filter @unfold/web dev",
+    "dev": "pnpm --parallel --filter @unfold/server --filter @unfold/web dev",
     "lint": "eslint .",
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck"

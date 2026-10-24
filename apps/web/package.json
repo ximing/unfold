@@ -10,14 +10,17 @@
     "preview": "vite preview --port 5191 --strictPort"
   },
   "dependencies": {
+    "@rabjs/react": "^9.4.1",
     "@tiptap/core": "^3.31.3",
     "@tiptap/pm": "^3.31.3",
     "@tiptap/react": "^3.31.3",
     "@unfold/doc-schema": "workspace:*",
+    "@unfold/dto": "workspace:*",
     "katex": "0.16.45",
     "mermaid": "12.2.0",
     "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "react-dom": "19.1.0",
+    "react-router": "^7.18.4"
   },
   "devDependencies": {
     "@types/react": "^19.1.0",

@@ -5,6 +5,7 @@ import { useRef, useState } from 'react';
 import chatgptHtml from '../../../packages/doc-schema/fixtures/chatgpt-state.html?raw';
 import derivationMd from '../../../packages/doc-schema/fixtures/derivation.md?raw';
 import 'katex/dist/katex.min.css';
+import './styles.css';
 
 function mermaidSource(doc: PmNode | null): string {
   if (!doc) return '';
