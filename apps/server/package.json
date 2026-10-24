@@ -6,9 +6,11 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "migrate": "node --env-file=.env --import tsx src/migrate.ts",
+    "seed": "node --env-file=.env --import tsx src/seed.ts",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "argon2": "^0.45.1",
     "drizzle-orm": "^0.45.4",
     "pg": "^8.23.1"
   },
