@@ -7,6 +7,7 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { loadConfig } from './config.js';
 import { createDb, createPool } from './db/client.js';
 import { users } from './db/schema.js';
+import { registerDocumentRoutes } from './documents.js';
 import { registerObjectRoutes } from './objects.js';
 
 const invalidCredentials = {
@@ -172,6 +173,7 @@ export async function buildApp() {
   app.get('/health', async () => ({ ok: true }));
 
   registerObjectRoutes(app, db, signedSessionUser);
+  registerDocumentRoutes(app, db, signedSessionUser);
 
   return app;
 }
