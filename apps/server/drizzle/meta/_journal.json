@@ -15,6 +15,13 @@
       "when": 1792815599573,
       "tag": "0001_points_documents",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792821695970,
+      "tag": "0002_unique_sunspot",
+      "breakpoints": true
     }
   ]
 }

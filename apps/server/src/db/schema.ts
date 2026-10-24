@@ -150,3 +150,79 @@ export const sources = pgTable(
   },
   (table) => [check('sources_kind_check', sql`${table.kind} IN ('paste', 'import', 'manual')`)],
 );
+
+export const relations = pgTable(
+  'relations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    fromId: uuid('from_id')
+      .notNull()
+      .references(() => knowledgeObjects.id),
+    toId: uuid('to_id')
+      .notNull()
+      .references(() => knowledgeObjects.id),
+    type: text('type').notNull(),
+    distinction: text('distinction').notNull().default(''),
+    whatChanged: text('what_changed').notNull().default(''),
+    condition: text('condition').notNull().default(''),
+    boundary: text('boundary').notNull().default(''),
+    note: text('note').notNull().default(''),
+    status: text('status').notNull().default('suggested'),
+    origin: text('origin').notNull().default('user'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    check(
+      'relations_type_check',
+      sql`${table.type} IN ('evolves_from', 'prerequisite', 'applies', 'implements', 'contrasts', 'analogous', 'variant', 'fails_when')`,
+    ),
+    check(
+      'relations_status_check',
+      sql`${table.status} IN ('suggested', 'accepted', 'deferred', 'rejected')`,
+    ),
+    check('relations_origin_check', sql`${table.origin} IN ('user', 'rule', 'model')`),
+    check('relations_no_self_loop_check', sql`${table.fromId} <> ${table.toId}`),
+    check(
+      'relations_analogous_boundary_check',
+      sql`${table.type} <> 'analogous' OR ${table.boundary} <> ''`,
+    ),
+    // 无向类型按排序两端去重；有向类型不设唯一索引。
+    uniqueIndex('relations_user_undirected_pair_active_unique')
+      .on(
+        table.userId,
+        sql`LEAST(${table.fromId}, ${table.toId})`,
+        sql`GREATEST(${table.fromId}, ${table.toId})`,
+      )
+      .where(sql`${table.deletedAt} IS NULL AND ${table.type} IN ('contrasts', 'analogous')`),
+  ],
+);
+
+export const annotations = pgTable(
+  'annotations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    targetType: text('target_type').notNull(),
+    // capability 表尚未建立，target_id 不设外键。
+    targetId: uuid('target_id').notNull(),
+    kind: text('kind').notNull(),
+    body: text('body').notNull().default(''),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    check(
+      'annotations_target_type_check',
+      sql`${table.targetType} IN ('relation', 'capability')`,
+    ),
+  ],
+);
