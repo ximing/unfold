@@ -147,13 +147,18 @@ function toMeiliDoc(entry: SearchEntry): MeiliDoc {
   };
 }
 
+function clipEmbed(parts: string[]): string {
+  const joined = parts
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+    .join('\n');
+  if (joined.length === 0) return ' ';
+  return joined.slice(0, 4000);
+}
+
 function embedText(entry: SearchEntry): string {
-  const text = entry.text.trim();
-  if (text !== '') return text;
-  const core = entry.core.trim();
-  if (core !== '') return core;
-  const title = entry.title.trim();
-  return title === '' ? ' ' : title;
+  if (entry.kind === 'object') return clipEmbed([entry.title, entry.aliases.join(' '), entry.core]);
+  return clipEmbed([entry.title, entry.text]);
 }
 
 async function waitMeiliTask(base: string, taskUid: number): Promise<void> {
@@ -243,7 +248,7 @@ async function ensureMeiliIndex(): Promise<void> {
     'PATCH',
     {
       searchableAttributes: ['title', 'aliases', 'core', 'text'],
-      filterableAttributes: ['user_id', 'kind', 'domain'],
+      filterableAttributes: ['user_id', 'kind', 'domain', 'object_id'],
     },
     [200, 202],
   );
@@ -401,6 +406,80 @@ async function defaultQdrantUpsert(points: QdrantPoint[]): Promise<void> {
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`qdrant upsert ${res.status} ${brief(await responseText(res))}`.trim());
+}
+
+async function deleteMeiliByObjectId(objectId: string): Promise<void> {
+  await ensureMeiliIndex();
+  const base = serviceRoot('MEILI_URL');
+  const res = await fetch(`${base}/indexes/${MEILI_INDEX}/documents/delete`, {
+    method: 'POST',
+    headers: meiliHeaders(),
+    body: JSON.stringify({ filter: `object_id = "${objectId}"` }),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (res.status === 404) return;
+  const text = await responseText(res);
+  if (res.status !== 200 && res.status !== 202) {
+    throw new Error(`meili delete filter ${res.status} ${brief(text)}`.trim());
+  }
+  let taskUid: number | undefined;
+  try {
+    const parsed = JSON.parse(text) as { taskUid?: number };
+    if (typeof parsed.taskUid === 'number') taskUid = parsed.taskUid;
+  } catch {
+    throw new Error(`meili delete filter ${res.status}`);
+  }
+  if (taskUid === undefined) return;
+  const deadline = Date.now() + TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const task = await fetch(`${base}/tasks/${taskUid}`, {
+      headers: meiliHeaders(),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    const taskText = await responseText(task);
+    if (!task.ok) throw new Error(`meili task ${task.status} ${brief(taskText)}`.trim());
+    const body = JSON.parse(taskText) as { status?: string; error?: { message?: string } };
+    if (body.status === 'succeeded') return;
+    if (body.status === 'failed') throw new Error(`meili task failed ${body.error?.message ?? ''}`.trim());
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+  throw new Error('meili task timeout');
+}
+
+async function deleteQdrantByObjectId(objectId: string): Promise<void> {
+  const base = serviceRoot('QDRANT_URL');
+  const existing = await fetch(`${base}/collections/${QDRANT_COLLECTION}`, {
+    method: 'GET',
+    headers: qdrantHeaders(),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (existing.status === 404) return;
+  if (existing.status !== 200) {
+    throw new Error(`qdrant collection ${existing.status} ${brief(await responseText(existing))}`.trim());
+  }
+  const indexed = await fetch(`${base}/collections/${QDRANT_COLLECTION}/index?wait=true`, {
+    method: 'PUT',
+    headers: qdrantHeaders(),
+    body: JSON.stringify({ field_name: 'object_id', field_schema: 'keyword' }),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (!indexed.ok && indexed.status !== 409) {
+    const detail = brief(await responseText(indexed));
+    if (!/exist/i.test(detail)) throw new Error(`qdrant index ${indexed.status} ${detail}`.trim());
+  }
+  const res = await fetch(`${base}/collections/${QDRANT_COLLECTION}/points/delete?wait=true`, {
+    method: 'POST',
+    headers: qdrantHeaders(),
+    body: JSON.stringify({ filter: { must: [{ key: 'object_id', match: { value: objectId } }] } }),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (res.status === 404) return;
+  if (!res.ok) throw new Error(`qdrant delete ${res.status} ${brief(await responseText(res))}`.trim());
+}
+
+async function deleteIndexedObject(objectId: string): Promise<void> {
+  await deleteMeiliByObjectId(objectId);
+  await deleteQdrantByObjectId(objectId);
 }
 
 async function defaultQdrantDelete(ids: string[]): Promise<void> {
@@ -568,12 +647,17 @@ export async function syncObjectIndex(
     const inactive = loaded.object.deletedAt != null || loaded.object.status !== 'active';
     if (inactive) {
       try {
-        const ids = entries.map((entry) => entry.id);
-        await deps.meiliDelete(ids);
-        await deps.qdrantDelete(ids.map((id) => entryPointId(id)));
+        await deleteIndexedObject(objectId);
       } catch (err) {
         if (loaded.documentId) await writeOutbox(db, userId, loaded.documentId, { op: 'delete', objectId }, err);
       }
+      return;
+    }
+
+    try {
+      await deleteIndexedObject(objectId);
+    } catch (err) {
+      if (loaded.documentId) await writeOutbox(db, userId, loaded.documentId, { op: 'upsert' }, err);
       return;
     }
 

@@ -157,6 +157,25 @@ describe('index sync', () => {
           // 清理失败不让测试失败
         }
         try {
+          const base = process.env.MEILI_URL?.replace(/\/$/, '');
+          const admin = process.env.MEILI_ADMIN_KEY;
+          if (base && admin) {
+            for (const id of objectIds) {
+              const res = await fetch(`${base}/indexes/unfold/documents/delete`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${admin}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filter: `object_id = "${id}"` }),
+                signal: AbortSignal.timeout(8000),
+              });
+              if (res.status !== 200 && res.status !== 202 && res.status !== 404) {
+                await res.text().catch(() => undefined);
+              }
+            }
+          }
+        } catch {
+          // 清理失败不让测试失败
+        }
+        try {
           const base = process.env.QDRANT_URL;
           const key = process.env.QDRANT_API_KEY;
           if (base && entryIds.length > 0) {
@@ -173,6 +192,15 @@ describe('index sync', () => {
             );
             if (res.status === 404) {
               // 集合不存在就当清理完成
+            }
+            for (const id of objectIds) {
+              const filtered = await fetch(`${base.replace(/\/$/, '')}/collections/unfold_chunks/points/delete?wait=true`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ filter: { must: [{ key: 'object_id', match: { value: id } }] } }),
+                signal: AbortSignal.timeout(8000),
+              });
+              if (filtered.status === 404) break;
             }
           }
         } catch {
@@ -278,5 +306,54 @@ describe('index sync', () => {
       .from(indexOutbox)
       .where(and(eq(indexOutbox.documentId, documentId), isNull(indexOutbox.deletedAt)));
     expect(rows.some((row) => row.deletedAt == null && row.lastError.includes('meili down'))).toBe(true);
+  });
+
+  it('removes the previous block from search after the document is replaced', async () => {
+    process.env.UNFOLD_INDEX = 'on';
+    const objectId = await createObject(`替换点${stamp}`, `替换核${stamp}`);
+    const stale = `过期词${stamp}`;
+    const kept = `留下词${stamp}`;
+    const putDoc = async (word: string) =>
+      app.inject({
+        method: 'PUT',
+        url: `/api/objects/${objectId}/doc`,
+        headers: { cookie },
+        payload: {
+          schemaVersion: SCHEMA_VERSION,
+          plainText: word,
+          content: {
+            type: 'doc',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: word }] }],
+          },
+        },
+      });
+
+    const first = await putDoc(stale);
+    expect(first.statusCode).toBe(200);
+    const ownEntry = (hit: Hit) => {
+      const id = typeof hit.id === 'string' ? hit.id : '';
+      const own = hit.object_id === objectId || id === `object:${objectId}`;
+      return own && (id.startsWith('object:') || id.startsWith('block:') || id.startsWith('question:'));
+    };
+    await pollHits(stale, userId, (hits) => hits.some((hit) => ownEntry(hit)));
+
+    const second = await putDoc(kept);
+    expect(second.statusCode).toBe(200);
+    await pollHits(stale, userId, (hits) => !hits.some((hit) => ownEntry(hit)));
+    await pollHits(kept, userId, (hits) => hits.some((hit) => ownEntry(hit)));
+
+    const stored = await db
+      .select({ plainText: documents.plainText })
+      .from(documents)
+      .where(
+        and(
+          eq(documents.userId, userId),
+          eq(documents.ownerType, 'object'),
+          eq(documents.ownerId, objectId),
+          isNull(documents.deletedAt),
+        ),
+      )
+      .limit(1);
+    expect(stored[0]?.plainText).toBe(kept);
   });
 });
