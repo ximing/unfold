@@ -10,6 +10,7 @@ import {
   objectSummarySchema,
   relationSchema,
   searchResponseSchema,
+  suggestionListSchema,
   type Collection,
   type CreateObjectBody,
   type CreateRelationBody,
@@ -20,6 +21,7 @@ import {
   type Relation,
   type SearchGroup,
 } from '@unfold/dto';
+import type { Suggestion } from '@unfold/dto';
 
 async function errorMessage(res: Response, fallback = '请求没有完成'): Promise<string> {
   try {
@@ -146,6 +148,10 @@ export class LibraryService extends Service {
   collectionError = '';
   filedCollectionIds: string[] = [];
   private filedTicket = 0;
+  suggestions: Suggestion[] = [];
+  suggestionNotice = '';
+  suggestionError = '';
+  private suggestionTicket = 0;
 
   async loadDomains(): Promise<void> {
     this.error = '';
@@ -531,5 +537,77 @@ export class LibraryService extends Service {
     }
     this.error = '';
     return true;
+  }
+
+  async loadSuggestions(objectId: string): Promise<void> {
+    const ticket = ++this.suggestionTicket;
+    try {
+      const res = await fetch(`/api/objects/${encodeURIComponent(objectId)}/suggestions`, {
+        credentials: 'include',
+      });
+      if (ticket !== this.suggestionTicket) return;
+      if (!res.ok) {
+        this.suggestions = [];
+        this.suggestionNotice = '';
+        return;
+      }
+      const body: unknown = await res.json();
+      if (ticket !== this.suggestionTicket) return;
+      const parsed = suggestionListSchema.parse(body);
+      this.suggestions = parsed.suggestions;
+      this.suggestionNotice =
+        isRecord(body) && body.notice === '模型建议这次没有生成' ? '模型建议这次没有生成' : '';
+    } catch {
+      if (ticket !== this.suggestionTicket) return;
+      this.suggestions = [];
+      this.suggestionNotice = '';
+    }
+  }
+
+  async resolveSuggestion(
+    id: string,
+    status: 'accepted' | 'deferred' | 'rejected',
+  ): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/suggest/${encodeURIComponent(id)}/resolve`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) {
+        this.suggestionError = await errorMessage(res, '建议没有处理完');
+        return false;
+      }
+      this.suggestionError = '';
+      return true;
+    } catch {
+      this.suggestionError = '建议没有处理完';
+      return false;
+    }
+  }
+
+  async deferSuggestions(objectId: string): Promise<boolean> {
+    const ticket = ++this.suggestionTicket;
+    try {
+      const res = await fetch(`/api/objects/${encodeURIComponent(objectId)}/suggestions/defer`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (ticket !== this.suggestionTicket) return false;
+      if (!res.ok) {
+        this.suggestionError = await errorMessage(res, '建议没有处理完');
+        return false;
+      }
+      const parsed = suggestionListSchema.parse(await res.json());
+      if (ticket !== this.suggestionTicket) return true;
+      this.suggestions = parsed.suggestions;
+      this.suggestionError = '';
+      return true;
+    } catch {
+      if (ticket !== this.suggestionTicket) return false;
+      this.suggestionError = '建议没有处理完';
+      return false;
+    }
   }
 }

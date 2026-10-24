@@ -11,6 +11,7 @@ import { type FormEvent, Fragment, useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { LibraryService } from '../services/library.service.js';
 import { PlacePanel } from './place-panel.js';
+import { SuggestionTray } from './suggestion-tray.js';
 
 const SECTORS = [
   { value: 'origin', label: '来历' },
@@ -416,6 +417,7 @@ export const FocusPage = observer(function FocusPage() {
   const showContrast = proj === 'contrast';
   const saveRef = useRef<() => void>(() => {});
   const [saved, setSaved] = useState(false);
+  const [noSuggestion, setNoSuggestion] = useState(false);
   const [seed, setSeed] = useState(false);
   const [open, setOpen] = useState(false);
   const [relationsReady, setRelationsReady] = useState(false);
@@ -441,6 +443,7 @@ export const FocusPage = observer(function FocusPage() {
     if (!id || !editor) return;
     let alive = true;
     setSaved(false);
+    setNoSuggestion(false);
     setSeed(false);
     setOpen(false);
     setRelationsReady(false);
@@ -476,6 +479,12 @@ export const FocusPage = observer(function FocusPage() {
     };
   }, [showChain, id, library]);
 
+  useEffect(() => {
+    if (library.suggestions.length > 0 || library.suggestionNotice !== '') {
+      setNoSuggestion(false);
+    }
+  }, [library, library.suggestions.length, library.suggestionNotice]);
+
   saveRef.current = () => {
     if (!editor || !id) return;
     void (async () => {
@@ -491,6 +500,8 @@ export const FocusPage = observer(function FocusPage() {
       editor.commands.setContent(next.content, { emitUpdate: false });
       setSeed(next.plainText === '');
       setSaved(true);
+      await library.loadSuggestions(id);
+      setNoSuggestion(library.suggestions.length === 0 && library.suggestionNotice === '');
     })();
   };
 
@@ -606,6 +617,7 @@ export const FocusPage = observer(function FocusPage() {
             </button>
           </div>
           {saved ? <p className="muted">已保存</p> : null}
+          {noSuggestion ? <p className="muted">这次没有连接建议</p> : null}
           {library.error && library.error !== '没有这个点' && !open ? (
             <p role="alert">{library.error}</p>
           ) : null}
@@ -649,6 +661,7 @@ export const FocusPage = observer(function FocusPage() {
       ) : (
         <p className="muted">正在读取…</p>
       )}
+      <SuggestionTray objectId={current.id} />
       <button type="button" className="sector-open" onClick={() => setOpen((value) => !value)}>
         发起新连接
       </button>
