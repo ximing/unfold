@@ -5,7 +5,14 @@ import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { createDb } from './db/client.js';
-import { blockIndex, documentRevisions, documents, knowledgeObjects, sources } from './db/schema.js';
+import {
+  blockIndex,
+  collections,
+  documentRevisions,
+  documents,
+  knowledgeObjects,
+  sources,
+} from './db/schema.js';
 import { type SessionLookup } from './objects.js';
 import { assignBlockIds, collectBlockIndex, documentNodesAllowed } from './services/document-blocks.js';
 import { syncObjectIndex } from './services/index-sync.js';
@@ -18,6 +25,7 @@ const maxPlainTextBytes = 1048576;
 const pasteBodyLimit = 8 * maxPlainTextBytes;
 
 const notFound = { error: { code: 'not_found', message: '没有这个点' } };
+const collectionNotFound = { error: { code: 'not_found', message: '没有这个合集' } };
 const invalidBody = { error: { code: 'invalid_body', message: '请求格式不正确' } };
 const invalidDocument = { error: { code: 'invalid_document', message: '文档格式不正确' } };
 const payloadTooLarge = { error: { code: 'payload_too_large', message: '纯文本超过 1MB' } };
@@ -62,6 +70,29 @@ async function ownedDocument(db: Database, userId: string, objectId: string) {
     )
     .limit(1);
   const documentId = objects[0]?.documentId;
+  if (!documentId) return null;
+
+  const docs = await db
+    .select({
+      id: documents.id,
+      schemaVersion: documents.schemaVersion,
+      contentJson: documents.contentJson,
+      plainText: documents.plainText,
+      savedAt: documents.savedAt,
+    })
+    .from(documents)
+    .where(and(eq(documents.id, documentId), eq(documents.userId, userId), isNull(documents.deletedAt)))
+    .limit(1);
+  return docs[0] ?? null;
+}
+
+async function ownedCollectionDocument(db: Database, userId: string, collectionId: string) {
+  const rows = await db
+    .select({ documentId: collections.documentId })
+    .from(collections)
+    .where(and(eq(collections.id, collectionId), eq(collections.userId, userId), isNull(collections.deletedAt)))
+    .limit(1);
+  const documentId = rows[0]?.documentId;
   if (!documentId) return null;
 
   const docs = await db
@@ -268,6 +299,59 @@ export function registerDocumentRoutes(app: FastifyInstance, db: Database, sessi
     );
     await syncObjectIndex(db, user.id, objectId);
 
+    return reply.code(200).send(
+      toDocumentResponse({
+        schemaVersion: SCHEMA_VERSION,
+        content: saved.content,
+        plainText: saved.plainText,
+        savedAt: saved.savedAt,
+      }),
+    );
+  });
+
+  app.get('/api/collections/:id/doc', async (request, reply) => {
+    const user = await session(request, reply);
+    if (!user) return;
+
+    const collectionId = uuidParam(request.params);
+    if (!collectionId) return reply.code(404).send(collectionNotFound);
+
+    const doc = await ownedCollectionDocument(db, user.id, collectionId);
+    if (!doc) return reply.code(404).send(collectionNotFound);
+
+    return reply.code(200).send(
+      toDocumentResponse({
+        schemaVersion: doc.schemaVersion,
+        content: doc.contentJson,
+        plainText: doc.plainText,
+        savedAt: doc.savedAt,
+      }),
+    );
+  });
+
+  app.put('/api/collections/:id/doc', async (request, reply) => {
+    const user = await session(request, reply);
+    if (!user) return;
+
+    const collectionId = uuidParam(request.params);
+    if (!collectionId) return reply.code(404).send(collectionNotFound);
+
+    const doc = await ownedCollectionDocument(db, user.id, collectionId);
+    if (!doc) return reply.code(404).send(collectionNotFound);
+
+    const parsed = documentBodySchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send(invalidBody);
+
+    const content = parsed.data.content as PmNode;
+    if (
+      parsed.data.schemaVersion !== SCHEMA_VERSION ||
+      content.type !== 'doc' ||
+      !documentNodesAllowed(content)
+    ) {
+      return reply.code(400).send(invalidDocument);
+    }
+
+    const saved = await saveDocument(db, user.id, doc.id, content, parsed.data.plainText);
     return reply.code(200).send(
       toDocumentResponse({
         schemaVersion: SCHEMA_VERSION,
