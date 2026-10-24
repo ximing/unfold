@@ -38,14 +38,14 @@ function fail(status: Failure['status'], body: Failure['body']): Failure {
   return { ok: false, status, body };
 }
 
-function topLevelBlocks(content: unknown): PmNode[] {
+export function topLevelBlocks(content: unknown): PmNode[] {
   if (!content || typeof content !== 'object') return [];
   const node = content as PmNode;
   if (node.type !== 'doc' || !Array.isArray(node.content)) return [];
   return node.content;
 }
 
-function replaceBlocks(content: unknown, blocks: PmNode[]): PmNode {
+export function replaceBlocks(content: unknown, blocks: PmNode[]): PmNode {
   if (content && typeof content === 'object' && (content as PmNode).type === 'doc') {
     return { ...(content as PmNode), content: blocks };
   }
@@ -81,7 +81,7 @@ function toDocumentResponse(input: {
   });
 }
 
-async function ownedCollectionDocument(db: Database, userId: string, collectionId: string) {
+export async function ownedCollectionDocument(db: Database, userId: string, collectionId: string) {
   const rows = await db
     .select({ documentId: collections.documentId })
     .from(collections)
@@ -102,7 +102,7 @@ async function ownedCollectionDocument(db: Database, userId: string, collectionI
   return docs[0] ?? null;
 }
 
-async function activeObject(db: Database, userId: string, objectId: string) {
+export async function activeObject(db: Database, userId: string, objectId: string) {
   const rows = await db
     .select({ canonicalName: knowledgeObjects.canonicalName })
     .from(knowledgeObjects)
@@ -118,53 +118,56 @@ async function activeObject(db: Database, userId: string, objectId: string) {
   return rows[0] ?? null;
 }
 
-function fileObject(blocks: PmNode[], collectionId: string, objectId: string, label: string): RefChange | Failure {
+// position 是顶层 object_ref 下标：插在该条之前；缺省或越界则接到文档末尾。
+export function insertObjectRef(
+  blocks: PmNode[],
+  objectId: string,
+  label: string,
+  position?: number,
+): PmNode[] | null {
+  if (position !== undefined && (!Number.isInteger(position) || position < 0)) return null;
   const slots = objectRefSlots(blocks);
   for (const slot of slots) {
-    if (refObjectId(blocks[slot]) === objectId) return fail(409, alreadyFiled);
+    if (refObjectId(blocks[slot]) === objectId) return null;
   }
-  return {
-    ok: true,
-    blocks: [...blocks, { type: 'object_ref', attrs: { objectId, label } }],
-    command: 'collection.add',
-    payload: { collectionId, objectId },
-    inverse: { command: 'collection.remove', collectionId, objectId },
-  };
+  const ref: PmNode = { type: 'object_ref', attrs: { objectId, label } };
+  if (position === undefined || position >= slots.length) return [...blocks, ref];
+  const at = slots[position];
+  if (at === undefined) return [...blocks, ref];
+  const next = blocks.slice();
+  next.splice(at, 0, ref);
+  return next;
 }
 
-function unfileObject(blocks: PmNode[], collectionId: string, objectId: string): RefChange | Failure {
+export function removeObjectRef(
+  blocks: PmNode[],
+  objectId: string,
+): { blocks: PmNode[]; position: number } | null {
   const slots = objectRefSlots(blocks);
   const position = slots.findIndex((slot) => refObjectId(blocks[slot]) === objectId);
-  if (position < 0) return fail(404, notInCollection);
+  if (position < 0) return null;
   return {
-    ok: true,
     blocks: blocks.filter((node) => refObjectId(node) !== objectId),
-    command: 'collection.remove',
-    payload: { collectionId, objectId, position },
-    inverse: { command: 'collection.add', collectionId, objectId, position },
+    position,
   };
 }
 
 // 非引用块留在原来的下标，只重排顶层 object_ref 槽位。
-function moveObject(
-  blocks: PmNode[],
-  collectionId: string,
-  objectId: string,
-  position: number,
-): RefChange | Failure {
+export function moveObjectRef(blocks: PmNode[], objectId: string, position: number): PmNode[] | null {
+  if (!Number.isInteger(position) || position < 0) return null;
   const slots = objectRefSlots(blocks);
   const from = slots.findIndex((slot) => refObjectId(blocks[slot]) === objectId);
-  if (from < 0) return fail(404, notInCollection);
-  if (position > slots.length - 1) return fail(400, invalidBody);
+  if (from < 0) return null;
+  if (position > slots.length - 1) return null;
 
   const refs: PmNode[] = [];
   for (const slot of slots) {
     const node = blocks[slot];
-    if (!node) return fail(404, notInCollection);
+    if (!node) return null;
     refs.push(node);
   }
   const moved = refs[from];
-  if (!moved) return fail(404, notInCollection);
+  if (!moved) return null;
   refs.splice(from, 1);
   refs.splice(position, 0, moved);
 
@@ -175,6 +178,45 @@ function moveObject(
     if (slot === undefined || !node) continue;
     next[slot] = node;
   }
+  return next;
+}
+
+function fileObject(blocks: PmNode[], collectionId: string, objectId: string, label: string): RefChange | Failure {
+  const next = insertObjectRef(blocks, objectId, label);
+  if (!next) return fail(409, alreadyFiled);
+  return {
+    ok: true,
+    blocks: next,
+    command: 'collection.add',
+    payload: { collectionId, objectId },
+    inverse: { command: 'collection.remove', collectionId, objectId },
+  };
+}
+
+function unfileObject(blocks: PmNode[], collectionId: string, objectId: string): RefChange | Failure {
+  const removed = removeObjectRef(blocks, objectId);
+  if (!removed) return fail(404, notInCollection);
+  return {
+    ok: true,
+    blocks: removed.blocks,
+    command: 'collection.remove',
+    payload: { collectionId, objectId, position: removed.position },
+    inverse: { command: 'collection.add', collectionId, objectId, position: removed.position },
+  };
+}
+
+function moveObject(
+  blocks: PmNode[],
+  collectionId: string,
+  objectId: string,
+  position: number,
+): RefChange | Failure {
+  const slots = objectRefSlots(blocks);
+  const from = slots.findIndex((slot) => refObjectId(blocks[slot]) === objectId);
+  if (from < 0) return fail(404, notInCollection);
+  if (position > slots.length - 1) return fail(400, invalidBody);
+  const next = moveObjectRef(blocks, objectId, position);
+  if (!next) return fail(404, notInCollection);
   return {
     ok: true,
     blocks: next,

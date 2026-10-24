@@ -14,6 +14,7 @@ import { registerDocumentRoutes } from './documents.js';
 import { registerObjectRoutes } from './objects.js';
 import { registerRelationRoutes } from './relations.js';
 import { registerSearchRoutes } from './search.js';
+import { registerUndoRoutes } from './undo.js';
 
 const invalidCredentials = {
   error: { code: 'invalid_credentials', message: '用户名或密码不正确' },
@@ -184,6 +185,7 @@ export async function buildApp() {
   registerSearchRoutes(app, db, signedSessionUser);
   registerCollectionRoutes(app, db, signedSessionUser);
   registerCollectionRefRoutes(app, db, signedSessionUser);
+  registerUndoRoutes(app, db, signedSessionUser);
 
   return app;
 }
