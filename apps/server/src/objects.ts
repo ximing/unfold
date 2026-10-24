@@ -144,6 +144,17 @@ export function registerObjectRoutes(app: FastifyInstance, db: Database, session
        and o.user_id = d.user_id
        and o.status = 'active'
        and o.deleted_at is null
+       and not exists (
+         select 1
+         from block_index b
+         join documents doc on doc.id = b.document_id
+         where b.block_type = 'object_ref'
+           and b.text_preview = o.id::text
+           and b.deleted_at is null
+           and doc.deleted_at is null
+           and doc.user_id = o.user_id
+           and doc.owner_type = 'collection'
+       )
       where d.user_id = ${user.id}
         and d.deleted_at is null
       group by d.id

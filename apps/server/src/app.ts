@@ -156,10 +156,21 @@ export async function buildApp() {
       }
       const counted = await db.execute<{ count: string }>(sql`
         select count(*)::text as count
-        from knowledge_objects
-        where user_id = ${user.id}
-          and status = 'active'
-          and deleted_at is null
+        from knowledge_objects o
+        where o.user_id = ${user.id}
+          and o.status = 'active'
+          and o.deleted_at is null
+          and not exists (
+            select 1
+            from block_index b
+            join documents doc on doc.id = b.document_id
+            where b.block_type = 'object_ref'
+              and b.text_preview = o.id::text
+              and b.deleted_at is null
+              and doc.deleted_at is null
+              and doc.user_id = o.user_id
+              and doc.owner_type = 'collection'
+          )
       `);
       const freeCount = Number(counted.rows[0]?.count ?? 0);
       if (!Number.isInteger(freeCount) || freeCount < 0) {
