@@ -11,6 +11,7 @@ import { registerChainRoutes } from './chain.js';
 import { registerCollectionRefRoutes } from './collection-refs.js';
 import { registerCollectionRoutes } from './collections.js';
 import { registerDocumentRoutes } from './documents.js';
+import { registerExportRoutes } from './export.js';
 import { registerObjectRoutes } from './objects.js';
 import { registerRelationRoutes } from './relations.js';
 import { registerSearchRoutes } from './search.js';
@@ -261,6 +262,7 @@ export async function buildApp() {
   registerCollectionRefRoutes(app, db, signedSessionUser);
   registerUndoRoutes(app, db, signedSessionUser);
   registerSuggestionRoutes(app, db, signedSessionUser);
+  registerExportRoutes(app, db, signedSessionUser);
 
   return app;
 }

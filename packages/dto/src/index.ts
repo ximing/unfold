@@ -87,3 +87,4 @@ export {
   type SearchHit,
   type SearchResponse,
 } from './search.js';
+export { exportPackageSchema, type ExportPackage } from './export.js';
