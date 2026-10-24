@@ -39,6 +39,7 @@ describe('todayResponseSchema', () => {
           capabilityId: '6ba7b810-9dad-11d1-80b4-00c04fd430c8',
           statement: '独立解释队尾淘汰',
           evidenceNote: '上次没能独立解释队尾淘汰',
+          dueAt: '2026-10-24T00:00:00.000Z',
         },
       ],
       freeCount: 2,

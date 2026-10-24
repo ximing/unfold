@@ -1,12 +1,12 @@
 import { SCHEMA_VERSION } from '@unfold/doc-schema';
-import { domainSchema, objectSummarySchema, todayResponseSchema, type TodayResponse } from '@unfold/dto';
+import { capabilitySchema, domainSchema, objectSummarySchema, todayResponseSchema, type TodayResponse } from '@unfold/dto';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { buildApp } from './app.js';
 import { createDb, createPool } from './db/client.js';
-import { documents, domains, knowledgeObjects, suggestions, users } from './db/schema.js';
+import { capabilities, capabilityObjects, documents, domains, evidence, knowledgeObjects, reviewStates, suggestions, users } from './db/schema.js';
 
 const username = process.env.SEED_USERNAME;
 const password = process.env.SEED_PASSWORD;
@@ -35,6 +35,7 @@ describe('today aggregate', () => {
   const statementB = `陈述B-${suffix}`;
   const domainIds: string[] = [];
   const objectIds: string[] = [];
+  const capabilityIds: string[] = [];
   let domainId = '';
   let idA = '';
   let idB = '';
@@ -62,6 +63,21 @@ describe('today aggregate', () => {
 
   afterAll(async () => {
     const now = new Date();
+    if (capabilityIds.length > 0) {
+      await db
+        .update(evidence)
+        .set({ deletedAt: now, updatedAt: now })
+        .where(inArray(evidence.capabilityId, capabilityIds));
+      await db
+        .update(reviewStates)
+        .set({ deletedAt: now, updatedAt: now })
+        .where(inArray(reviewStates.capabilityId, capabilityIds));
+      await db
+        .update(capabilityObjects)
+        .set({ deletedAt: now, updatedAt: now })
+        .where(inArray(capabilityObjects.capabilityId, capabilityIds));
+      await db.update(capabilities).set({ deletedAt: now, updatedAt: now }).where(inArray(capabilities.id, capabilityIds));
+    }
     if (objectIds.length > 0) {
       await db
         .update(suggestions)
@@ -211,8 +227,47 @@ describe('today aggregate', () => {
     expect(rejected.due).toEqual([]);
   });
 
-  it('keeps due empty', async () => {
+  it('lists a capability whose review is due and hides one that is not', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/capabilities',
+      headers: { cookie },
+      payload: { statement: `到期能力-${suffix}`, kind: 'explain', primaryObjectId: idA },
+    });
+    expect(created.statusCode).toBe(201);
+    const capability = capabilitySchema.parse(created.json());
+    capabilityIds.push(capability.id);
+
+    const posted = await app.inject({
+      method: 'POST',
+      url: `/api/capabilities/${capability.id}/evidence`,
+      headers: { cookie },
+      payload: { mode: 'practice', hintLevel: 0, rating: 'fail', obstacle: '没看出相同前缀', body: '不该优先显示' },
+    });
+    expect(posted.statusCode).toBe(201);
+
+    const later = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await db
+      .update(reviewStates)
+      .set({ dueAt: later, updatedAt: new Date() })
+      .where(and(eq(reviewStates.capabilityId, capability.id), isNull(reviewStates.deletedAt)));
+    const hidden = await readToday();
+    expect(hidden.due.find((item) => item.capabilityId === capability.id)).toBeUndefined();
+
+    const past = new Date(Date.now() - 60 * 1000);
+    await db
+      .update(reviewStates)
+      .set({ dueAt: past, updatedAt: new Date() })
+      .where(and(eq(reviewStates.capabilityId, capability.id), isNull(reviewStates.deletedAt)));
     const today = await readToday();
-    expect(today.due).toEqual([]);
+    const item = today.due.find((row) => row.capabilityId === capability.id);
+    expect(item?.statement).toBe(`到期能力-${suffix}`);
+    expect(item?.evidenceNote).toBe('没看出相同前缀');
+    expect(item?.dueAt).toBe(past.toISOString());
+
+    const dueRes = await app.inject({ method: 'GET', url: '/api/review/due', headers: { cookie } });
+    expect(dueRes.statusCode).toBe(200);
+    const dueBody = dueRes.json() as { due: { capabilityId: string; evidenceNote: string }[] };
+    expect(dueBody.due.find((row) => row.capabilityId === capability.id)?.evidenceNote).toBe('没看出相同前缀');
   });
 });

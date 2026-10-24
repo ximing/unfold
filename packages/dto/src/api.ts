@@ -22,6 +22,7 @@ export const dueCapabilitySchema = z.object({
   capabilityId: z.uuid(),
   statement: z.string(),
   evidenceNote: z.string(),
+  dueAt: z.string(),
 });
 
 export const openQuestionSchema = z.object({

@@ -20,6 +20,7 @@ import { registerSuggestionRoutes } from './suggestions.js';
 import { registerUndoRoutes } from './undo.js';
 import { registerCapabilityRoutes } from './capabilities.js';
 import { registerEvidenceRoutes } from './evidence.js';
+import { listDueCapabilities, registerReviewDueRoutes } from './review-due.js';
 
 const invalidCredentials = {
   error: { code: 'invalid_credentials', message: '用户名或密码不正确' },
@@ -244,7 +245,7 @@ export async function buildApp() {
 
       return todayResponseSchema.parse({
         focus: focusRows[0] ?? null,
-        due: [],
+        due: await listDueCapabilities(db, user.id, new Date()),
         freeCount,
         pendingSuggestions,
         openQuestions,
@@ -269,6 +270,7 @@ export async function buildApp() {
   registerImportRoutes(app, db, signedSessionUser);
   registerCapabilityRoutes(app, db, signedSessionUser);
   registerEvidenceRoutes(app, db, signedSessionUser);
+  registerReviewDueRoutes(app, db, signedSessionUser);
 
   return app;
 }
