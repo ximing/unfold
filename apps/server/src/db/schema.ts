@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   check,
+  doublePrecision,
   index,
   integer,
   jsonb,
@@ -354,5 +355,118 @@ export const suggestionNotices = pgTable(
     uniqueIndex('suggestion_notices_object_active')
       .on(table.userId, table.objectId)
       .where(sql`${table.deletedAt} IS NULL`),
+  ],
+);
+
+export const capabilities = pgTable(
+  'capabilities',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    statement: text('statement').notNull(),
+    kind: text('kind').notNull(),
+    prompt: text('prompt').notNull().default(''),
+    hints: jsonb('hints').notNull().default(sql`'[]'::jsonb`),
+    hintThreshold: integer('hint_threshold').notNull().default(3),
+    referenceNote: text('reference_note').notNull().default(''),
+    primaryObjectId: uuid('primary_object_id')
+      .notNull()
+      .references(() => knowledgeObjects.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    check(
+      'capabilities_kind_check',
+      sql`${table.kind} IN ('explain', 'derive', 'discriminate', 'vary', 'counter', 'implement', 'transfer', 'tradeoff')`,
+    ),
+    check('capabilities_hint_threshold_check', sql`${table.hintThreshold} >= 1`),
+  ],
+);
+
+export const capabilityObjects = pgTable(
+  'capability_objects',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    capabilityId: uuid('capability_id')
+      .notNull()
+      .references(() => capabilities.id),
+    objectId: uuid('object_id')
+      .notNull()
+      .references(() => knowledgeObjects.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex('capability_objects_capability_id_object_id_active_unique')
+      .on(table.capabilityId, table.objectId)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
+);
+
+export const evidence = pgTable(
+  'evidence',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    capabilityId: uuid('capability_id')
+      .notNull()
+      .references(() => capabilities.id),
+    mode: text('mode').notNull(),
+    hintLevel: integer('hint_level').notNull().default(0),
+    rating: text('rating').notNull(),
+    obstacle: text('obstacle').notNull().default(''),
+    body: text('body').notNull().default(''),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    check(
+      'evidence_mode_check',
+      sql`${table.mode} IN ('recall', 'derive', 'practice', 'review', 'self_report_failure', 'reread')`,
+    ),
+    check(
+      'evidence_rating_check',
+      sql`${table.rating} IN ('fail', 'partial', 'with_hint', 'independent', 'saw_material')`,
+    ),
+    check('evidence_hint_level_check', sql`${table.hintLevel} >= 0`),
+  ],
+);
+
+export const reviewStates = pgTable(
+  'review_states',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    capabilityId: uuid('capability_id')
+      .notNull()
+      .references(() => capabilities.id),
+    stability: doublePrecision('stability').notNull(),
+    difficulty: doublePrecision('difficulty').notNull(),
+    dueAt: timestamp('due_at', { withTimezone: true }).notNull(),
+    reps: integer('reps').notNull().default(0),
+    lapses: integer('lapses').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex('review_states_capability_id_active_unique')
+      .on(table.capabilityId)
+      .where(sql`${table.deletedAt} IS NULL`),
+    check('review_states_reps_check', sql`${table.reps} >= 0`),
+    check('review_states_lapses_check', sql`${table.lapses} >= 0`),
   ],
 );

@@ -43,6 +43,13 @@
       "when": 1792834827500,
       "tag": "0005_suggestion_notices",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792836891260,
+      "tag": "0006_capabilities_evidence_reviews",
+      "breakpoints": true
     }
   ]
 }
