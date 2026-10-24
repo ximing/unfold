@@ -1,5 +1,5 @@
 import { Service } from '@rabjs/react';
-import { todayResponseSchema, type TodayResponse } from '@unfold/dto';
+import { errorBodySchema, todayResponseSchema, type TodayResponse } from '@unfold/dto';
 
 export class SessionService extends Service {
   username: string | null = null;
@@ -76,5 +76,36 @@ export class SessionService extends Service {
     a.download = 'unfold-export.json';
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  async importPackage(body: unknown): Promise<boolean> {
+    this.error = '';
+    let res: Response;
+    try {
+      res = await fetch('/api/import', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      this.error = '导入没有完成';
+      return false;
+    }
+    if (res.status === 401) {
+      this.username = null;
+      this.ready = true;
+      this.error = '未登录';
+      return false;
+    }
+    if (!res.ok) {
+      try {
+        this.error = errorBodySchema.parse(await res.json()).error.message;
+      } catch {
+        this.error = '导入没有完成';
+      }
+      return false;
+    }
+    return true;
   }
 }

@@ -1,5 +1,5 @@
 import { observer, useService } from '@rabjs/react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router';
 import { SessionService } from '../services/session.service.js';
 
@@ -13,6 +13,7 @@ function formatDueLabel(dueAt: string): string {
 export const TodayPage = observer(function TodayPage() {
   const session = useService(SessionService);
   const navigate = useNavigate();
+  const [importNote, setImportNote] = useState('');
 
   useEffect(() => {
     void (async () => {
@@ -104,6 +105,33 @@ export const TodayPage = observer(function TodayPage() {
       <button type="button" onClick={() => void session.exportPackage()}>
         导出
       </button>
+      <label>
+        导入
+        <input
+          aria-label="导入包"
+          type="file"
+          accept="application/json,.json"
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            event.currentTarget.value = '';
+            if (!file) return;
+            setImportNote('');
+            void (async () => {
+              try {
+                const parsed: unknown = JSON.parse(await file.text());
+                const ok = await session.importPackage(parsed);
+                if (!ok) return;
+                setImportNote('已导入');
+                await session.loadToday();
+              } catch {
+                session.error = '导入没有完成';
+              }
+            })();
+          }}
+        />
+      </label>
+      {importNote !== '' ? <p>{importNote}</p> : null}
+      {session.error ? <p role="alert">{session.error}</p> : null}
       <button type="button" onClick={() => void onLogout()}>
         登出
       </button>

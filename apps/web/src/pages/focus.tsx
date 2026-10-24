@@ -9,7 +9,7 @@ import {
   type RelationType,
 } from '@unfold/dto';
 import { type FormEvent, Fragment, useEffect, useRef, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { LibraryService } from '../services/library.service.js';
 import { PlacePanel } from './place-panel.js';
 import { SuggestionTray } from './suggestion-tray.js';
@@ -616,6 +616,7 @@ const CapabilityProjection = observer(function CapabilityProjection({
 
 export const FocusPage = observer(function FocusPage() {
   const library = useService(LibraryService);
+  const navigate = useNavigate();
   const { id = '' } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const proj = searchParams.get('proj');
@@ -635,6 +636,7 @@ export const FocusPage = observer(function FocusPage() {
   const [editingStatement, setEditingStatement] = useState(false);
   const [statementDraft, setStatementDraft] = useState('');
   const [savingStatement, setSavingStatement] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const editor = useEditor({
     extensions: getExtensions(),
@@ -819,6 +821,24 @@ export const FocusPage = observer(function FocusPage() {
           {library.error ? <p role="alert">{library.error}</p> : null}
         </>
       ) : null}
+      <button
+        type="button"
+        disabled={deleting}
+        onClick={() => {
+          if (deleting) return;
+          setDeleting(true);
+          void (async () => {
+            try {
+              const ok = await library.deleteObject(id);
+              if (ok) navigate('/today');
+            } finally {
+              setDeleting(false);
+            }
+          })();
+        }}
+      >
+        删除这个点
+      </button>
       <div className="views" role="tablist">
         <button
           type="button"

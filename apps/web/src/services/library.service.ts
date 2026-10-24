@@ -337,6 +337,20 @@ export class LibraryService extends Service {
     }
   }
 
+  async deleteObject(id: string): Promise<boolean> {
+    this.error = '';
+    const res = await fetch(`/api/objects/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    if (res.status === 204) {
+      if (this.current?.id === id) this.current = null;
+      return true;
+    }
+    this.error = await errorMessage(res, '没有删掉');
+    return false;
+  }
+
   // 文档接口可能还没部署；解析失败只返回 null，不把页面打崩。
   async loadDocument(id: string): Promise<DocumentResponse | null> {
     try {
