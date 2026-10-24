@@ -9,13 +9,14 @@ export class SessionService extends Service {
 
   async restore(): Promise<boolean> {
     const res = await fetch('/api/me', { credentials: 'include' });
-    this.ready = true;
     if (!res.ok) {
       this.username = null;
+      this.ready = true;
       return false;
     }
     const body = (await res.json()) as { username: string };
     this.username = body.username;
+    this.ready = true;
     return true;
   }
 
