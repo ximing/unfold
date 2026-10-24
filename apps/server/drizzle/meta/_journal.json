@@ -22,6 +22,13 @@
       "when": 1792821695970,
       "tag": "0002_unique_sunspot",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792824056232,
+      "tag": "0003_index_outbox",
+      "breakpoints": true
     }
   ]
 }

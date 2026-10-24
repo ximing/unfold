@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   check,
+  index,
   integer,
   jsonb,
   pgTable,
@@ -224,5 +225,29 @@ export const annotations = pgTable(
       'annotations_target_type_check',
       sql`${table.targetType} IN ('relation', 'capability')`,
     ),
+  ],
+);
+
+export const indexOutbox = pgTable(
+  'index_outbox',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    documentId: uuid('document_id')
+      .notNull()
+      .references(() => documents.id),
+    payload: jsonb('payload').notNull(),
+    lastError: text('last_error').notNull().default(''),
+    attempts: integer('attempts').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('index_outbox_user_active')
+      .on(table.userId)
+      .where(sql`${table.deletedAt} IS NULL`),
   ],
 );
