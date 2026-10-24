@@ -89,40 +89,46 @@ const SearchBox = observer(function SearchBox() {
         }}
       />
       <div id="hits" className="hits" hidden={!open || trimmed === ''}>
-        {library.searchNotice === '检索降级中' ? <p className="muted">检索降级中</p> : null}
-        {library.searchError !== '' ? <p role="alert">{library.searchError}</p> : null}
-        {library.searchGroups.length === 0 && library.searchError === '' ? (
-          <p className="muted">没有这条记录</p>
+        {library.searchQuery === trimmed ? (
+          <>
+            {library.searchNotice === '检索降级中' ? <p className="muted">检索降级中</p> : null}
+            {library.searchError !== '' ? <p role="alert">{library.searchError}</p> : null}
+            {library.searchGroups.length === 0 && library.searchError === '' ? (
+              <p className="muted">没有这条记录</p>
+            ) : null}
+            {library.searchGroups.map((group, groupIndex) => {
+              const objectId = group.objectId;
+              const title = group.domain !== '' ? `${group.title} · ${group.domain}` : group.title;
+              return (
+                <div key={`${objectId ?? ''}:${group.domain}:${groupIndex}`}>
+                  <p className="group">{title}</p>
+                  {group.hits.map((hit, hitIndex) => {
+                    const secondary =
+                      hit.text !== '' ? hit.text : hit.kind === 'object' && group.core !== '' ? group.core : '';
+                    return (
+                      <button
+                        key={`${hit.id}:${hitIndex}`}
+                        type="button"
+                        disabled={objectId === null || objectId === ''}
+                        onClick={() => {
+                          if (objectId === null || objectId === '') return;
+                          navigate('/o/' + objectId);
+                          setOpen(false);
+                        }}
+                      >
+                        {kindLabel(hit.kind)}
+                        {hit.promote === true ? ' · 可提升' : null}
+                        {secondary !== '' ? <small>{secondary}</small> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </>
+        ) : trimmed !== '' ? (
+          <p className="muted">正在检索…</p>
         ) : null}
-        {library.searchGroups.map((group, groupIndex) => {
-          const objectId = group.objectId;
-          const title = group.domain !== '' ? `${group.title} · ${group.domain}` : group.title;
-          return (
-            <div key={`${objectId ?? ''}:${group.domain}:${groupIndex}`}>
-              <p className="group">{title}</p>
-              {group.hits.map((hit, hitIndex) => {
-                const secondary =
-                  hit.text !== '' ? hit.text : hit.kind === 'object' && group.core !== '' ? group.core : '';
-                return (
-                  <button
-                    key={`${hit.id}:${hitIndex}`}
-                    type="button"
-                    disabled={objectId === null || objectId === ''}
-                    onClick={() => {
-                      if (objectId === null || objectId === '') return;
-                      navigate('/o/' + objectId);
-                      setOpen(false);
-                    }}
-                  >
-                    {kindLabel(hit.kind)}
-                    {hit.promote === true ? ' · 可提升' : null}
-                    {secondary !== '' ? <small>{secondary}</small> : null}
-                  </button>
-                );
-              })}
-            </div>
-          );
-        })}
       </div>
     </div>
   );

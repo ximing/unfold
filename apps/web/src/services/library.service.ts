@@ -114,6 +114,7 @@ export class LibraryService extends Service {
   searchGroups: SearchGroup[] = [];
   searchNotice = '';
   searchError = '';
+  searchQuery = '';
   private searchTicket = 0;
 
   async loadDomains(): Promise<void> {
@@ -295,14 +296,16 @@ export class LibraryService extends Service {
 
   async search(q: string): Promise<void> {
     const ticket = ++this.searchTicket;
-    this.searchError = '';
     try {
       const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { credentials: 'include' });
       if (ticket !== this.searchTicket) return;
       if (!res.ok) {
+        const message = await errorMessage(res, '检索没有完成');
+        if (ticket !== this.searchTicket) return;
         this.searchGroups = [];
         this.searchNotice = '';
-        this.searchError = await errorMessage(res, '检索没有完成');
+        this.searchError = message;
+        this.searchQuery = q;
         return;
       }
       const body = searchResponseSchema.parse(await res.json());
@@ -310,11 +313,13 @@ export class LibraryService extends Service {
       this.searchGroups = body.groups; // 原样保留，禁止按 title 合并
       this.searchNotice = body.notice;
       this.searchError = '';
+      this.searchQuery = q;
     } catch {
       if (ticket !== this.searchTicket) return;
       this.searchGroups = [];
       this.searchNotice = '';
       this.searchError = '检索没有完成';
+      this.searchQuery = q;
     }
   }
 
@@ -323,5 +328,6 @@ export class LibraryService extends Service {
     this.searchGroups = [];
     this.searchNotice = '';
     this.searchError = '';
+    this.searchQuery = '';
   }
 }
