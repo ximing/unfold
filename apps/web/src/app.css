@@ -289,3 +289,84 @@ p[role='alert'] {
   padding: 0;
   border: none;
 }
+
+:root {
+  --serif: "Songti SC", "Noto Serif SC", "Source Han Serif SC", Palatino, serif;
+}
+
+.views {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: 0 0 14px;
+}
+
+.views button {
+  width: auto;
+  margin-top: 0;
+  background: transparent;
+  border: 0;
+  padding: 4px 8px;
+  color: var(--mute);
+}
+
+.views button[aria-selected='true'] {
+  color: var(--ink);
+  box-shadow: inset 0 -2px 0 var(--cobalt);
+}
+
+.shell h3 {
+  margin: 18px 0 8px;
+  color: var(--mute);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.chainflow {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 0;
+  max-width: 900px;
+}
+
+.chain-node {
+  display: block;
+  max-width: 220px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  text-decoration: none;
+}
+
+.chain-node.now {
+  border: 2px solid var(--cobalt);
+}
+
+.chain-node .nm {
+  display: block;
+  font-family: var(--serif);
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.chain-node small {
+  display: block;
+  margin-top: 4px;
+  color: var(--mute);
+}
+
+.chain-edge {
+  align-self: center;
+  max-width: 200px;
+  padding: 0 10px;
+  color: var(--cobalt);
+  font-size: 13px;
+}
+
+.chain-edge .arrow {
+  display: block;
+  font-size: 18px;
+}

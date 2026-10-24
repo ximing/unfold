@@ -25,13 +25,90 @@ async function errorMessage(res: Response, fallback = '请求没有完成'): Pro
   }
 }
 
+type ChainNodeView = {
+  id: string;
+  canonicalName: string;
+  coreStatement: string;
+};
+
+type ChainEdgeView = {
+  fromId: string;
+  toId: string;
+  whatChanged: string;
+};
+
+type ObjectChain = {
+  type: 'evolves_from' | 'variant';
+  nodes: ChainNodeView[];
+  edges: ChainEdgeView[];
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isUnknownArray(value: unknown): value is readonly unknown[] {
+  return Array.isArray(value);
+}
+
+function readChainNode(value: unknown): ChainNodeView | null {
+  if (!isRecord(value)) return null;
+  const { id, canonicalName, coreStatement } = value;
+  if (typeof id !== 'string' || typeof canonicalName !== 'string' || typeof coreStatement !== 'string') {
+    return null;
+  }
+  return { id, canonicalName, coreStatement };
+}
+
+function readChainEdge(value: unknown): ChainEdgeView | null {
+  if (!isRecord(value)) return null;
+  const { fromId, toId, whatChanged } = value;
+  if (typeof fromId !== 'string' || typeof toId !== 'string' || typeof whatChanged !== 'string') {
+    return null;
+  }
+  return { fromId, toId, whatChanged };
+}
+
+function readChain(value: unknown): ObjectChain | null {
+  if (!isRecord(value)) return null;
+  const { type, nodes, edges } = value;
+  if (type !== 'evolves_from' && type !== 'variant') return null;
+  if (!isUnknownArray(nodes) || !isUnknownArray(edges)) return null;
+  const parsedNodes: ChainNodeView[] = [];
+  for (const node of nodes) {
+    const parsed = readChainNode(node);
+    if (!parsed) return null;
+    parsedNodes.push(parsed);
+  }
+  const parsedEdges: ChainEdgeView[] = [];
+  for (const edge of edges) {
+    const parsed = readChainEdge(edge);
+    if (!parsed) return null;
+    parsedEdges.push(parsed);
+  }
+  return { type, nodes: parsedNodes, edges: parsedEdges };
+}
+
+function readChains(value: unknown): ObjectChain[] | null {
+  if (!isRecord(value) || !isUnknownArray(value.chains)) return null;
+  const chains: ObjectChain[] = [];
+  for (const item of value.chains) {
+    const parsed = readChain(item);
+    if (!parsed) return null;
+    chains.push(parsed);
+  }
+  return chains;
+}
+
 export class LibraryService extends Service {
   domains: Domain[] = [];
   objects: ObjectSummary[] = [];
   current: ObjectSummary | null = null;
   relations: FanRelation[] = [];
+  chains: ObjectChain[] = [];
   error = '';
   notice = '';
+  private chainTicket = 0;
 
   async loadDomains(): Promise<void> {
     this.error = '';
@@ -161,6 +238,37 @@ export class LibraryService extends Service {
       this.relations = fanRelationListSchema.parse(await res.json()).relations;
     } catch {
       this.error = '连接没有加载出来';
+    }
+  }
+
+  async loadChain(id: string): Promise<void> {
+    const ticket = ++this.chainTicket;
+    this.error = '';
+    try {
+      const res = await fetch(`/api/objects/${encodeURIComponent(id)}/chain`, {
+        credentials: 'include',
+      });
+      if (ticket !== this.chainTicket) return;
+      if (!res.ok) {
+        const message = await errorMessage(res, '链没有加载出来');
+        if (ticket !== this.chainTicket) return;
+        this.error = message;
+        this.chains = [];
+        return;
+      }
+      const body: unknown = await res.json();
+      if (ticket !== this.chainTicket) return;
+      const chains = readChains(body);
+      if (!chains) {
+        this.chains = [];
+        this.error = '链没有加载出来';
+        return;
+      }
+      this.chains = chains;
+    } catch {
+      if (ticket !== this.chainTicket) return;
+      this.chains = [];
+      this.error = '链没有加载出来';
     }
   }
 

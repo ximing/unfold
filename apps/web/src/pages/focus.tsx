@@ -6,8 +6,8 @@ import {
   type FanRelation,
   type RelationType,
 } from '@unfold/dto';
-import { type FormEvent, useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { type FormEvent, Fragment, useEffect, useRef, useState } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router';
 import { LibraryService } from '../services/library.service.js';
 
 const SECTORS = [
@@ -99,6 +99,52 @@ function relationBody(
     if (note !== '') body.note = note;
   }
   return body;
+}
+
+function ChainProjection({
+  chains,
+  currentId,
+}: {
+  chains: LibraryService['chains'];
+  currentId: string;
+}) {
+  if (chains.length === 0) {
+    return (
+      <p className="muted">经过这个点的演化链或变体链还没有成形。链是关系的线性投影：evolves_from 和 variant 连起来，边上写条件变化。</p>
+    );
+  }
+  return (
+    <>
+      {chains.map((chain, chainIndex) => (
+        <div key={`${chain.type}-${chainIndex}`}>
+          <h3>{chain.type === 'evolves_from' ? '演化链' : '变体链'}</h3>
+          <div className="chainflow">
+            {chain.nodes.map((node, index) => {
+              const edge = index > 0 ? chain.edges[index - 1] : undefined;
+              return (
+                <Fragment key={`${node.id}-${index}`}>
+                  {edge ? (
+                    <span className="chain-edge">
+                      <span className="arrow">→</span>
+                      {edge.whatChanged}
+                    </span>
+                  ) : null}
+                  <Link
+                    to={`/o/${node.id}`}
+                    className={node.id === currentId ? 'chain-node now' : 'chain-node'}
+                  >
+                    <span className="nm">{node.canonicalName}</span>
+                    <small>{node.coreStatement}</small>
+                  </Link>
+                </Fragment>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      <p className="muted">链不另存数据。边上的话逐字来自关系上的 what_changed。断开的链说明中间还缺一条演化关系。</p>
+    </>
+  );
 }
 
 const ConnectForm = observer(function ConnectForm({
@@ -304,11 +350,14 @@ const ConnectForm = observer(function ConnectForm({
 export const FocusPage = observer(function FocusPage() {
   const library = useService(LibraryService);
   const { id = '' } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const showChain = searchParams.get('proj') === 'chain';
   const saveRef = useRef<() => void>(() => {});
   const [saved, setSaved] = useState(false);
   const [seed, setSeed] = useState(false);
   const [open, setOpen] = useState(false);
   const [relationsReady, setRelationsReady] = useState(false);
+  const [chainReadyId, setChainReadyId] = useState('');
 
   const editor = useEditor({
     extensions: getExtensions(),
@@ -353,6 +402,17 @@ export const FocusPage = observer(function FocusPage() {
       alive = false;
     };
   }, [editor, id, library]);
+
+  useEffect(() => {
+    if (!showChain || !id) return;
+    let alive = true;
+    void library.loadChain(id).then(() => {
+      if (alive) setChainReadyId(id);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [showChain, id, library]);
 
   saveRef.current = () => {
     if (!editor || !id) return;
@@ -400,37 +460,82 @@ export const FocusPage = observer(function FocusPage() {
       <h1>{current.canonicalName}</h1>
       <p>{current.coreStatement}</p>
       <p className="muted">核心陈述 v{current.coreVersion}</p>
+      <div className="views" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={!showChain}
+          onClick={() => {
+            setSearchParams((prev) => {
+              const next = new URLSearchParams(prev);
+              next.delete('proj');
+              return next;
+            });
+          }}
+        >
+          内容
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={showChain}
+          onClick={() => {
+            setSearchParams((prev) => {
+              const next = new URLSearchParams(prev);
+              next.set('proj', 'chain');
+              return next;
+            });
+          }}
+        >
+          链
+        </button>
+      </div>
       {seed ? <p>这个点还是种子：只有一句话核心陈述。内容、连接、归位都后补。</p> : null}
-      <div className="doc-tools">
-        <button
-          type="button"
-          onClick={() => insert({ type: 'question', content: [{ type: 'paragraph' }] })}
-        >
-          疑问
-        </button>
-        <button
-          type="button"
-          onClick={() =>
-            insert({
-              type: 'tiered_hints',
-              attrs: { collapsed: true },
-              content: [{ type: 'hint_item', content: [{ type: 'paragraph' }] }],
-            })
-          }
-        >
-          分级提示
-        </button>
-        <button type="button" onClick={() => saveRef.current()}>
-          保存
-        </button>
-      </div>
-      {saved ? <p className="muted">已保存</p> : null}
-      {library.error && library.error !== '没有这个点' && !open ? (
-        <p role="alert">{library.error}</p>
-      ) : null}
-      <div className="doc">
-        <EditorContent editor={editor} />
-      </div>
+      {showChain ? (
+        chainReadyId === id ? (
+          <>
+            {library.error && library.error !== '没有这个点' && !open ? (
+              <p role="alert">{library.error}</p>
+            ) : null}
+            <ChainProjection chains={library.chains} currentId={current.id} />
+          </>
+        ) : (
+          <p className="muted">正在读取…</p>
+        )
+      ) : (
+        <>
+          <div className="doc-tools">
+            <button
+              type="button"
+              onClick={() => insert({ type: 'question', content: [{ type: 'paragraph' }] })}
+            >
+              疑问
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                insert({
+                  type: 'tiered_hints',
+                  attrs: { collapsed: true },
+                  content: [{ type: 'hint_item', content: [{ type: 'paragraph' }] }],
+                })
+              }
+            >
+              分级提示
+            </button>
+            <button type="button" onClick={() => saveRef.current()}>
+              保存
+            </button>
+          </div>
+          {saved ? <p className="muted">已保存</p> : null}
+          {library.error && library.error !== '没有这个点' && !open ? (
+            <p role="alert">{library.error}</p>
+          ) : null}
+          <div className="doc">
+            <EditorContent editor={editor} />
+          </div>
+        </>
+      )}
       {relationsReady ? (
         <div className="sectors">
           {SECTORS.map((item) => {
