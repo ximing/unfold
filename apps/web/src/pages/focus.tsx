@@ -4,6 +4,7 @@ import { SCHEMA_VERSION, getExtensions } from '@unfold/doc-schema';
 import {
   type CreateRelationBody,
   type FanRelation,
+  type ObjectSummary,
   type RelationType,
 } from '@unfold/dto';
 import { type FormEvent, Fragment, useEffect, useRef, useState } from 'react';
@@ -18,6 +19,14 @@ const SECTORS = [
 ] as const;
 
 type Sector = (typeof SECTORS)[number]['value'];
+
+const TYPE_LABEL: Record<ObjectSummary['type'], string> = {
+  concept: '概念',
+  principle: '原则',
+  method: '方法',
+  model: '模型',
+  problem: '问题',
+};
 
 const TYPES_BY_SECTOR: Record<Sector, { value: RelationType; label: string }[]> = {
   origin: [
@@ -143,6 +152,56 @@ function ChainProjection({
         </div>
       ))}
       <p className="muted">链不另存数据。边上的话逐字来自关系上的 what_changed。断开的链说明中间还缺一条演化关系。</p>
+    </>
+  );
+}
+
+function ContrastProjection({
+  current,
+  relations,
+}: {
+  current: ObjectSummary;
+  relations: FanRelation[];
+}) {
+  const rows = relations.filter((relation) => relation.sector === 'contrast');
+  if (rows.length === 0) {
+    return <p className="muted">这个点还没有对比或类比关系。</p>;
+  }
+  return (
+    <>
+      {rows.map((relation) => (
+        <Fragment key={relation.id}>
+          <div className="split">
+            <article>
+              <p className="muted">
+                {TYPE_LABEL[current.type]} · {current.domainName}
+              </p>
+              <h2>{current.canonicalName}</h2>
+              <p>{current.coreStatement}</p>
+            </article>
+            <article>
+              <h2>{relation.otherName}</h2>
+              <p>{relation.otherCore}</p>
+              <p>
+                <Link to={`/o/${relation.otherId}`}>打开这个点</Link>
+              </p>
+            </article>
+          </div>
+          {relation.type === 'analogous' ? (
+            <div className="boundary">
+              <h2>边界（必填）</h2>
+              <p>{relation.boundary}</p>
+              <p className="muted">类比必须写清边界。两个点保持独立，这里没有合并入口。</p>
+            </div>
+          ) : null}
+          {relation.type === 'contrasts' ? (
+            <div className="boundary">
+              <h2>区别</h2>
+              <p>{relation.distinction}</p>
+            </div>
+          ) : null}
+        </Fragment>
+      ))}
     </>
   );
 }
@@ -351,7 +410,9 @@ export const FocusPage = observer(function FocusPage() {
   const library = useService(LibraryService);
   const { id = '' } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
-  const showChain = searchParams.get('proj') === 'chain';
+  const proj = searchParams.get('proj');
+  const showChain = proj === 'chain';
+  const showContrast = proj === 'contrast';
   const saveRef = useRef<() => void>(() => {});
   const [saved, setSaved] = useState(false);
   const [seed, setSeed] = useState(false);
@@ -438,6 +499,15 @@ export const FocusPage = observer(function FocusPage() {
     setSaved(false);
   }
 
+  function selectProjection(nextProj: 'chain' | 'contrast' | null) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (nextProj === null) next.delete('proj');
+      else next.set('proj', nextProj);
+      return next;
+    });
+  }
+
   const current = library.current;
   if (!current || current.id !== id) {
     if (library.error === '没有这个点') {
@@ -464,14 +534,8 @@ export const FocusPage = observer(function FocusPage() {
         <button
           type="button"
           role="tab"
-          aria-selected={!showChain}
-          onClick={() => {
-            setSearchParams((prev) => {
-              const next = new URLSearchParams(prev);
-              next.delete('proj');
-              return next;
-            });
-          }}
+          aria-selected={!showChain && !showContrast}
+          onClick={() => selectProjection(null)}
         >
           内容
         </button>
@@ -479,15 +543,17 @@ export const FocusPage = observer(function FocusPage() {
           type="button"
           role="tab"
           aria-selected={showChain}
-          onClick={() => {
-            setSearchParams((prev) => {
-              const next = new URLSearchParams(prev);
-              next.set('proj', 'chain');
-              return next;
-            });
-          }}
+          onClick={() => selectProjection('chain')}
         >
           链
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={showContrast}
+          onClick={() => selectProjection('contrast')}
+        >
+          对比
         </button>
       </div>
       {seed ? <p>这个点还是种子：只有一句话核心陈述。内容、连接、归位都后补。</p> : null}
@@ -498,6 +564,17 @@ export const FocusPage = observer(function FocusPage() {
               <p role="alert">{library.error}</p>
             ) : null}
             <ChainProjection chains={library.chains} currentId={current.id} />
+          </>
+        ) : (
+          <p className="muted">正在读取…</p>
+        )
+      ) : showContrast ? (
+        relationsReady ? (
+          <>
+            {library.error && library.error !== '没有这个点' && !open ? (
+              <p role="alert">{library.error}</p>
+            ) : null}
+            <ContrastProjection current={current} relations={library.relations} />
           </>
         ) : (
           <p className="muted">正在读取…</p>
@@ -559,6 +636,11 @@ export const FocusPage = observer(function FocusPage() {
                     ))}
                   </ul>
                 )}
+                {item.value === 'contrast' && rows.length > 0 ? (
+                  <button type="button" onClick={() => selectProjection('contrast')}>
+                    并排看
+                  </button>
+                ) : null}
               </section>
             );
           })}
