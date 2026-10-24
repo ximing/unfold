@@ -11,6 +11,7 @@ import { registerChainRoutes } from './chain.js';
 import { registerDocumentRoutes } from './documents.js';
 import { registerObjectRoutes } from './objects.js';
 import { registerRelationRoutes } from './relations.js';
+import { registerSearchRoutes } from './search.js';
 
 const invalidCredentials = {
   error: { code: 'invalid_credentials', message: '用户名或密码不正确' },
@@ -178,6 +179,7 @@ export async function buildApp() {
   registerDocumentRoutes(app, db, signedSessionUser);
   registerRelationRoutes(app, db, signedSessionUser);
   registerChainRoutes(app, db, signedSessionUser);
+  registerSearchRoutes(app, db, signedSessionUser);
 
   return app;
 }

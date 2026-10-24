@@ -51,3 +51,11 @@ export {
   type RelationType,
   type UpdateRelationStatus,
 } from './relations.js';
+export {
+  searchGroupSchema,
+  searchHitSchema,
+  searchResponseSchema,
+  type SearchGroup,
+  type SearchHit,
+  type SearchResponse,
+} from './search.js';
