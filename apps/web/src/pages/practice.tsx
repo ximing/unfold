@@ -21,7 +21,7 @@ const PracticeContent = observer(function PracticeContent() {
   const [revealed, setRevealed] = useState(0);
   const [failing, setFailing] = useState(false);
   const [obstacle, setObstacle] = useState('');
-  const [savedFail, setSavedFail] = useState(false);
+  const [offerCapability, setOfferCapability] = useState(false);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -82,8 +82,8 @@ const PracticeContent = observer(function PracticeContent() {
     setBusy(false);
     if (!ok) return;
     if (rating === 'fail') {
-      setSavedFail(true);
       setDraft(obstacleText.trim());
+      if (obstacleText.trim() !== '') setOfferCapability(true);
     }
   }
 
@@ -144,7 +144,7 @@ const PracticeContent = observer(function PracticeContent() {
               </p>
             </>
           ) : null}
-          {savedFail && draft.trim() !== '' ? (
+          {offerCapability ? (
             <>
               <input aria-label="收成能力的句子" value={draft} onChange={(event) => setDraft(event.target.value)} />
               <p>
