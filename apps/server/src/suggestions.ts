@@ -11,7 +11,7 @@ import { and, eq, inArray, isNull } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { createDb } from './db/client.js';
-import { documents, knowledgeObjects, relations, suggestions } from './db/schema.js';
+import { documents, knowledgeObjects, relations, suggestionNotices, suggestions } from './db/schema.js';
 import { saveDocument } from './documents.js';
 import type { SessionLookup } from './objects.js';
 import { syncObjectIndex } from './services/index-sync.js';
@@ -151,6 +151,21 @@ async function listOpenSuggestions(db: Database, userId: string, objectId: strin
   return listed;
 }
 
+async function suggestionNotice(db: Database, userId: string, objectId: string): Promise<string> {
+  const rows = await db
+    .select({ notice: suggestionNotices.notice })
+    .from(suggestionNotices)
+    .where(
+      and(
+        eq(suggestionNotices.userId, userId),
+        eq(suggestionNotices.objectId, objectId),
+        isNull(suggestionNotices.deletedAt),
+      ),
+    )
+    .limit(1);
+  return rows[0]?.notice ?? '';
+}
+
 async function ownedObjectDocument(db: Database, userId: string, objectId: string) {
   const objects = await db
     .select({ documentId: knowledgeObjects.documentId })
@@ -211,7 +226,8 @@ export function registerSuggestionRoutes(app: FastifyInstance, db: Database, ses
     if (!(await activeObjectExists(db, user.id, objectId))) return reply.code(404).send(objectNotFound);
 
     const listed = await listOpenSuggestions(db, user.id, objectId);
-    return reply.code(200).send(suggestionListSchema.parse({ suggestions: listed }));
+    const notice = await suggestionNotice(db, user.id, objectId);
+    return reply.code(200).send(suggestionListSchema.parse({ suggestions: listed, notice }));
   });
 
   app.post('/api/suggest/:id/resolve', async (request, reply) => {
@@ -341,6 +357,7 @@ export function registerSuggestionRoutes(app: FastifyInstance, db: Database, ses
       );
 
     const listed = await listOpenSuggestions(db, user.id, objectId);
-    return reply.code(200).send(suggestionListSchema.parse({ suggestions: listed }));
+    const notice = await suggestionNotice(db, user.id, objectId);
+    return reply.code(200).send(suggestionListSchema.parse({ suggestions: listed, notice }));
   });
 }

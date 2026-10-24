@@ -36,6 +36,13 @@
       "when": 1792829842214,
       "tag": "0004_collections_revisions_suggestions",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792834827500,
+      "tag": "0005_suggestion_notices",
+      "breakpoints": true
     }
   ]
 }

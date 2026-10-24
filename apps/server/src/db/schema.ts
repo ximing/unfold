@@ -337,3 +337,22 @@ export const suggestions = pgTable(
       .where(sql`${table.deletedAt} IS NULL`),
   ],
 );
+
+// 模型建议这次的托盘文案。无 key 或开关关闭时写空字符串，不写失败句。
+export const suggestionNotices = pgTable(
+  'suggestion_notices',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').notNull().references(() => users.id),
+    objectId: uuid('object_id').notNull().references(() => knowledgeObjects.id),
+    notice: text('notice').notNull().default(''),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex('suggestion_notices_object_active')
+      .on(table.userId, table.objectId)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
+);

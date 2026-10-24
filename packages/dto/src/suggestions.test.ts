@@ -54,8 +54,12 @@ describe('suggestionSchema', () => {
     expect(suggestionSchema.parse(note)).toEqual(note);
     expect(relationSuggestionPayloadSchema.parse(relationPayload)).toEqual(relationPayload);
 
-    const list = { suggestions: [relation, note] } satisfies SuggestionList;
+    const list = { suggestions: [relation, note], notice: '' } satisfies SuggestionList;
     expect(suggestionListSchema.parse(list)).toEqual(list);
+  });
+
+  it('rejects a list that omits notice', () => {
+    expect(suggestionListSchema.safeParse({ suggestions: [] }).success).toBe(false);
   });
 
   it('rejects part_of on a relation payload', () => {

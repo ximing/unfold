@@ -38,6 +38,7 @@ export const suggestionSchema = z.object({
 
 export const suggestionListSchema = z.object({
   suggestions: z.array(suggestionSchema),
+  notice: z.string(),
 });
 
 export type SuggestionKind = z.infer<typeof suggestionKindSchema>;
