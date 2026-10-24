@@ -9,11 +9,11 @@ import {
   updateObjectBodySchema,
   type ObjectSummary,
 } from '@unfold/dto';
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { createDb } from './db/client.js';
-import { domains, documents, knowledgeObjects } from './db/schema.js';
+import { blockIndex, domains, documents, knowledgeObjects } from './db/schema.js';
 
 type Database = ReturnType<typeof createDb>;
 
@@ -361,5 +361,65 @@ export function registerObjectRoutes(app: FastifyInstance, db: Database, session
     const one = summary[0];
     if (!one) return reply.code(404).send(objectNotFound);
     return reply.code(200).send(one);
+  });
+
+  app.delete('/api/objects/:id', async (request, reply) => {
+    const user = await session(request, reply);
+    if (!user) return;
+
+    const params = z.object({ id: z.uuid() }).safeParse(request.params);
+    if (!params.success) return reply.code(404).send(objectNotFound);
+
+    const found = await db
+      .select({ id: knowledgeObjects.id, documentId: knowledgeObjects.documentId })
+      .from(knowledgeObjects)
+      .where(
+        and(
+          eq(knowledgeObjects.id, params.data.id),
+          eq(knowledgeObjects.userId, user.id),
+          eq(knowledgeObjects.status, 'active'),
+          isNull(knowledgeObjects.deletedAt),
+        ),
+      )
+      .limit(1);
+    const current = found[0];
+    if (!current) return reply.code(404).send(objectNotFound);
+
+    const refFilters = [
+      eq(blockIndex.blockType, 'object_ref'),
+      eq(blockIndex.textPreview, current.id),
+      isNull(blockIndex.deletedAt),
+      isNull(documents.deletedAt),
+      eq(documents.userId, user.id),
+    ];
+    // 自己的文档里引用自己不算。
+    if (current.documentId) refFilters.push(ne(documents.id, current.documentId));
+
+    const counted = await db
+      .select({ count: sql<string>`count(*)::text` })
+      .from(blockIndex)
+      .innerJoin(documents, eq(blockIndex.documentId, documents.id))
+      .where(and(...refFilters));
+    const count = Number(counted[0]?.count ?? 0);
+    if (count > 0) {
+      return reply.code(409).send({
+        error: { code: 'referenced', message: `还有 ${count} 处引用这个点`, count },
+      });
+    }
+
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      await tx
+        .update(knowledgeObjects)
+        .set({ deletedAt: now, updatedAt: now })
+        .where(eq(knowledgeObjects.id, current.id));
+      if (current.documentId) {
+        await tx
+          .update(documents)
+          .set({ deletedAt: now, updatedAt: now })
+          .where(eq(documents.id, current.documentId));
+      }
+    });
+    return reply.code(204).send();
   });
 }
