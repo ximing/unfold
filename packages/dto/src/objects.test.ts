@@ -7,6 +7,7 @@ import {
   domainListSchema,
   domainSchema,
   objectSummarySchema,
+  pasteBodySchema,
   updateObjectBodySchema,
   type CreateDomainBody,
   type CreateObjectBody,
@@ -15,6 +16,7 @@ import {
   type Domain,
   type DomainList,
   type ObjectSummary,
+  type PasteBody,
   type UpdateObjectBody,
 } from './index.js';
 
@@ -111,5 +113,14 @@ describe('documentBodySchema', () => {
 
     const response = { ...body, savedAt: '2026-10-24T00:00:00.000Z' } satisfies DocumentResponse;
     expect(documentResponseSchema.parse(response)).toEqual(response);
+  });
+});
+
+describe('pasteBodySchema', () => {
+  it('accepts string html and plainText, including empty strings', () => {
+    const body = { html: '<p>外来段落</p>', plainText: '外来段落' } satisfies PasteBody;
+    expect(pasteBodySchema.parse(body)).toEqual(body);
+    const empty = { html: '', plainText: '' } satisfies PasteBody;
+    expect(pasteBodySchema.parse(empty)).toEqual(empty);
   });
 });

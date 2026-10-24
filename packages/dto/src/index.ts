@@ -23,6 +23,7 @@ export {
   domainListSchema,
   domainSchema,
   objectSummarySchema,
+  pasteBodySchema,
   updateObjectBodySchema,
   type CreateDomainBody,
   type CreateObjectBody,
@@ -31,5 +32,6 @@ export {
   type Domain,
   type DomainList,
   type ObjectSummary,
+  type PasteBody,
   type UpdateObjectBody,
 } from './objects.js';

@@ -63,6 +63,11 @@ export const documentResponseSchema = documentBodySchema.extend({
   savedAt: z.string(),
 });
 
+export const pasteBodySchema = z.object({
+  html: z.string(),
+  plainText: z.string(),
+});
+
 export type CreateDomainBody = z.infer<typeof createDomainBodySchema>;
 export type Domain = z.infer<typeof domainSchema>;
 export type DomainList = z.infer<typeof domainListSchema>;
@@ -71,3 +76,4 @@ export type UpdateObjectBody = z.infer<typeof updateObjectBodySchema>;
 export type ObjectSummary = z.infer<typeof objectSummarySchema>;
 export type DocumentBody = z.infer<typeof documentBodySchema>;
 export type DocumentResponse = z.infer<typeof documentResponseSchema>;
+export type PasteBody = z.infer<typeof pasteBodySchema>;
