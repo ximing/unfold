@@ -81,9 +81,22 @@ export class LibraryService extends Service {
     return false;
   }
 
+  /** 网络断开时返回 null。不写 error，避免过期请求盖住新请求。 */
+  private async send(input: string, init?: RequestInit): Promise<Response | null> {
+    try {
+      return await fetch(input, init);
+    } catch {
+      return null;
+    }
+  }
+
   async loadCollections(): Promise<boolean> {
     this.error = '';
-    const res = await fetch('/api/collections', { credentials: 'include' });
+    const res = await this.send('/api/collections', { credentials: 'include' });
+    if (!res) {
+      this.error = '网络没有连上';
+      return false;
+    }
     const body = await this.read(res, (data) => collectionListSchema.parse(data), '合集没有加载出来');
     if (!body) return false;
     this.collections = body.collections;
@@ -92,12 +105,16 @@ export class LibraryService extends Service {
 
   async createCollection(title: string): Promise<Collection | null> {
     this.error = '';
-    const res = await fetch('/api/collections', {
+    const res = await this.send('/api/collections', {
       method: 'POST',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ title }),
     });
+    if (!res) {
+      this.error = '网络没有连上';
+      return null;
+    }
     const created = await this.read(res, (data) => collectionSchema.parse(data), '合集没有建成');
     if (!created) return null;
     this.collections = [
@@ -109,12 +126,16 @@ export class LibraryService extends Service {
 
   async renameCollection(id: string, title: string): Promise<boolean> {
     this.error = '';
-    const res = await fetch(`/api/collections/${id}`, {
+    const res = await this.send(`/api/collections/${id}`, {
       method: 'PATCH',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ title }),
     });
+    if (!res) {
+      this.error = '网络没有连上';
+      return false;
+    }
     const next = await this.read(res, (data) => collectionSchema.parse(data), '标题没有改成');
     if (!next) return false;
     this.collections = this.collections.map((item) => (item.id === id ? { ...item, title: next.title } : item));
@@ -131,7 +152,11 @@ export class LibraryService extends Service {
 
   async deleteCollection(id: string): Promise<boolean> {
     this.error = '';
-    const res = await fetch(`/api/collections/${id}`, { method: 'DELETE', credentials: 'include' });
+    const res = await this.send(`/api/collections/${id}`, { method: 'DELETE', credentials: 'include' });
+    if (!res) {
+      this.error = '网络没有连上';
+      return false;
+    }
     const ok = await this.done(res, '合集没有删掉');
     if (!ok) return false;
     this.collections = this.collections.filter((item) => item.id !== id);
@@ -146,7 +171,11 @@ export class LibraryService extends Service {
 
   async loadLibrary(): Promise<boolean> {
     this.error = '';
-    const res = await fetch('/api/library', { credentials: 'include' });
+    const res = await this.send('/api/library', { credentials: 'include' });
+    if (!res) {
+      this.error = '网络没有连上';
+      return false;
+    }
     const body = await this.read(res, (data) => librarySchema.parse(data), '全貌没有加载出来');
     if (!body) return false;
     this.libraryGraph = body;
@@ -156,8 +185,12 @@ export class LibraryService extends Service {
   async loadGraph(collectionId: string): Promise<boolean> {
     const ticket = ++this.graphTicket;
     this.error = '';
-    const res = await fetch(`/api/collections/${collectionId}/graph`, { credentials: 'include' });
+    const res = await this.send(`/api/collections/${collectionId}/graph`, { credentials: 'include' });
     if (ticket !== this.graphTicket) return false;
+    if (!res) {
+      this.error = '网络没有连上';
+      return false;
+    }
     if (!res.ok) {
       this.error = await errorMessage(res, '这个合集没有找到');
       this.graph = { nodes: [], edges: [] };
@@ -176,32 +209,44 @@ export class LibraryService extends Service {
 
   async createNode(collectionId: string, name: string): Promise<Node | null> {
     this.error = '';
-    const res = await fetch(`/api/collections/${collectionId}/nodes`, {
+    const res = await this.send(`/api/collections/${collectionId}/nodes`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name }),
     });
+    if (!res) {
+      this.error = '网络没有连上';
+      return null;
+    }
     return this.read(res, (data) => nodeSchema.parse(data), '点没有建成');
   }
 
   async addMember(collectionId: string, nodeId: string): Promise<boolean> {
     this.error = '';
-    const res = await fetch(`/api/collections/${collectionId}/members`, {
+    const res = await this.send(`/api/collections/${collectionId}/members`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ nodeId }),
     });
+    if (!res) {
+      this.error = '网络没有连上';
+      return false;
+    }
     return this.done(res, '没有放进去');
   }
 
   async removeMember(collectionId: string, nodeId: string): Promise<boolean> {
     this.error = '';
-    const res = await fetch(`/api/collections/${collectionId}/members/${nodeId}`, {
+    const res = await this.send(`/api/collections/${collectionId}/members/${nodeId}`, {
       method: 'DELETE',
       credentials: 'include',
     });
+    if (!res) {
+      this.error = '网络没有连上';
+      return false;
+    }
     return this.done(res, '没有移出');
   }
 
@@ -209,8 +254,12 @@ export class LibraryService extends Service {
     const ticket = ++this.nodeTicket;
     this.error = '';
     this.nodeDetail = null;
-    const res = await fetch(`/api/nodes/${id}`, { credentials: 'include' });
+    const res = await this.send(`/api/nodes/${id}`, { credentials: 'include' });
     if (ticket !== this.nodeTicket) return null;
+    if (!res) {
+      this.error = '网络没有连上';
+      return null;
+    }
     const detail = await this.read(res, (data) => nodeDetailSchema.parse(data), '点没有找到');
     if (!detail || ticket !== this.nodeTicket) return null;
     this.nodeDetail = detail;
@@ -220,8 +269,8 @@ export class LibraryService extends Service {
   /** 悬停预览：不动 nodeDetail，失败静默 */
   async loadPeek(id: string): Promise<void> {
     const ticket = ++this.peekTicket;
-    const res = await fetch(`/api/nodes/${id}`, { credentials: 'include' });
-    if (ticket !== this.peekTicket || !res.ok) return;
+    const res = await this.send(`/api/nodes/${id}`, { credentials: 'include' });
+    if (ticket !== this.peekTicket || !res || !res.ok) return;
     try {
       const detail = nodeDetailSchema.parse(await res.json());
       if (ticket !== this.peekTicket) return;
@@ -238,12 +287,16 @@ export class LibraryService extends Service {
 
   async renameNode(id: string, name: string): Promise<boolean> {
     this.error = '';
-    const res = await fetch(`/api/nodes/${id}`, {
+    const res = await this.send(`/api/nodes/${id}`, {
       method: 'PATCH',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name }),
     });
+    if (!res) {
+      this.error = '网络没有连上';
+      return false;
+    }
     const next = await this.read(res, (data) => nodeSchema.parse(data), '名字没有改成');
     if (!next) return false;
     this.graph = {
@@ -256,12 +309,16 @@ export class LibraryService extends Service {
 
   async describeNode(id: string, description: string): Promise<boolean> {
     this.error = '';
-    const res = await fetch(`/api/nodes/${id}`, {
+    const res = await this.send(`/api/nodes/${id}`, {
       method: 'PATCH',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ description }),
     });
+    if (!res) {
+      this.error = '网络没有连上';
+      return false;
+    }
     const next = await this.read(res, (data) => nodeSchema.parse(data), '描述没有改成');
     if (!next) return false;
     this.graph = {
@@ -274,7 +331,11 @@ export class LibraryService extends Service {
 
   async deleteNode(id: string): Promise<boolean> {
     this.error = '';
-    const res = await fetch(`/api/nodes/${id}`, { method: 'DELETE', credentials: 'include' });
+    const res = await this.send(`/api/nodes/${id}`, { method: 'DELETE', credentials: 'include' });
+    if (!res) {
+      this.error = '网络没有连上';
+      return false;
+    }
     const ok = await this.done(res, '点没有删掉');
     if (!ok) return false;
     if (this.nodeDetail?.id === id) this.nodeDetail = null;
@@ -283,12 +344,16 @@ export class LibraryService extends Service {
 
   async createEdge(fromId: string, toId: string, label: string): Promise<Edge | null> {
     this.error = '';
-    const res = await fetch('/api/edges', {
+    const res = await this.send('/api/edges', {
       method: 'POST',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ fromId, toId, label }),
     });
+    if (!res) {
+      this.error = '网络没有连上';
+      return null;
+    }
     return this.read(res, (data) => edgeSchema.parse(data), '关系没有连上');
   }
 
@@ -296,8 +361,12 @@ export class LibraryService extends Service {
     const ticket = ++this.edgeTicket;
     this.error = '';
     this.edgeDetail = null;
-    const res = await fetch(`/api/edges/${id}`, { credentials: 'include' });
+    const res = await this.send(`/api/edges/${id}`, { credentials: 'include' });
     if (ticket !== this.edgeTicket) return null;
+    if (!res) {
+      this.error = '网络没有连上';
+      return null;
+    }
     const detail = await this.read(res, (data) => edgeDetailSchema.parse(data), '关系没有找到');
     if (!detail || ticket !== this.edgeTicket) return null;
     this.edgeDetail = detail;
@@ -306,12 +375,16 @@ export class LibraryService extends Service {
 
   async renameEdge(id: string, label: string): Promise<boolean> {
     this.error = '';
-    const res = await fetch(`/api/edges/${id}`, {
+    const res = await this.send(`/api/edges/${id}`, {
       method: 'PATCH',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ label }),
     });
+    if (!res) {
+      this.error = '网络没有连上';
+      return false;
+    }
     const next = await this.read(res, (data) => edgeSchema.parse(data), '关系说明没有改成');
     if (!next) return false;
     this.graph = {
@@ -324,7 +397,11 @@ export class LibraryService extends Service {
 
   async deleteEdge(id: string): Promise<boolean> {
     this.error = '';
-    const res = await fetch(`/api/edges/${id}`, { method: 'DELETE', credentials: 'include' });
+    const res = await this.send(`/api/edges/${id}`, { method: 'DELETE', credentials: 'include' });
+    if (!res) {
+      this.error = '网络没有连上';
+      return false;
+    }
     const ok = await this.done(res, '关系没有删掉');
     if (!ok) return false;
     if (this.edgeDetail?.id === id) this.edgeDetail = null;
@@ -333,12 +410,16 @@ export class LibraryService extends Service {
 
   async createCollectionEdge(fromId: string, toId: string, label: string): Promise<Edge | null> {
     this.error = '';
-    const res = await fetch('/api/collection-edges', {
+    const res = await this.send('/api/collection-edges', {
       method: 'POST',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ fromId, toId, label }),
     });
+    if (!res) {
+      this.error = '网络没有连上';
+      return null;
+    }
     return this.read(res, (data) => edgeSchema.parse(data), '合集没有连上');
   }
 
@@ -346,8 +427,12 @@ export class LibraryService extends Service {
     const ticket = ++this.collectionEdgeTicket;
     this.error = '';
     this.collectionEdgeDetail = null;
-    const res = await fetch(`/api/collection-edges/${id}`, { credentials: 'include' });
+    const res = await this.send(`/api/collection-edges/${id}`, { credentials: 'include' });
     if (ticket !== this.collectionEdgeTicket) return null;
+    if (!res) {
+      this.error = '网络没有连上';
+      return null;
+    }
     const detail = await this.read(res, (data) => collectionEdgeDetailSchema.parse(data), '关系没有找到');
     if (!detail || ticket !== this.collectionEdgeTicket) return null;
     this.collectionEdgeDetail = detail;
@@ -356,12 +441,16 @@ export class LibraryService extends Service {
 
   async renameCollectionEdge(id: string, label: string): Promise<boolean> {
     this.error = '';
-    const res = await fetch(`/api/collection-edges/${id}`, {
+    const res = await this.send(`/api/collection-edges/${id}`, {
       method: 'PATCH',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ label }),
     });
+    if (!res) {
+      this.error = '网络没有连上';
+      return false;
+    }
     const next = await this.read(res, (data) => edgeSchema.parse(data), '关系说明没有改成');
     if (!next) return false;
     if (this.libraryGraph) {
@@ -378,7 +467,11 @@ export class LibraryService extends Service {
 
   async deleteCollectionEdge(id: string): Promise<boolean> {
     this.error = '';
-    const res = await fetch(`/api/collection-edges/${id}`, { method: 'DELETE', credentials: 'include' });
+    const res = await this.send(`/api/collection-edges/${id}`, { method: 'DELETE', credentials: 'include' });
+    if (!res) {
+      this.error = '网络没有连上';
+      return false;
+    }
     const ok = await this.done(res, '关系没有删掉');
     if (!ok) return false;
     if (this.collectionEdgeDetail?.id === id) this.collectionEdgeDetail = null;
@@ -393,23 +486,31 @@ export class LibraryService extends Service {
 
   async createCard(body: CreateCardBody): Promise<Card | null> {
     this.error = '';
-    const res = await fetch('/api/cards', {
+    const res = await this.send('/api/cards', {
       method: 'POST',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
     });
+    if (!res) {
+      this.error = '网络没有连上';
+      return null;
+    }
     return this.read(res, (data) => cardSchema.parse(data), '卡片没有加上');
   }
 
   async updateCard(id: string, content: Card['content']): Promise<boolean> {
     this.error = '';
-    const res = await fetch(`/api/cards/${id}`, {
+    const res = await this.send(`/api/cards/${id}`, {
       method: 'PATCH',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ content }),
     });
+    if (!res) {
+      this.error = '网络没有连上';
+      return false;
+    }
     const next = await this.read(res, (data) => cardSchema.parse(data), '卡片没有保存');
     if (!next) return false;
     this.replaceCard(next);
@@ -418,7 +519,11 @@ export class LibraryService extends Service {
 
   async deleteCard(id: string): Promise<boolean> {
     this.error = '';
-    const res = await fetch(`/api/cards/${id}`, { method: 'DELETE', credentials: 'include' });
+    const res = await this.send(`/api/cards/${id}`, { method: 'DELETE', credentials: 'include' });
+    if (!res) {
+      this.error = '网络没有连上';
+      return false;
+    }
     const ok = await this.done(res, '卡片没有删掉');
     if (!ok) return false;
     this.nodeDetail = this.nodeDetail
@@ -444,8 +549,12 @@ export class LibraryService extends Service {
       return;
     }
     this.error = '';
-    const res = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}`, { credentials: 'include' });
+    const res = await this.send(`/api/search?q=${encodeURIComponent(trimmed)}`, { credentials: 'include' });
     if (ticket !== this.searchTicket) return;
+    if (!res) {
+      this.error = '网络没有连上';
+      return;
+    }
     const body = await this.read(res, (data) => searchResponseSchema.parse(data), '没有搜到');
     if (!body || ticket !== this.searchTicket) return;
     this.searchHits = body.hits;

@@ -145,7 +145,9 @@ const MoreMenu = observer(function MoreMenu() {
             type="button"
             className="danger"
             onClick={() => {
-              void session.logout().then(() => navigate('/login'));
+              void session.logout().then((ok) => {
+                if (ok) navigate('/login');
+              });
             }}
           >
             登出

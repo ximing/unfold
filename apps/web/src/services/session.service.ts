@@ -5,9 +5,18 @@ export class SessionService extends Service {
   error = '';
   ready = false;
 
+  /** 网络断开时返回 null。不写 error，避免过期请求盖住新请求。 */
+  private async send(input: string, init?: RequestInit): Promise<Response | null> {
+    try {
+      return await fetch(input, init);
+    } catch {
+      return null;
+    }
+  }
+
   async restore(): Promise<boolean> {
-    const res = await fetch('/api/me', { credentials: 'include' });
-    if (!res.ok) {
+    const res = await this.send('/api/me', { credentials: 'include' });
+    if (!res || !res.ok) {
       this.username = null;
       this.ready = true;
       return false;
@@ -20,12 +29,16 @@ export class SessionService extends Service {
 
   async login(username: string, password: string): Promise<boolean> {
     this.error = '';
-    const res = await fetch('/api/login', {
+    const res = await this.send('/api/login', {
       method: 'POST',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ username, password }),
     });
+    if (!res) {
+      this.error = '网络没有连上';
+      return false;
+    }
     if (!res.ok) {
       this.error = '用户名或密码不正确';
       return false;
@@ -36,9 +49,14 @@ export class SessionService extends Service {
     return true;
   }
 
-  async logout(): Promise<void> {
-    await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+  async logout(): Promise<boolean> {
+    const res = await this.send('/api/logout', { method: 'POST', credentials: 'include' });
+    if (!res) {
+      this.error = '网络没有连上';
+      return false;
+    }
     this.username = null;
     this.error = '';
+    return true;
   }
 }
