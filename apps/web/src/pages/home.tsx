@@ -10,7 +10,7 @@ export const HomePage = observer(function HomePage() {
   useEffect(() => {
     void (async () => {
       const ok = await session.restore();
-      navigate(ok ? '/today' : '/login', { replace: true });
+      navigate(ok ? '/library' : '/login', { replace: true });
     })();
   }, [navigate, session]);
 

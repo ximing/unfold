@@ -1,0 +1,6 @@
+ALTER TABLE "knowledge_objects" DROP CONSTRAINT "knowledge_objects_type_check";--> statement-breakpoint
+ALTER TABLE "relations" DROP CONSTRAINT "relations_type_check";--> statement-breakpoint
+DROP INDEX "relations_user_undirected_pair_active_unique";--> statement-breakpoint
+CREATE UNIQUE INDEX "relations_user_undirected_pair_active_unique" ON "relations" USING btree ("user_id",LEAST("from_id", "to_id"),GREATEST("from_id", "to_id")) WHERE "relations"."deleted_at" IS NULL AND "relations"."type" IN ('contrasts', 'analogous', 'kin_of', 'opposes');--> statement-breakpoint
+ALTER TABLE "knowledge_objects" ADD CONSTRAINT "knowledge_objects_type_check" CHECK ("knowledge_objects"."type" IN ('concept', 'principle', 'method', 'model', 'problem', 'person', 'event'));--> statement-breakpoint
+ALTER TABLE "relations" ADD CONSTRAINT "relations_type_check" CHECK ("relations"."type" IN ('evolves_from', 'prerequisite', 'applies', 'implements', 'contrasts', 'analogous', 'variant', 'fails_when', 'kin_of', 'patron_of', 'opposes', 'influences'));

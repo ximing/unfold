@@ -26,6 +26,9 @@ const NAMES = [
   'algo_problem',
   'theorem',
   'lang_pattern',
+  'work_frame',
+  'reading_role',
+  'sourced_claim',
 ];
 
 function textOf(node: PmNode | null | undefined): string {
@@ -179,7 +182,7 @@ describe('BLOCK_TYPES', () => {
   it('registers learning and reference nodes before block ids', () => {
     const names = getExtensions().map((extension) => extension.name);
     const blockIdAt = names.indexOf('blockId');
-    for (const name of ['object_ref', 'derivation_steps', 'tiered_hints']) {
+    for (const name of ['object_ref', 'derivation_steps', 'tiered_hints', 'work_frame', 'reading_role', 'sourced_claim']) {
       expect(names).toContain(name);
       expect(names.indexOf(name)).toBeLessThan(blockIdAt);
     }

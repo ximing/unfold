@@ -5,15 +5,11 @@ import { BrowserRouter, Route, Routes } from 'react-router';
 import { PasteBench } from './paste-bench.js';
 import { SessionService } from './services/session.service.js';
 import { CollectionPage } from './pages/collection.js';
-import { CreateObjectPage } from './pages/create-object.js';
-import { FocusPage } from './pages/focus.js';
-import { FreePage } from './pages/free.js';
 import { HomePage } from './pages/home.js';
+import { LibraryPage } from './pages/library.js';
 import { LoginPage } from './pages/login.js';
 import { Shell } from './pages/shell.js';
-import { TodayPage } from './pages/today.js';
-import { PracticePage } from './pages/practice.js';
-import './app.css';
+import './workspace.css';
 import 'katex/dist/katex.min.css';
 
 register(SessionService);
@@ -29,12 +25,8 @@ createRoot(root).render(
         <Route path="/login" element={<LoginPage />} />
         <Route path="/paste-bench" element={<PasteBench />} />
         <Route element={<Shell />}>
-          <Route path="/today" element={<TodayPage />} />
-          <Route path="/new" element={<CreateObjectPage />} />
-          <Route path="/free/:domainId" element={<FreePage />} />
-          <Route path="/o/:id" element={<FocusPage />} />
+          <Route path="/library" element={<LibraryPage />} />
           <Route path="/c/:id" element={<CollectionPage />} />
-          <Route path="/practice/:capabilityId" element={<PracticePage />} />
         </Route>
       </Routes>
     </BrowserRouter>

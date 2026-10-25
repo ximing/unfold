@@ -36,15 +36,9 @@ importers:
       '@fastify/rate-limit':
         specifier: ^11.2.1
         version: 11.2.1
-      '@unfold/doc-schema':
-        specifier: workspace:*
-        version: link:../../packages/doc-schema
       '@unfold/dto':
         specifier: workspace:*
         version: link:../../packages/dto
-      '@unfold/search':
-        specifier: workspace:*
-        version: link:../../packages/search
       argon2:
         specifier: ^0.45.1
         version: 0.45.1
@@ -57,9 +51,6 @@ importers:
       pg:
         specifier: ^8.23.1
         version: 8.23.1
-      ts-fsrs:
-        specifier: ^5.4.2
-        version: 5.4.2
       zod:
         specifier: ^4.6.7
         version: 4.6.7
@@ -97,12 +88,18 @@ importers:
       '@tiptap/react':
         specifier: 3.31.3
         version: 3.31.3(@floating-ui/dom@1.8.0)(@tiptap/core@3.31.3(@tiptap/pm@3.31.3))(@tiptap/pm@3.31.3)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@tiptap/starter-kit':
+        specifier: 3.31.3
+        version: 3.31.3
       '@unfold/doc-schema':
         specifier: workspace:*
         version: link:../../packages/doc-schema
       '@unfold/dto':
         specifier: workspace:*
         version: link:../../packages/dto
+      highlight.js:
+        specifier: ^11.11.2
+        version: 11.11.2
       katex:
         specifier: 0.16.45
         version: 0.16.45
@@ -134,6 +131,9 @@ importers:
       vite:
         specifier: ^6.3.5
         version: 6.4.5(@types/node@26.6.5)(tsx@4.23.15)
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/debug@4.1.13)(@types/node@26.6.5)(happy-dom@20.14.6)(tsx@4.23.15)
 
   packages/doc-schema:
     dependencies:
@@ -2954,10 +2954,6 @@ packages:
   ts-dedent@2.3.0:
     resolution: {integrity: sha512-JfJeIHke7y2egdGGgRAvpCwYFUsHlM2gPcrVOxFkznt/4uzQ7HFmvE63iFHVLBJNDuyDOQgijDK/tXH/f6Msjg==}
     engines: {node: '>=6.10'}
-
-  ts-fsrs@5.4.2:
-    resolution: {integrity: sha512-z4qop4pzTcyTzuJ566d9EaX/4bZZzhYfeaPImfVr+xcYT65c5oBgFDijUhCE/D+C78eaolHIhKRZ04/RwF+v2g==}
-    engines: {node: '>=20.0.0'}
 
   tsx@4.23.15:
     resolution: {integrity: sha512-Yiex1Ovn8z2xPpOWckIiysV1SSyRMY9BkLF++q0yKiDxCqRhosKfMg3janKkiLBwZ5c/YryloKwGZcrEmtwxKw==}
@@ -5967,8 +5963,6 @@ snapshots:
       typescript: 5.9.3
 
   ts-dedent@2.3.0: {}
-
-  ts-fsrs@5.4.2: {}
 
   tsx@4.23.15:
     dependencies:

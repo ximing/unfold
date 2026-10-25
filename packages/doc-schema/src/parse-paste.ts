@@ -85,11 +85,18 @@ function emptyDocument(nextId: () => string): PmNode {
   };
 }
 
-const SUBJECT_PASTE_TYPES = ['algo_problem', 'theorem', 'lang_pattern'] as const;
+const SUBJECT_PASTE_TYPES = [
+  'algo_problem',
+  'theorem',
+  'lang_pattern',
+  'work_frame',
+  'reading_role',
+  'sourced_claim',
+] as const;
 
 /**
  * Clipboard HTML + plain text → a validated document.
- * Plain text whose first line is 题面/命题/句型 wins over HTML and Markdown.
+ * Plain text whose first line is 题面/命题/句型/作者/角色 wins over HTML and Markdown.
  * Otherwise Markdown wins only when the plain text has a block-level Markdown signal,
  * or when there is no rich HTML and the plain text still has inline Markdown.
  */

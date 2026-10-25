@@ -1,63 +1,64 @@
-import { SCHEMA_VERSION } from '@unfold/doc-schema';
 import {
-  collectionDetailSchema,
-  collectionListSchema,
-  collectionReadSchema,
-  collectionSchema,
-  confirmCollectionReadBodySchema,
+  addMemberBodySchema,
   createCollectionBodySchema,
+  createNodeBodySchema,
+  updateCollectionBodySchema,
 } from '@unfold/dto';
-import { and, asc, eq, isNull, max } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
-import { confirmCollectionRead, pendingCollectionReads } from './collection-reads.js';
-import type { createDb } from './db/client.js';
-import { collections, documents, domains } from './db/schema.js';
-import type { SessionLookup } from './objects.js';
+import { cards, collectionEdges, collections, edges, memberships, nodes } from './db/schema.js';
+import {
+  activeCollection,
+  activeNode,
+  type Database,
+  removeCollection,
+} from './graph-db.js';
+import {
+  bodyMessage,
+  collectionNotFound,
+  idParamsSchema,
+  invalidBody,
+  memberParamsSchema,
+  nodeNotFound,
+  type SessionLookup,
+} from './http.js';
 
-type Database = ReturnType<typeof createDb>;
+type CardStat = { count: number; types: string[] };
 
-const invalidBody = { error: { code: 'invalid_body', message: '请求格式不正确' } };
-const domainNotFound = { error: { code: 'not_found', message: '没有这个领域' } };
-const collectionNotFound = { error: { code: 'not_found', message: '没有这个合集' } };
-const objectNotFound = { error: { code: 'not_found', message: '没有这个点' } };
-const invalidNesting = { error: { code: 'invalid_nesting', message: '合集最多嵌套一层' } };
-const domainMismatch = {
-  error: { code: 'domain_mismatch', message: '子合集要和父合集在同一个领域' },
-};
-
-type CreateFailure = {
-  ok: false;
-  status: 404 | 409;
-  body: { error: { code: string; message: string } };
-};
-
-function reject(status: CreateFailure['status'], body: CreateFailure['body']): CreateFailure {
-  return { ok: false, status, body };
+/** 图上的徽标数据：每个 owner 的活跃卡片数和出现过的卡片类型 */
+async function cardStats(db: Database, userId: string, ownerKind: 'node' | 'edge' | 'collection_edge', ownerIds: string[]) {
+  const stats = new Map<string, CardStat>();
+  if (ownerIds.length === 0) return stats;
+  const rows = await db
+    .select({
+      id: cards.ownerId,
+      value: count(),
+      types: sql<string[]>`array_agg(distinct ${cards.cardType})`,
+    })
+    .from(cards)
+    .where(
+      and(
+        eq(cards.userId, userId),
+        eq(cards.ownerKind, ownerKind),
+        inArray(cards.ownerId, ownerIds),
+        isNull(cards.deletedAt),
+      ),
+    )
+    .groupBy(cards.ownerId);
+  for (const row of rows) stats.set(row.id, { count: row.value, types: row.types });
+  return stats;
 }
 
-const collectionColumns = {
-  id: collections.id,
-  domainId: collections.domainId,
-  title: collections.title,
-  intent: collections.intent,
-  parentCollectionId: collections.parentCollectionId,
-  position: collections.position,
-  documentId: collections.documentId,
-};
-
-type CollectionRow = {
-  id: string;
-  domainId: string;
-  title: string;
-  intent: string;
-  parentCollectionId: string | null;
-  position: number;
-  documentId: string | null;
-};
-
-function presentCollection(row: CollectionRow) {
-  return collectionSchema.parse(row);
+/** 合集目录的徽标数据：每个合集的成员点数 */
+async function memberCounts(db: Database, userId: string) {
+  const rows = await db
+    .select({ id: memberships.collectionId, value: count() })
+    .from(memberships)
+    .innerJoin(collections, eq(collections.id, memberships.collectionId))
+    .where(and(eq(collections.userId, userId), isNull(collections.deletedAt)))
+    .groupBy(memberships.collectionId);
+  return new Map(rows.map((row) => [row.id, row.value]));
 }
 
 export function registerCollectionRoutes(app: FastifyInstance, db: Database, session: SessionLookup) {
@@ -66,171 +67,208 @@ export function registerCollectionRoutes(app: FastifyInstance, db: Database, ses
     if (!user) return;
 
     const parsed = createCollectionBodySchema.safeParse(request.body);
-    if (!parsed.success) return reply.code(400).send(invalidBody);
+    if (!parsed.success) return reply.code(400).send(invalidBody(bodyMessage(parsed.error)));
 
-    const parentCollectionId = parsed.data.parentCollectionId ?? null;
-    const outcome = await db.transaction(async (tx) => {
-      const domainRows = await tx
-        .select({ id: domains.id })
-        .from(domains)
-        .where(
-          and(eq(domains.id, parsed.data.domainId), eq(domains.userId, user.id), isNull(domains.deletedAt)),
-        )
-        .limit(1);
-      if (!domainRows[0]) return reject(404, domainNotFound);
-
-      if (parentCollectionId) {
-        const parentRows = await tx
-          .select({
-            domainId: collections.domainId,
-            parentCollectionId: collections.parentCollectionId,
-          })
-          .from(collections)
-          .where(
-            and(
-              eq(collections.id, parentCollectionId),
-              eq(collections.userId, user.id),
-              isNull(collections.deletedAt),
-            ),
-          )
-          .limit(1);
-        const parent = parentRows[0];
-        if (!parent) return reject(404, collectionNotFound);
-        if (parent.parentCollectionId) return reject(409, invalidNesting);
-        if (parent.domainId !== parsed.data.domainId) return reject(409, domainMismatch);
-      }
-
-      const sameParent = parentCollectionId
-        ? eq(collections.parentCollectionId, parentCollectionId)
-        : isNull(collections.parentCollectionId);
-      const [highest] = await tx
-        .select({ position: max(collections.position) })
-        .from(collections)
-        .where(
-          and(
-            eq(collections.userId, user.id),
-            eq(collections.domainId, parsed.data.domainId),
-            sameParent,
-            isNull(collections.deletedAt),
-          ),
-        );
-      const position = highest?.position == null ? 0 : highest.position + 1;
-
-      const inserted = await tx
-        .insert(collections)
-        .values({
-          userId: user.id,
-          domainId: parsed.data.domainId,
-          title: parsed.data.title,
-          intent: parsed.data.intent,
-          parentCollectionId,
-          position,
-        })
-        .returning({ id: collections.id });
-      const created = inserted[0];
-      if (!created) throw new Error('insert collection failed');
-
-      const docs = await tx
-        .insert(documents)
-        .values({
-          userId: user.id,
-          ownerType: 'collection',
-          ownerId: created.id,
-          schemaVersion: SCHEMA_VERSION,
-          contentJson: { type: 'doc', content: [] },
-          plainText: '',
-        })
-        .returning({ id: documents.id });
-      const document = docs[0];
-      if (!document) throw new Error('insert document failed');
-
-      await tx
-        .update(collections)
-        .set({ documentId: document.id, updatedAt: new Date() })
-        .where(eq(collections.id, created.id));
-
-      return {
-        ok: true as const,
-        collection: presentCollection({
-          id: created.id,
-          domainId: parsed.data.domainId,
-          title: parsed.data.title,
-          intent: parsed.data.intent,
-          parentCollectionId,
-          position,
-          documentId: document.id,
-        }),
-      };
-    });
-
-    if (!outcome.ok) return reply.code(outcome.status).send(outcome.body);
-    return reply.code(201).send(outcome.collection);
+    const inserted = await db
+      .insert(collections)
+      .values({ userId: user.id, title: parsed.data.title })
+      .returning({ id: collections.id, title: collections.title });
+    return reply.code(201).send(inserted[0]);
   });
 
   app.get('/api/collections', async (request, reply) => {
     const user = await session(request, reply);
     if (!user) return;
 
-    const parsed = z.object({ domainId: z.uuid() }).safeParse(request.query);
-    if (!parsed.success) return reply.code(400).send(invalidBody);
-
     const rows = await db
-      .select(collectionColumns)
+      .select({ id: collections.id, title: collections.title })
       .from(collections)
+      .where(and(eq(collections.userId, user.id), isNull(collections.deletedAt)))
+      .orderBy(asc(collections.createdAt), asc(collections.id));
+    const counts = await memberCounts(db, user.id);
+    return reply.code(200).send({
+      collections: rows.map((row) => ({ ...row, nodeCount: counts.get(row.id) ?? 0 })),
+    });
+  });
+
+  app.patch('/api/collections/:id', async (request, reply) => {
+    const user = await session(request, reply);
+    if (!user) return;
+
+    const params = idParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send(invalidBody());
+    const parsed = updateCollectionBodySchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send(invalidBody(bodyMessage(parsed.error)));
+
+    const updated = await db
+      .update(collections)
+      .set({ title: parsed.data.title, updatedAt: new Date() })
+      .where(
+        and(eq(collections.id, params.data.id), eq(collections.userId, user.id), isNull(collections.deletedAt)),
+      )
+      .returning({ id: collections.id, title: collections.title });
+    const row = updated[0];
+    if (!row) return reply.code(404).send(collectionNotFound);
+    return reply.code(200).send(row);
+  });
+
+  app.delete('/api/collections/:id', async (request, reply) => {
+    const user = await session(request, reply);
+    if (!user) return;
+
+    const params = idParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send(invalidBody());
+    const removed = await removeCollection(db, user.id, params.data.id);
+    if (!removed) return reply.code(404).send(collectionNotFound);
+    return reply.code(204).send();
+  });
+
+  app.get('/api/library', async (request, reply) => {
+    const user = await session(request, reply);
+    if (!user) return;
+
+    const fromCollection = alias(collections, 'library_from_collection');
+    const toCollection = alias(collections, 'library_to_collection');
+    const collectionRows = await db
+      .select({ id: collections.id, title: collections.title })
+      .from(collections)
+      .where(and(eq(collections.userId, user.id), isNull(collections.deletedAt)))
+      .orderBy(asc(collections.createdAt), asc(collections.id));
+    const edgeRows = await db
+      .select({
+        id: collectionEdges.id,
+        fromId: collectionEdges.fromId,
+        toId: collectionEdges.toId,
+        label: collectionEdges.label,
+      })
+      .from(collectionEdges)
+      .innerJoin(fromCollection, eq(fromCollection.id, collectionEdges.fromId))
+      .innerJoin(toCollection, eq(toCollection.id, collectionEdges.toId))
       .where(
         and(
-          eq(collections.userId, user.id),
-          eq(collections.domainId, parsed.data.domainId),
-          isNull(collections.deletedAt),
+          eq(collectionEdges.userId, user.id),
+          isNull(collectionEdges.deletedAt),
+          isNull(fromCollection.deletedAt),
+          isNull(toCollection.deletedAt),
+          eq(fromCollection.userId, user.id),
+          eq(toCollection.userId, user.id),
         ),
       )
-      .orderBy(asc(collections.position), asc(collections.title));
-
-    return reply.code(200).send(collectionListSchema.parse({ collections: rows.map(presentCollection) }));
+      .orderBy(asc(collectionEdges.createdAt), asc(collectionEdges.id));
+    const counts = await memberCounts(db, user.id);
+    const edgeStats = await cardStats(db, user.id, 'collection_edge', edgeRows.map((row) => row.id));
+    return reply.code(200).send({
+      collections: collectionRows.map((row) => ({ ...row, nodeCount: counts.get(row.id) ?? 0 })),
+      edges: edgeRows.map((row) => ({ ...row, cardCount: edgeStats.get(row.id)?.count ?? 0 })),
+    });
   });
 
-  app.get('/api/collections/:id', async (request, reply) => {
+  app.get('/api/collections/:id/graph', async (request, reply) => {
     const user = await session(request, reply);
     if (!user) return;
 
-    const params = z.object({ id: z.uuid() }).safeParse(request.params);
-    if (!params.success) return reply.code(404).send(collectionNotFound);
+    const params = idParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send(invalidBody());
+    const collection = await activeCollection(db, user.id, params.data.id);
+    if (!collection) return reply.code(404).send(collectionNotFound);
 
-    const rows = await db
-      .select(collectionColumns)
-      .from(collections)
+    const memberRows = await db
+      .select({ id: nodes.id, name: nodes.name, description: nodes.description })
+      .from(memberships)
+      .innerJoin(nodes, eq(nodes.id, memberships.nodeId))
       .where(
-        and(eq(collections.id, params.data.id), eq(collections.userId, user.id), isNull(collections.deletedAt)),
+        and(
+          eq(memberships.collectionId, collection.id),
+          eq(nodes.userId, user.id),
+          isNull(nodes.deletedAt),
+        ),
       )
-      .limit(1);
-    const row = rows[0];
-    if (!row) return reply.code(404).send(collectionNotFound);
-    const pending = await pendingCollectionReads(db, user.id, row.id, row.documentId);
-    return reply.code(200).send(collectionDetailSchema.parse({ ...presentCollection(row), pending }));
+      .orderBy(asc(nodes.createdAt), asc(nodes.id));
+
+    if (memberRows.length === 0) return reply.code(200).send({ nodes: [], edges: [] });
+
+    const memberIds = memberRows.map((row) => row.id);
+    const edgeRows = await db
+      .select({ id: edges.id, fromId: edges.fromId, toId: edges.toId, label: edges.label })
+      .from(edges)
+      .where(
+        and(
+          eq(edges.userId, user.id),
+          isNull(edges.deletedAt),
+          inArray(edges.fromId, memberIds),
+          inArray(edges.toId, memberIds),
+        ),
+      )
+      .orderBy(asc(edges.createdAt), asc(edges.id));
+    const nodeStats = await cardStats(db, user.id, 'node', memberIds);
+    const edgeStats = await cardStats(db, user.id, 'edge', edgeRows.map((row) => row.id));
+    return reply.code(200).send({
+      nodes: memberRows.map((row) => {
+        const stat = nodeStats.get(row.id);
+        return { ...row, cardCount: stat?.count ?? 0, cardTypes: stat?.types ?? [] };
+      }),
+      edges: edgeRows.map((row) => ({ ...row, cardCount: edgeStats.get(row.id)?.count ?? 0 })),
+    });
   });
 
-  app.post('/api/collections/:id/reads', async (request, reply) => {
+  app.post('/api/collections/:id/nodes', async (request, reply) => {
     const user = await session(request, reply);
     if (!user) return;
 
-    const params = z.object({ id: z.uuid() }).safeParse(request.params);
-    if (!params.success) return reply.code(404).send(collectionNotFound);
+    const params = idParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send(invalidBody());
+    const parsed = createNodeBodySchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send(invalidBody(bodyMessage(parsed.error)));
 
-    const rows = await db
-      .select(collectionColumns)
-      .from(collections)
-      .where(
-        and(eq(collections.id, params.data.id), eq(collections.userId, user.id), isNull(collections.deletedAt)),
-      )
-      .limit(1);
-    const row = rows[0];
-    if (!row) return reply.code(404).send(collectionNotFound);
+    const created = await db.transaction(async (tx) => {
+      const collection = await activeCollection(tx, user.id, params.data.id);
+      if (!collection) return null;
+      const inserted = await tx
+        .insert(nodes)
+        .values({ userId: user.id, name: parsed.data.name })
+        .returning({ id: nodes.id, name: nodes.name });
+      const node = inserted[0];
+      if (!node) return null;
+      await tx.insert(memberships).values({ collectionId: collection.id, nodeId: node.id });
+      return node;
+    });
+    if (!created) return reply.code(404).send(collectionNotFound);
+    return reply.code(201).send(created);
+  });
 
-    const parsed = confirmCollectionReadBodySchema.safeParse(request.body);
-    if (!parsed.success) return reply.code(400).send(invalidBody);
+  app.post('/api/collections/:id/members', async (request, reply) => {
+    const user = await session(request, reply);
+    if (!user) return;
 
-    const read = await confirmCollectionRead(db, user.id, row.id, row.documentId, parsed.data.objectId);
-    if (!read) return reply.code(404).send(objectNotFound);
-    return reply.code(200).send(collectionReadSchema.parse(read));
+    const params = idParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send(invalidBody());
+    const parsed = addMemberBodySchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send(invalidBody());
+
+    const collection = await activeCollection(db, user.id, params.data.id);
+    if (!collection) return reply.code(404).send(collectionNotFound);
+    const node = await activeNode(db, user.id, parsed.data.nodeId);
+    if (!node) return reply.code(404).send(nodeNotFound);
+
+    await db
+      .insert(memberships)
+      .values({ collectionId: collection.id, nodeId: node.id })
+      .onConflictDoNothing();
+    return reply.code(204).send();
+  });
+
+  app.delete('/api/collections/:id/members/:nodeId', async (request, reply) => {
+    const user = await session(request, reply);
+    if (!user) return;
+
+    const params = memberParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send(invalidBody());
+    const collection = await activeCollection(db, user.id, params.data.id);
+    if (!collection) return reply.code(404).send(collectionNotFound);
+
+    await db
+      .delete(memberships)
+      .where(and(eq(memberships.collectionId, collection.id), eq(memberships.nodeId, params.data.nodeId)));
+    return reply.code(204).send();
   });
 }

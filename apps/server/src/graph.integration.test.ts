@@ -1,11 +1,7 @@
-import { domainSchema, objectSummarySchema } from '@unfold/dto';
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import { buildApp } from './app.js';
-import { createDb, createPool } from './db/client.js';
-import { documents, domains, evidence, knowledgeObjects, relations, users } from './db/schema.js';
-import { graphResponseSchema } from './graph.js';
 
 const username = process.env.SEED_USERNAME;
 const password = process.env.SEED_PASSWORD;
@@ -20,95 +16,16 @@ function cookiePair(setCookie: string | string[] | undefined): string {
   return pair;
 }
 
-function errorOf(payload: unknown): { code: string; message: string } {
-  if (!payload || typeof payload !== 'object' || !('error' in payload)) {
-    throw new Error('missing error');
-  }
-  const error = payload.error;
-  if (!error || typeof error !== 'object' || !('code' in error) || !('message' in error)) {
-    throw new Error('missing error');
-  }
-  if (typeof error.code !== 'string' || typeof error.message !== 'string') {
-    throw new Error('missing error');
-  }
-  return { code: error.code, message: error.message };
+function errorOf(body: { error?: { code?: string; message?: string } }) {
+  return body.error ?? { code: '', message: '' };
 }
 
 describe('graph', () => {
   let app: FastifyInstance;
-  let pool: ReturnType<typeof createPool>;
-  let db: ReturnType<typeof createDb>;
-  let cookie = '';
-  let userId = '';
-  const stamp = Date.now();
-  const domainIds: string[] = [];
-  const objectIds: string[] = [];
-  let domainId = '';
-  let seq = 0;
-
-  function name(prefix: string): string {
-    seq += 1;
-    return `${prefix}-${stamp}-${seq}`;
-  }
-
-  async function createDomain(domainName: string): Promise<string> {
-    const created = await app.inject({
-      method: 'POST',
-      url: '/api/domains',
-      headers: { cookie },
-      payload: { name: domainName },
-    });
-    expect(created.statusCode).toBe(201);
-    const id = domainSchema.parse(created.json()).id;
-    domainIds.push(id);
-    return id;
-  }
-
-  async function createObject(canonicalName: string, coreStatement: string) {
-    const created = await app.inject({
-      method: 'POST',
-      url: '/api/objects',
-      headers: { cookie },
-      payload: { domainId, type: 'concept', canonicalName, coreStatement },
-    });
-    expect(created.statusCode).toBe(201);
-    const id = objectSummarySchema.parse(created.json()).id;
-    objectIds.push(id);
-    return id;
-  }
-
-  async function relate(payload: Record<string, unknown>) {
-    const created = await app.inject({
-      method: 'POST',
-      url: '/api/relations',
-      headers: { cookie },
-      payload,
-    });
-    expect(created.statusCode).toBe(201);
-  }
-
-  async function readGraph(id: string) {
-    const res = await app.inject({
-      method: 'GET',
-      url: `/api/objects/${id}/graph`,
-      headers: { cookie },
-    });
-    expect(res.statusCode).toBe(200);
-    return graphResponseSchema.parse(res.json());
-  }
-
-  async function evidenceCount(): Promise<number> {
-    const rows = await db
-      .select({ count: sql<string>`count(*)::text` })
-      .from(evidence)
-      .where(eq(evidence.userId, userId));
-    return Number(rows[0]?.count ?? '0');
-  }
+  let cookie: string;
 
   beforeAll(async () => {
     app = await buildApp();
-    pool = createPool();
-    db = createDb(pool);
     const login = await app.inject({
       method: 'POST',
       url: '/api/login',
@@ -116,222 +33,316 @@ describe('graph', () => {
     });
     expect(login.statusCode).toBe(200);
     cookie = cookiePair(login.headers['set-cookie']);
-
-    const found = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(and(eq(users.username, username), isNull(users.deletedAt)))
-      .limit(1);
-    const user = found[0];
-    if (!user) throw new Error('seed user missing');
-    userId = user.id;
-    domainId = await createDomain(`领域-${stamp}`);
   });
 
   afterAll(async () => {
-    const now = new Date();
-    if (objectIds.length > 0) {
-      await db
-        .update(knowledgeObjects)
-        .set({ deletedAt: now, updatedAt: now })
-        .where(inArray(knowledgeObjects.id, objectIds));
-      await db
-        .update(documents)
-        .set({ deletedAt: now, updatedAt: now })
-        .where(inArray(documents.ownerId, objectIds));
-    }
-    if (domainIds.length > 0) {
-      await db.update(domains).set({ deletedAt: now, updatedAt: now }).where(inArray(domains.id, domainIds));
-    }
-    await pool.end();
     await app.close();
   });
 
-  it('returns 404 when the id is not a uuid', async () => {
-    const res = await app.inject({
-      method: 'GET',
-      url: '/api/objects/not-a-uuid/graph',
-      headers: { cookie },
+  function call(
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+    url: string,
+    payload?: Record<string, unknown>,
+    withCookie = true,
+  ): Promise<LightMyRequestResponse> {
+    return app.inject({
+      method,
+      url,
+      payload,
+      headers: withCookie ? { cookie } : undefined,
     });
-    expect(res.statusCode).toBe(404);
-    expect(errorOf(res.json())).toEqual({ code: 'not_found', message: '没有这个点' });
+  }
+
+  it('rejects anonymous requests', async () => {
+    const created = await call('POST', '/api/collections', { title: '未登录' }, false);
+    expect(created.statusCode).toBe(401);
+    expect(errorOf(created.json()).code).toBe('unauthenticated');
+
+    const library = await call('GET', '/api/library', undefined, false);
+    expect(library.statusCode).toBe(401);
+
+    const search = await call('GET', '/api/search?q=点', undefined, false);
+    expect(search.statusCode).toBe(401);
   });
 
-  it('returns only the focus when nothing is linked', async () => {
-    const canonicalName = name('孤点');
-    const focusId = await createObject(canonicalName, '周围还没有关系');
-    const body = await readGraph(focusId);
-    expect(body.truncated).toBe(false);
-    expect(body.edges).toEqual([]);
-    expect(body.nodes).toEqual([
-      {
-        id: focusId,
-        canonicalName,
-        coreStatement: '周围还没有关系',
-        type: 'concept',
-        x: 0,
-        y: 0,
-      },
-    ]);
-  });
+  it('builds a collection graph, cards, and search hits', async () => {
+    const token = randomUUID().replaceAll('-', '').slice(0, 12);
+    const bodyToken = `正文${token}`;
 
-  it('places one accepted neighbor in each sector', async () => {
-    const focusName = name('焦点');
-    const focusId = await createObject(focusName, '看四周');
-    const originId = await createObject(name('来历'), '更早的做法');
-    const destinationId = await createObject(name('去向'), '用在别处');
-    const contrastId = await createObject(name('对照'), '另一条路');
-    const variantId = await createObject(name('变体'), '条件一变就不一样');
+    const blank = await call('POST', '/api/collections', { title: '   ' });
+    expect(blank.statusCode).toBe(400);
+    expect(errorOf(blank.json())).toEqual({ code: 'invalid_body', message: '标题不能是空的' });
 
-    await relate({
-      fromId: focusId,
-      toId: originId,
-      type: 'evolves_from',
-      whatChanged: '把重复合并掉',
-    });
-    await relate({
-      fromId: focusId,
-      toId: destinationId,
-      type: 'applies',
-    });
-    await relate({
-      fromId: focusId,
-      toId: contrastId,
-      type: 'contrasts',
-      distinction: '一个合并，一个展开',
-    });
-    await relate({
-      fromId: focusId,
-      toId: variantId,
-      type: 'variant',
-      whatChanged: '改成带权重',
-      condition: '边权不相等时',
-    });
+    const first = await call('POST', '/api/collections', { title: `  合集甲${token}  ` });
+    expect(first.statusCode).toBe(201);
+    const collectionA = first.json() as { id: string; title: string };
+    expect(collectionA.title).toBe(`合集甲${token}`);
 
-    const body = await readGraph(focusId);
-    const byId = Object.fromEntries(body.nodes.map((node) => [node.id, node]));
-    expect(byId[focusId]).toMatchObject({ x: 0, y: 0, canonicalName: focusName });
-    expect(byId[originId]).toMatchObject({ x: -180, y: 0 });
-    expect(byId[destinationId]).toMatchObject({ x: 180, y: 0 });
-    expect(byId[contrastId]).toMatchObject({ x: 0, y: -180 });
-    expect(byId[variantId]).toMatchObject({ x: 0, y: 180 });
+    const emptyGraph = await call('GET', `/api/collections/${collectionA.id}/graph`);
+    expect(emptyGraph.statusCode).toBe(200);
+    expect(emptyGraph.json()).toEqual({ nodes: [], edges: [] });
 
-    const edgeByTo = new Map(body.edges.map((edge) => [edge.toId, edge]));
-    expect(edgeByTo.get(originId)).toEqual({
-      fromId: focusId,
-      toId: originId,
-      type: 'evolves_from',
-      label: '演化',
-    });
-    expect(edgeByTo.get(destinationId)).toEqual({
-      fromId: focusId,
-      toId: destinationId,
-      type: 'applies',
-      label: '应用',
-    });
-    expect(edgeByTo.get(contrastId)).toEqual({
-      fromId: focusId,
-      toId: contrastId,
-      type: 'contrasts',
-      label: '对比',
-    });
-    expect(edgeByTo.get(variantId)).toEqual({
-      fromId: focusId,
-      toId: variantId,
-      type: 'variant',
-      label: '变体',
-    });
-    expect(body.edges.every((edge) => edge.fromId === focusId)).toBe(true);
-  });
+    const missing = await call('GET', `/api/nodes/${randomUUID()}`);
+    expect(missing.statusCode).toBe(404);
+    expect(errorOf(missing.json())).toEqual({ code: 'not_found', message: '点没有找到' });
 
-  it('leaves a suggested prerequisite off the graph', async () => {
-    const focusId = await createObject(name('焦点'), '建议先不画');
-    const keptId = await createObject(name('来历'), '已经接受');
-    const hiddenId = await createObject(name('前置'), '还只是建议');
-    await relate({
-      fromId: focusId,
-      toId: keptId,
-      type: 'evolves_from',
-      whatChanged: '先收下这条',
+    const nodeARes = await call('POST', `/api/collections/${collectionA.id}/nodes`, {
+      name: `  点甲${token}  `,
     });
-    await db.insert(relations).values({
-      userId,
-      fromId: focusId,
-      toId: hiddenId,
-      type: 'prerequisite',
-      status: 'suggested',
+    const nodeBRes = await call('POST', `/api/collections/${collectionA.id}/nodes`, { name: `点乙${token}` });
+    const nodeCRes = await call('POST', `/api/collections/${collectionA.id}/nodes`, { name: `点丙${token}` });
+    const duplicateRes = await call('POST', `/api/collections/${collectionA.id}/nodes`, {
+      name: `点甲${token}`,
     });
+    expect(nodeARes.statusCode).toBe(201);
+    expect(nodeBRes.statusCode).toBe(201);
+    expect(nodeCRes.statusCode).toBe(201);
+    expect(duplicateRes.statusCode).toBe(201);
+    const nodeA = nodeARes.json() as { id: string; name: string };
+    const nodeB = nodeBRes.json() as { id: string; name: string };
+    const nodeC = nodeCRes.json() as { id: string; name: string };
+    const duplicate = duplicateRes.json() as { id: string; name: string };
+    expect(nodeA.name).toBe(`点甲${token}`);
+    expect(duplicate.name).toBe(nodeA.name);
+    expect(duplicate.id).not.toBe(nodeA.id);
 
-    const body = await readGraph(focusId);
-    const ids = body.nodes.map((node) => node.id);
-    expect(ids).toContain(keptId);
-    expect(ids).not.toContain(hiddenId);
-  });
+    const emptyName = await call('POST', `/api/collections/${collectionA.id}/nodes`, { name: '  ' });
+    expect(emptyName.statusCode).toBe(400);
+    expect(errorOf(emptyName.json())).toEqual({ code: 'invalid_body', message: '名字不能是空的' });
 
-  it('stacks two origins on the vertical axis', async () => {
-    const focusId = await createObject(name('焦点'), '两条来历');
-    const firstId = await createObject(name('来历'), '更早');
-    const secondId = await createObject(name('来历'), '稍后');
-    await relate({
-      fromId: focusId,
-      toId: firstId,
-      type: 'evolves_from',
-      whatChanged: '第一次变化',
+    const edgeABRes = await call('POST', '/api/edges', {
+      fromId: nodeA.id,
+      toId: nodeB.id,
+      label: '  前提  ',
     });
-    await relate({
-      fromId: focusId,
-      toId: secondId,
-      type: 'evolves_from',
-      whatChanged: '第二次变化',
+    const edgeBCRes = await call('POST', '/api/edges', {
+      fromId: nodeB.id,
+      toId: nodeC.id,
+      label: '发生于',
     });
+    expect(edgeABRes.statusCode).toBe(201);
+    expect(edgeBCRes.statusCode).toBe(201);
+    const edgeAB = edgeABRes.json() as { id: string; fromId: string; toId: string; label: string };
+    const edgeBC = edgeBCRes.json() as { id: string };
+    expect(edgeAB).toMatchObject({ fromId: nodeA.id, toId: nodeB.id, label: '前提' });
 
-    const body = await readGraph(focusId);
-    const origins = body.nodes.filter((node) => node.id !== focusId);
-    expect(origins.map((node) => node.x)).toEqual([-180, -180]);
-    expect(origins.map((node) => node.y)).toEqual([-36, 36]);
-  });
+    const selfLoop = await call('POST', '/api/edges', {
+      fromId: nodeA.id,
+      toId: nodeA.id,
+      label: '前提',
+    });
+    expect(selfLoop.statusCode).toBe(400);
+    expect(errorOf(selfLoop.json())).toEqual({ code: 'invalid_body', message: '不能连到自己' });
 
-  it('truncates the 51st origin neighbor', async () => {
-    const focusId = await createObject(name('焦点'), '来历太多');
-    for (let index = 0; index < 51; index += 1) {
-      const neighborId = await createObject(name('来历'), `第${index}条来历`);
-      await relate({
-        fromId: focusId,
-        toId: neighborId,
-        type: 'evolves_from',
-        whatChanged: `变化${index}`,
+    const duplicateEdge = await call('POST', '/api/edges', {
+      fromId: nodeA.id,
+      toId: nodeB.id,
+      label: '前提',
+    });
+    expect(duplicateEdge.statusCode).toBe(409);
+    expect(errorOf(duplicateEdge.json())).toEqual({ code: 'conflict', message: '这条关系已经有了' });
+
+    const blankLabel = await call('POST', '/api/edges', {
+      fromId: nodeA.id,
+      toId: nodeB.id,
+      label: '   ',
+    });
+    expect(blankLabel.statusCode).toBe(400);
+    expect(errorOf(blankLabel.json())).toEqual({ code: 'invalid_body', message: '关系说明不能是空的' });
+
+    const cardSamples = [
+      { type: 'note', content: { body: bodyToken } },
+      { type: 'code', content: { language: 'ts', source: 'const a = 1' } },
+      { type: 'formula', content: { latex: 'E=mc^2' } },
+      { type: 'person', content: { identity: '某人', note: '' } },
+      { type: 'event', content: { when: '', where: '', summary: '' } },
+      { type: 'place', content: { note: '' } },
+      { type: 'period', content: { start: '', end: '', note: '' } },
+      { type: 'group', content: { note: '一组' } },
+    ];
+
+    const nodeCardIds: string[] = [];
+    for (const sample of cardSamples) {
+      const res = await call('POST', '/api/cards', {
+        ownerKind: 'node',
+        ownerId: nodeA.id,
+        ...sample,
       });
+      expect(res.statusCode, JSON.stringify(sample)).toBe(201);
+      const card = res.json() as { id: string; type: string; position: number; content: unknown };
+      expect(card.type).toBe(sample.type);
+      expect(card.content).toEqual(sample.content);
+      nodeCardIds.push(card.id);
+    }
+    expect(nodeCardIds).toHaveLength(8);
+
+    for (const sample of cardSamples) {
+      const res = await call('POST', '/api/cards', {
+        ownerKind: 'edge',
+        ownerId: edgeAB.id,
+        ...sample,
+        content: sample.type === 'note' ? { body: '' } : sample.content,
+      });
+      expect(res.statusCode, `edge ${sample.type}`).toBe(201);
     }
 
-    const ordered = await db
-      .select({ toId: relations.toId })
-      .from(relations)
-      .where(
-        and(
-          eq(relations.userId, userId),
-          eq(relations.fromId, focusId),
-          eq(relations.type, 'evolves_from'),
-          eq(relations.status, 'accepted'),
-          isNull(relations.deletedAt),
-        ),
-      )
-      .orderBy(asc(relations.createdAt), asc(relations.id));
-    expect(ordered).toHaveLength(51);
-    const droppedId = ordered[50]?.toId;
-    if (!droppedId) throw new Error('missing 51st neighbor');
+    const badCard = await call('POST', '/api/cards', {
+      ownerKind: 'node',
+      ownerId: nodeA.id,
+      type: 'note',
+      content: { body: 'x', extra: 'nope' },
+    });
+    expect(badCard.statusCode).toBe(400);
+    expect(errorOf(badCard.json()).code).toBe('invalid_body');
 
-    const body = await readGraph(focusId);
-    expect(body.truncated).toBe(true);
-    expect(body.nodes).toHaveLength(51);
-    expect(body.nodes.map((node) => node.id)).not.toContain(droppedId);
-  });
+    const missingField = await call('POST', '/api/cards', {
+      ownerKind: 'edge',
+      ownerId: edgeAB.id,
+      type: 'event',
+      content: { when: '昨天' },
+    });
+    expect(missingField.statusCode).toBe(400);
+    expect(errorOf(missingField.json()).code).toBe('invalid_body');
 
-  it('does not write evidence', async () => {
-    const focusId = await createObject(name('焦点'), '只是看一眼');
-    const before = await evidenceCount();
-    const body = await readGraph(focusId);
-    const after = await evidenceCount();
-    expect(body.nodes.map((node) => node.id)).toEqual([focusId]);
-    expect(after).toBe(before);
+    const nodeDetail = await call('GET', `/api/nodes/${nodeA.id}`);
+    expect(nodeDetail.statusCode).toBe(200);
+    const detail = nodeDetail.json() as {
+      name: string;
+      collections: { id: string }[];
+      cards: { id: string; position: number }[];
+    };
+    expect(detail.name).toBe(nodeA.name);
+    expect(detail.collections.map((item) => item.id)).toContain(collectionA.id);
+    expect(detail.cards.map((item) => item.id)).toEqual(nodeCardIds);
+    expect(detail.cards.map((item) => item.position)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+
+    const edgeDetail = await call('GET', `/api/edges/${edgeAB.id}`);
+    expect(edgeDetail.statusCode).toBe(200);
+    const edgeBody = edgeDetail.json() as { fromName: string; toName: string; cards: unknown[] };
+    expect(edgeBody.fromName).toBe(nodeA.name);
+    expect(edgeBody.toName).toBe(nodeB.name);
+    expect(edgeBody.cards).toHaveLength(8);
+
+    const graph = await call('GET', `/api/collections/${collectionA.id}/graph`);
+    expect(graph.statusCode).toBe(200);
+    const graphBody = graph.json() as {
+      nodes: { id: string }[];
+      edges: { id: string; fromId: string; toId: string }[];
+    };
+    expect(graphBody.nodes.map((item) => item.id).sort()).toEqual(
+      [nodeA.id, nodeB.id, nodeC.id, duplicate.id].sort(),
+    );
+    expect(graphBody.edges.map((item) => item.id).sort()).toEqual([edgeAB.id, edgeBC.id].sort());
+
+    const second = await call('POST', '/api/collections', { title: `合集乙${token}` });
+    expect(second.statusCode).toBe(201);
+    const collectionB = second.json() as { id: string; title: string };
+
+    const collectionEdgeRes = await call('POST', '/api/collection-edges', {
+      fromId: collectionA.id,
+      toId: collectionB.id,
+      label: '相关',
+    });
+    expect(collectionEdgeRes.statusCode).toBe(201);
+    const collectionEdge = collectionEdgeRes.json() as { id: string; fromId: string; toId: string; label: string };
+    expect(collectionEdge).toMatchObject({
+      fromId: collectionA.id,
+      toId: collectionB.id,
+      label: '相关',
+    });
+
+    const collectionSelf = await call('POST', '/api/collection-edges', {
+      fromId: collectionA.id,
+      toId: collectionA.id,
+      label: '相关',
+    });
+    expect(collectionSelf.statusCode).toBe(400);
+    expect(errorOf(collectionSelf.json()).message).toBe('不能连到自己');
+
+    const library = await call('GET', '/api/library');
+    expect(library.statusCode).toBe(200);
+    const libraryBody = library.json() as {
+      collections: { id: string }[];
+      edges: { id: string }[];
+    };
+    expect(libraryBody.collections.map((item) => item.id)).toEqual(
+      expect.arrayContaining([collectionA.id, collectionB.id]),
+    );
+    expect(libraryBody.edges.map((item) => item.id)).toContain(collectionEdge.id);
+
+    const collectionEdgeDetail = await call('GET', `/api/collection-edges/${collectionEdge.id}`);
+    expect(collectionEdgeDetail.statusCode).toBe(200);
+    expect(collectionEdgeDetail.json()).toMatchObject({
+      fromTitle: collectionA.title,
+      toTitle: collectionB.title,
+      cards: [],
+    });
+
+    const link = await call('POST', `/api/collections/${collectionB.id}/members`, { nodeId: nodeA.id });
+    expect(link.statusCode).toBe(204);
+    const linkAgain = await call('POST', `/api/collections/${collectionB.id}/members`, { nodeId: nodeA.id });
+    expect(linkAgain.statusCode).toBe(204);
+
+    const graphB = await call('GET', `/api/collections/${collectionB.id}/graph`);
+    const graphBBody = graphB.json() as { nodes: { id: string }[]; edges: { id: string }[] };
+    expect(graphBBody.nodes.map((item) => item.id)).toContain(nodeA.id);
+    expect(graphBBody.nodes.map((item) => item.id)).not.toContain(nodeB.id);
+    expect(graphBBody.edges).toEqual([]);
+
+    const graphAAgain = await call('GET', `/api/collections/${collectionA.id}/graph`);
+    expect((graphAAgain.json() as { nodes: { id: string }[] }).nodes.map((item) => item.id)).toContain(nodeA.id);
+
+    const removedEdge = await call('DELETE', `/api/edges/${edgeAB.id}`);
+    expect(removedEdge.statusCode).toBe(204);
+    const afterDelete = await call('GET', `/api/collections/${collectionA.id}/graph`);
+    const afterBody = afterDelete.json() as { edges: { id: string }[] };
+    expect(afterBody.edges.map((item) => item.id)).not.toContain(edgeAB.id);
+    expect(afterBody.edges.map((item) => item.id)).toContain(edgeBC.id);
+    const gone = await call('GET', `/api/edges/${edgeAB.id}`);
+    expect(gone.statusCode).toBe(404);
+    expect(errorOf(gone.json()).message).toBe('关系没有找到');
+
+    const byName = await call('GET', `/api/search?q=${encodeURIComponent(`点乙${token}`)}`);
+    expect(byName.statusCode).toBe(200);
+    const nameHits = byName.json() as {
+      hits: { nodeId: string; name: string; collectionId: string; snippet: string }[];
+    };
+    expect(nameHits.hits).toEqual([
+      expect.objectContaining({
+        nodeId: nodeB.id,
+        name: nodeB.name,
+        collectionId: collectionA.id,
+        snippet: nodeB.name,
+      }),
+    ]);
+
+    const byCard = await call('GET', `/api/search?q=${encodeURIComponent(bodyToken)}`);
+    expect(byCard.statusCode).toBe(200);
+    const cardHits = byCard.json() as {
+      hits: { nodeId: string; collectionId: string; snippet: string }[];
+    };
+    expect(cardHits.hits).toHaveLength(1);
+    expect(cardHits.hits[0]).toMatchObject({ nodeId: nodeA.id, collectionId: collectionA.id });
+    expect(cardHits.hits[0]?.snippet).toContain(bodyToken);
+
+    const emptyQuery = await call('GET', '/api/search?q=%20%20');
+    expect(emptyQuery.json()).toEqual({ hits: [] });
+
+    const detachA = await call('DELETE', `/api/collections/${collectionA.id}/members/${nodeA.id}`);
+    const detachB = await call('DELETE', `/api/collections/${collectionB.id}/members/${nodeA.id}`);
+    expect(detachA.statusCode).toBe(204);
+    expect(detachB.statusCode).toBe(204);
+    const detached = await call('GET', `/api/search?q=${encodeURIComponent(`点甲${token}`)}`);
+    const detachedHits = detached.json() as {
+      hits: { nodeId: string; collectionId: string; collectionTitle: string }[];
+    };
+    const detachedA = detachedHits.hits.find((hit) => hit.nodeId === nodeA.id);
+    expect(detachedA).toMatchObject({ collectionId: '', collectionTitle: '' });
+
+    expect((await call('DELETE', `/api/nodes/${nodeA.id}`)).statusCode).toBe(204);
+    expect((await call('DELETE', `/api/nodes/${nodeB.id}`)).statusCode).toBe(204);
+    expect((await call('DELETE', `/api/nodes/${nodeC.id}`)).statusCode).toBe(204);
+    expect((await call('DELETE', `/api/collections/${collectionA.id}`)).statusCode).toBe(204);
+    expect((await call('DELETE', `/api/collections/${collectionB.id}`)).statusCode).toBe(204);
   });
 });

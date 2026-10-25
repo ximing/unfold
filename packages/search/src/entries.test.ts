@@ -54,6 +54,40 @@ describe('blockEntries', () => {
     expect(entries[0]?.text).toBe('保留这一句');
   });
 
+  it('does not index a work frame', () => {
+    const entries = blockEntries({
+      ...base,
+      ownerType: 'object',
+      ownerId: 'obj-1',
+      blocks: [
+        { blockId: 'frame', blockType: 'work_frame', text: '某某 前提' },
+        { blockId: 'claim', blockType: 'sourced_claim', text: '财政决定胜负 第3章' },
+        { blockId: 'role', blockType: 'reading_role', text: '人物' },
+      ],
+    });
+
+    expect(entries.map((entry) => entry.id)).toEqual(['block:claim', 'block:role']);
+    expect(entries[0]).toMatchObject({ kind: 'block', objectId: 'obj-1', text: '财政决定胜负 第3章' });
+    expect(entries[1]?.text).toBe('人物');
+  });
+
+  it('skips a collection sourced claim instead of making a collection sentence', () => {
+    const entries = blockEntries({
+      ...base,
+      ownerType: 'collection',
+      ownerId: 'col-1',
+      title: '状态等价与压缩',
+      blocks: [
+        { blockId: 'frame', blockType: 'work_frame', text: '某某 前提' },
+        { blockId: 'claim', blockType: 'sourced_claim', text: '财政决定胜负 第3章' },
+        { blockId: 'sent-1', blockType: 'paragraph', text: '可提升的原句' },
+      ],
+    });
+
+    expect(entries.map((entry) => entry.id)).toEqual(['collection_sentence:sent-1']);
+    expect(entries[0]?.kind).toBe('collection_sentence');
+  });
+
   it('indexes an object paragraph as a block owned by the object', () => {
     const entries = blockEntries({
       ...base,

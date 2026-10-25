@@ -1,211 +1,262 @@
 import { bindServices, observer, useService } from '@rabjs/react';
-import { Fragment, useEffect, useRef, useState } from 'react';
-import { NavLink, Navigate, Outlet, useNavigate } from 'react-router';
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router';
+import { CreateCollectionDialog } from '../components/create-collection.js';
+import { IconMore, IconPlus, IconSearch, IconSidebar, IconStarMap } from '../components/ui/icons.js';
+import { ToastHost } from '../components/ui/toast.js';
 import { LibraryService } from '../services/library.service.js';
 import { SessionService } from '../services/session.service.js';
 
-function kindLabel(kind: 'object' | 'block' | 'question' | 'decision' | 'collection_sentence'): string {
-  switch (kind) {
-    case 'object':
-      return '点';
-    case 'block':
-      return '块';
-    case 'question':
-      return '疑问';
-    case 'decision':
-      return '决定';
-    case 'collection_sentence':
-      return '合集里的句子';
-  }
-}
-
-const SearchBox = observer(function SearchBox() {
+const SearchPalette = observer(function SearchPalette({ onClose }: { onClose: () => void }) {
   const library = useService(LibraryService);
   const navigate = useNavigate();
-  const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [highlight, setHighlight] = useState(0);
 
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault();
-        inputRef.current?.focus();
-        return;
-      }
-      if (event.key === 'Escape' && open) {
-        event.preventDefault();
-        setOpen(false);
-      }
-    };
-    const onMouseDown = (event: MouseEvent) => {
-      const root = rootRef.current;
-      if (root && event.target instanceof Node && root.contains(event.target)) return;
-      setOpen(false);
-    };
-    document.addEventListener('keydown', onKeyDown);
-    document.addEventListener('mousedown', onMouseDown);
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      document.removeEventListener('mousedown', onMouseDown);
-    };
-  }, [open]);
+    inputRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     const trimmed = query.trim();
-    if (trimmed === '') return;
+    if (trimmed === '') {
+      library.clearSearch();
+      return;
+    }
     const timer = window.setTimeout(() => {
       void library.search(trimmed);
     }, 200);
-    return () => {
-      window.clearTimeout(timer);
-    };
+    return () => window.clearTimeout(timer);
   }, [library, query]);
 
-  const trimmed = query.trim();
+  const hits = query.trim() === '' ? [] : library.searchHits;
+
+  useEffect(() => {
+    setHighlight(0);
+  }, [query, hits.length]);
+
+  function openHit(index: number) {
+    const hit = hits[index];
+    if (!hit || hit.collectionId === '') return;
+    navigate(`/c/${hit.collectionId}?node=${hit.nodeId}`);
+    onClose();
+  }
+
+  function onKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (hits.length === 0) return;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const delta = event.key === 'ArrowDown' ? 1 : -1;
+      setHighlight((current) => (current + delta + hits.length) % hits.length);
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      openHit(highlight);
+    }
+  }
 
   return (
-    <div className="search" ref={rootRef}>
-      <input
-        id="q"
-        ref={inputRef}
-        type="search"
-        placeholder="搜索点、疑问或决定　⌘K"
-        aria-label="搜索"
-        autoComplete="off"
-        aria-controls="hits"
-        aria-expanded={open}
-        value={query}
-        onChange={(event) => {
-          const next = event.target.value;
-          setQuery(next);
-          if (next.trim() === '') {
-            library.clearSearch();
-            setOpen(false);
-            return;
-          }
-          setOpen(true);
-        }}
-      />
-      <div id="hits" className="hits" hidden={!open || trimmed === ''}>
-        {library.searchQuery === trimmed ? (
-          <>
-            {library.searchNotice === '检索降级中' ? <p className="muted">检索降级中</p> : null}
-            {library.searchError !== '' ? <p role="alert">{library.searchError}</p> : null}
-            {library.searchGroups.length === 0 && library.searchError === '' ? (
-              <p className="muted">没有这条记录</p>
-            ) : null}
-            {library.searchGroups.map((group, groupIndex) => {
-              const objectId = group.objectId;
-              const title = group.domain !== '' ? `${group.title} · ${group.domain}` : group.title;
-              return (
-                <div key={`${objectId ?? ''}:${group.domain}:${groupIndex}`}>
-                  <p className="group">{title}</p>
-                  {group.hits.map((hit, hitIndex) => {
-                    const secondary =
-                      hit.text !== '' ? hit.text : hit.kind === 'object' && group.core !== '' ? group.core : '';
-                    return (
-                      <button
-                        key={`${hit.id}:${hitIndex}`}
-                        type="button"
-                        disabled={objectId === null || objectId === ''}
-                        onClick={() => {
-                          if (objectId === null || objectId === '') return;
-                          navigate('/o/' + objectId);
-                          setOpen(false);
-                        }}
-                      >
-                        {kindLabel(hit.kind)}
-                        {hit.promote === true ? ' · 可提升' : null}
-                        {secondary !== '' ? <small>{secondary}</small> : null}
-                      </button>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </>
-        ) : trimmed !== '' ? (
-          <p className="muted">正在检索…</p>
-        ) : null}
+    <div
+      className="overlay"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="palette" role="dialog" aria-modal="true" aria-label="搜索">
+        <div className="pin">
+          <IconSearch size={16} />
+          <input
+            ref={inputRef}
+            placeholder="搜索点或卡片"
+            aria-label="搜索"
+            autoComplete="off"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={onKeyDown}
+          />
+          <span className="kbd">esc</span>
+        </div>
+        <div className="hits">
+          {library.error !== '' ? <p className="empty-line">{library.error}</p> : null}
+          {query.trim() !== '' && hits.length === 0 && library.error === '' ? (
+            <p className="empty-line">没有这条记录</p>
+          ) : null}
+          {hits.map((hit, index) => (
+            <button
+              key={`${hit.nodeId}:${hit.collectionId}:${index}`}
+              type="button"
+              className={index === highlight ? 'hit hl' : 'hit'}
+              onMouseEnter={() => setHighlight(index)}
+              onClick={() => openHit(index)}
+            >
+              <span>{hit.name}</span>
+              {hit.collectionId === '' ? (
+                <small>不在任何合集</small>
+              ) : hit.snippet !== '' ? (
+                <small>{hit.snippet}</small>
+              ) : null}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
 });
 
-function CollectionLinks({
-  items,
-  parentId,
-  depth,
-}: {
-  items: LibraryService['collections'];
-  parentId: string | null;
-  depth: number;
-}) {
-  const nodes = items.filter((item) => item.parentCollectionId === parentId);
+const MoreMenu = observer(function MoreMenu() {
+  const session = useService(SessionService);
+  const navigate = useNavigate();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const onMouseDown = (event: MouseEvent) => {
+      const root = rootRef.current;
+      if (root && event.target instanceof Node && root.contains(event.target)) return;
+      setOpen(false);
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    return () => document.removeEventListener('mousedown', onMouseDown);
+  }, [open]);
+
   return (
-    <>
-      {nodes.map((item) => (
-        <Fragment key={item.id}>
-          <NavLink
-            to={'/c/' + item.id}
-            style={depth > 0 ? { paddingLeft: `${depth * 0.75}rem` } : undefined}
+    <div className="rail-pop-wrap" ref={rootRef}>
+      <button
+        type="button"
+        className="rail-btn"
+        title="更多"
+        aria-label="更多"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <IconMore />
+      </button>
+      {open ? (
+        <div className="rail-pop">
+          <button
+            type="button"
+            className="danger"
+            onClick={() => {
+              void session.logout().then(() => navigate('/login'));
+            }}
           >
-            合集 · {item.title}
-          </NavLink>
-          <CollectionLinks items={items} parentId={item.id} depth={depth + 1} />
-        </Fragment>
-      ))}
-    </>
+            登出
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
-}
+});
 
 const ShellView = observer(function ShellView() {
   const session = useService(SessionService);
   const library = useService(LibraryService);
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [sideOff, setSideOff] = useState(false);
 
   useEffect(() => {
     void (async () => {
       if (!session.username) await session.restore();
-      if (session.username) {
-        await library.loadDomains();
-        if (library.error === '领域没有加载出来') return;
-        for (const domain of library.domains) {
-          await library.loadCollections(domain.id);
-        }
-      }
+      if (session.username) await library.loadCollections();
     })();
   }, [library, session]);
 
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setPaletteOpen((value) => !value);
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'n') {
+        event.preventDefault();
+        library.clearError();
+        setCreating(true);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [library]);
+
   if (session.ready && !session.username) return <Navigate to="/login" replace />;
 
+  const libraryOn = pathname === '/library' || pathname.startsWith('/library/');
+
   return (
-    <div className="frame">
-      <aside className="rail">
-        <NavLink to="/today">今日</NavLink>
-        {library.domains.map((domain) => (
-          <div key={domain.id} className="rail-domain">
-            <p>{domain.name}</p>
-            {library.collections.some((item) => item.domainId === domain.id) ? (
-              <CollectionLinks
-                items={library.collections.filter((item) => item.domainId === domain.id)}
-                parentId={null}
-                depth={0}
-              />
-            ) : (
-              <p className="muted">还没有合集</p>
-            )}
-            <NavLink to={`/free/${domain.id}`}>游离 · {domain.freeCount} 个点</NavLink>
-          </div>
+    <div className={sideOff ? 'wk side-off' : 'wk'}>
+      <div className="rail">
+        <Link className="logo" to="/library" aria-label="Unfold">
+          展
+        </Link>
+        <Link className={libraryOn ? 'rail-btn on' : 'rail-btn'} to="/library" title="合集" aria-label="合集">
+          <IconStarMap />
+        </Link>
+        <button type="button" className="rail-btn" title="搜索 ⌘K" aria-label="搜索" onClick={() => setPaletteOpen(true)}>
+          <IconSearch />
+        </button>
+        <button
+          type="button"
+          className="rail-btn"
+          title="新建合集 ⌘N"
+          aria-label="新建合集"
+          onClick={() => {
+            library.clearError();
+            setCreating(true);
+          }}
+        >
+          <IconPlus />
+        </button>
+        <button
+          type="button"
+          className="rail-btn"
+          title={sideOff ? '显示目录' : '收起目录'}
+          aria-label={sideOff ? '显示目录' : '收起目录'}
+          onClick={() => setSideOff((value) => !value)}
+        >
+          <IconSidebar />
+        </button>
+        <div className="sp" />
+        <MoreMenu />
+      </div>
+      <nav className="side" aria-label="合集">
+        <div className="side-head">
+          <p className="side-h">合集</p>
+        </div>
+        {library.collections.map((collection) => (
+          <NavLink
+            key={collection.id}
+            className={({ isActive }) => `item${isActive ? ' on' : ''}`}
+            end
+            to={`/c/${collection.id}`}
+          >
+            <span className="nm">{collection.title}</span>
+            {collection.nodeCount > 0 ? <span className="cnt">{collection.nodeCount}</span> : null}
+          </NavLink>
         ))}
-        <NavLink to="/new">新建点</NavLink>
-        {library.error === '领域没有加载出来' ? <p role="alert">{library.error}</p> : null}
-      </aside>
-      <div className="work">
-        <SearchBox />
+        {library.collections.length === 0 ? <p className="item minor">还没有合集</p> : null}
+      </nav>
+      <div className="stage-wrap">
         <Outlet />
       </div>
+      {paletteOpen ? <SearchPalette onClose={() => setPaletteOpen(false)} /> : null}
+      {creating ? (
+        <CreateCollectionDialog
+          onClose={() => setCreating(false)}
+          onCreated={(id) => navigate(`/c/${id}`)}
+        />
+      ) : null}
+      <ToastHost />
     </div>
   );
 });

@@ -38,6 +38,9 @@ export const BLOCK_ID_TYPES = [
   'algo_problem',
   'theorem',
   'lang_pattern',
+  'work_frame',
+  'reading_role',
+  'sourced_claim',
 ] as const;
 
 export const BlockId = Extension.create({
@@ -237,6 +240,25 @@ const FIELD_LABELS: Record<string, string> = {
   example: '例句',
   contrast: '对照',
   confusion: '易混点',
+  author: '作者',
+  edition: '版本',
+  year: '年份',
+  genre: '体裁',
+  premise: '前提',
+  whyRead: '为何读',
+  nextPassage: '下一段',
+  role: '角色',
+  claim: '主张',
+  claimKind: '种类',
+  locator: '位置',
+  excerpt: '原文',
+  attribution: '归属',
+  narratorReliable: '叙述',
+  anchorKind: '锚类',
+  anchorLabel: '锚',
+  tieKind: '关系',
+  otherLabel: '对方',
+  workTitle: '书',
 };
 
 function subjectBlock(name: string, dataType: string, fields: readonly string[]) {
@@ -341,6 +363,29 @@ const LangPattern = subjectBlock('lang_pattern', 'lang-pattern', [
   'contrast',
   'confusion',
 ]);
+const WorkFrame = subjectBlock('work_frame', 'work-frame', [
+  'author',
+  'edition',
+  'year',
+  'genre',
+  'premise',
+  'whyRead',
+  'nextPassage',
+]);
+const ReadingRole = subjectBlock('reading_role', 'reading-role', ['role']);
+const SourcedClaim = subjectBlock('sourced_claim', 'sourced-claim', [
+  'claim',
+  'claimKind',
+  'locator',
+  'excerpt',
+  'attribution',
+  'narratorReliable',
+  'anchorKind',
+  'anchorLabel',
+  'tieKind',
+  'otherLabel',
+  'workTitle',
+]);
 
 export function getExtensions(): AnyExtension[] {
   return [
@@ -370,6 +415,9 @@ export function getExtensions(): AnyExtension[] {
     AlgoProblem,
     Theorem,
     LangPattern,
+    WorkFrame,
+    ReadingRole,
+    SourcedClaim,
     BlockId,
   ];
 }

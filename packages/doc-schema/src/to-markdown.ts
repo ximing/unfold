@@ -81,6 +81,12 @@ function block(node: PmNode): string {
       return subjectBlockToMarkdown(node);
     case 'lang_pattern':
       return subjectBlockToMarkdown(node);
+    case 'work_frame':
+      return subjectBlockToMarkdown(node);
+    case 'reading_role':
+      return subjectBlockToMarkdown(node);
+    case 'sourced_claim':
+      return subjectBlockToMarkdown(node);
     default:
       return (node.content ?? []).map(block).filter(Boolean).join('\n\n');
   }

@@ -141,10 +141,61 @@ const LANG_FIELDS: readonly SubjectField[] = [
   { key: 'confusion', label: '易混点' },
 ];
 
+const WORK_FRAME_FIELDS: readonly SubjectField[] = [
+  { key: 'author', label: '作者' },
+  { key: 'edition', label: '版本' },
+  { key: 'year', label: '年份' },
+  { key: 'genre', label: '体裁' },
+  { key: 'premise', label: '前提' },
+  { key: 'whyRead', label: '为何读' },
+  { key: 'nextPassage', label: '下一段' },
+];
+
+/** searchableText order. Author and premise lead so a 200-character preview keeps them. */
+const WORK_FRAME_SEARCH_FIELDS: readonly SubjectField[] = [
+  { key: 'author', label: '作者' },
+  { key: 'premise', label: '前提' },
+  { key: 'edition', label: '版本' },
+  { key: 'year', label: '年份' },
+  { key: 'genre', label: '体裁' },
+  { key: 'whyRead', label: '为何读' },
+  { key: 'nextPassage', label: '下一段' },
+];
+
+const READING_ROLE_FIELDS: readonly SubjectField[] = [{ key: 'role', label: '角色' }];
+
+/** 粘贴首行是主张，这样只写了主张也能进块。aboutObjectId 和 relationId 不是粘贴标签。 */
+const SOURCED_CLAIM_FIELDS: readonly SubjectField[] = [
+  { key: 'claim', label: '主张' },
+  { key: 'claimKind', label: '种类' },
+  { key: 'locator', label: '位置' },
+  { key: 'excerpt', label: '原文' },
+  { key: 'attribution', label: '归属' },
+  { key: 'narratorReliable', label: '叙述' },
+  { key: 'anchorKind', label: '锚类' },
+  { key: 'anchorLabel', label: '锚' },
+  { key: 'tieKind', label: '关系' },
+  { key: 'otherLabel', label: '对方' },
+  { key: 'workTitle', label: '书' },
+];
+
+/** 主张和位置在前，避免预览被摘录截断。种类用中文词，不放 id。 */
+const SOURCED_CLAIM_SEARCH_FIELDS: readonly SubjectField[] = [
+  { key: 'claim', label: '主张' },
+  { key: 'locator', label: '位置' },
+  { key: 'anchorLabel', label: '锚' },
+  { key: 'otherLabel', label: '对方' },
+  { key: 'excerpt', label: '原文' },
+  { key: 'claimKind', label: '种类' },
+];
+
 const SUBJECT_FIELDS: Record<string, readonly SubjectField[]> = {
   algo_problem: ALGO_FIELDS,
   theorem: THEOREM_FIELDS,
   lang_pattern: LANG_FIELDS,
+  work_frame: WORK_FRAME_FIELDS,
+  reading_role: READING_ROLE_FIELDS,
+  sourced_claim: SOURCED_CLAIM_FIELDS,
 };
 
 function parseSubjectFields(
@@ -173,7 +224,7 @@ function parseSubjectFields(
   return attrs;
 }
 
-/** Four labeled lines. Half-width colon and one space; empty fields stay. */
+/** Labeled lines. Half-width colon and one space; empty fields stay. */
 export function subjectBlockToMarkdown(node: PmNode): string {
   const fields = SUBJECT_FIELDS[node.type];
   if (!fields) return '';
@@ -187,7 +238,12 @@ function subjectSearchText(node: PmNode, fields: readonly SubjectField[]): strin
     .join(' ');
 }
 
-function subjectBlock(name: string, renderHint: string, fields: readonly SubjectField[]): BlockTypeSpec {
+function subjectBlock(
+  name: string,
+  renderHint: string,
+  fields: readonly SubjectField[],
+  searchFields: readonly SubjectField[] = fields,
+): BlockTypeSpec {
   return {
     name,
     pmNode: name,
@@ -198,7 +254,7 @@ function subjectBlock(name: string, renderHint: string, fields: readonly Subject
       return { type: name, attrs };
     },
     toMarkdown: subjectBlockToMarkdown,
-    searchableText: (node) => subjectSearchText(node, fields),
+    searchableText: (node) => subjectSearchText(node, searchFields),
   };
 }
 
@@ -241,6 +297,9 @@ export const BLOCK_TYPES: readonly BlockTypeSpec[] = [
   subjectBlock('algo_problem', '算法题', ALGO_FIELDS),
   subjectBlock('theorem', '定理', THEOREM_FIELDS),
   subjectBlock('lang_pattern', '句型', LANG_FIELDS),
+  subjectBlock('work_frame', '书目', WORK_FRAME_FIELDS, WORK_FRAME_SEARCH_FIELDS),
+  subjectBlock('reading_role', '角色', READING_ROLE_FIELDS),
+  subjectBlock('sourced_claim', '主张', SOURCED_CLAIM_FIELDS, SOURCED_CLAIM_SEARCH_FIELDS),
 ];
 
 const BLOCK_TYPES_BY_NAME = new Map(BLOCK_TYPES.map((spec) => [spec.name, spec]));

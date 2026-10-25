@@ -1,846 +1,462 @@
 import { Service } from '@rabjs/react';
 import {
+  cardSchema,
+  collectionEdgeDetailSchema,
+  collectionGraphSchema,
   collectionListSchema,
-  capabilitySchema,
   collectionSchema,
-  collectionDetailSchema,
-  documentResponseSchema,
-  domainListSchema,
-  domainSchema,
+  edgeDetailSchema,
+  edgeSchema,
   errorBodySchema,
-  fanRelationListSchema,
-  objectSummarySchema,
-  relationSchema,
+  librarySchema,
+  nodeDetailSchema,
+  nodeSchema,
   searchResponseSchema,
-  suggestionListSchema,
+  type Card,
   type Collection,
-  type CollectionDetail,
-  type Capability,
-  type CreateObjectBody,
-  type CreateRelationBody,
-  type DocumentResponse,
-  type Domain,
-  type FanRelation,
-  type ObjectSummary,
-  type Relation,
-  type SearchGroup,
+  type CollectionEdgeDetail,
+  type CollectionGraph,
+  type CreateCardBody,
+  type Edge,
+  type EdgeDetail,
+  type Library,
+  type LibraryCollection,
+  type Node,
+  type NodeDetail,
+  type SearchHit,
 } from '@unfold/dto';
-import type { Suggestion } from '@unfold/dto';
 
-async function errorMessage(res: Response, fallback = '请求没有完成'): Promise<string> {
+async function errorMessage(res: Response, fallback: string): Promise<string> {
   try {
-    const body: unknown = await res.json();
-    return errorBodySchema.parse(body).error.message;
+    return errorBodySchema.parse(await res.json()).error.message;
   } catch {
     return fallback;
   }
 }
 
-type ChainNodeView = {
-  id: string;
-  canonicalName: string;
-  coreStatement: string;
-};
-
-type ChainEdgeView = {
-  fromId: string;
-  toId: string;
-  whatChanged: string;
-};
-
-type ObjectChain = {
-  type: 'evolves_from' | 'variant';
-  nodes: ChainNodeView[];
-  edges: ChainEdgeView[];
-};
-
-type GraphNodeView = {
-  id: string;
-  canonicalName: string;
-  coreStatement: string;
-  type: 'concept' | 'principle' | 'method' | 'model' | 'problem';
-  x: number;
-  y: number;
-};
-
-type GraphEdgeView = {
-  fromId: string;
-  toId: string;
-  type: string;
-  label: string;
-};
-
-type GraphView = {
-  truncated: boolean;
-  nodes: GraphNodeView[];
-  edges: GraphEdgeView[];
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isUnknownArray(value: unknown): value is readonly unknown[] {
-  return Array.isArray(value);
-}
-
-function readChainNode(value: unknown): ChainNodeView | null {
-  if (!isRecord(value)) return null;
-  const { id, canonicalName, coreStatement } = value;
-  if (typeof id !== 'string' || typeof canonicalName !== 'string' || typeof coreStatement !== 'string') {
-    return null;
-  }
-  return { id, canonicalName, coreStatement };
-}
-
-function readChainEdge(value: unknown): ChainEdgeView | null {
-  if (!isRecord(value)) return null;
-  const { fromId, toId, whatChanged } = value;
-  if (typeof fromId !== 'string' || typeof toId !== 'string' || typeof whatChanged !== 'string') {
-    return null;
-  }
-  return { fromId, toId, whatChanged };
-}
-
-function readChain(value: unknown): ObjectChain | null {
-  if (!isRecord(value)) return null;
-  const { type, nodes, edges } = value;
-  if (type !== 'evolves_from' && type !== 'variant') return null;
-  if (!isUnknownArray(nodes) || !isUnknownArray(edges)) return null;
-  const parsedNodes: ChainNodeView[] = [];
-  for (const node of nodes) {
-    const parsed = readChainNode(node);
-    if (!parsed) return null;
-    parsedNodes.push(parsed);
-  }
-  const parsedEdges: ChainEdgeView[] = [];
-  for (const edge of edges) {
-    const parsed = readChainEdge(edge);
-    if (!parsed) return null;
-    parsedEdges.push(parsed);
-  }
-  return { type, nodes: parsedNodes, edges: parsedEdges };
-}
-
-function readChains(value: unknown): ObjectChain[] | null {
-  if (!isRecord(value) || !isUnknownArray(value.chains)) return null;
-  const chains: ObjectChain[] = [];
-  for (const item of value.chains) {
-    const parsed = readChain(item);
-    if (!parsed) return null;
-    chains.push(parsed);
-  }
-  return chains;
-}
-
-function readGraphNode(value: unknown): GraphNodeView | null {
-  if (!isRecord(value)) return null;
-  const { id, canonicalName, coreStatement, type, x, y } = value;
-  if (typeof id !== 'string' || typeof canonicalName !== 'string' || typeof coreStatement !== 'string') {
-    return null;
-  }
-  if (
-    type !== 'concept' &&
-    type !== 'principle' &&
-    type !== 'method' &&
-    type !== 'model' &&
-    type !== 'problem'
-  ) {
-    return null;
-  }
-  if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) {
-    return null;
-  }
-  return { id, canonicalName, coreStatement, type, x, y };
-}
-
-function readGraphEdge(value: unknown): GraphEdgeView | null {
-  if (!isRecord(value)) return null;
-  const { fromId, toId, type, label } = value;
-  if (
-    typeof fromId !== 'string' ||
-    typeof toId !== 'string' ||
-    typeof type !== 'string' ||
-    typeof label !== 'string'
-  ) {
-    return null;
-  }
-  return { fromId, toId, type, label };
-}
-
-function readGraph(value: unknown): GraphView | null {
-  if (!isRecord(value)) return null;
-  const { truncated, nodes, edges } = value;
-  if (typeof truncated !== 'boolean' || !isUnknownArray(nodes) || !isUnknownArray(edges)) return null;
-  const parsedNodes: GraphNodeView[] = [];
-  for (const node of nodes) {
-    const parsed = readGraphNode(node);
-    if (!parsed) return null;
-    parsedNodes.push(parsed);
-  }
-  const parsedEdges: GraphEdgeView[] = [];
-  for (const edge of edges) {
-    const parsed = readGraphEdge(edge);
-    if (!parsed) return null;
-    parsedEdges.push(parsed);
-  }
-  return { truncated, nodes: parsedNodes, edges: parsedEdges };
-}
-
-function topLevelObjectRefCites(content: unknown, objectId: string): boolean {
-  if (!isRecord(content) || !isUnknownArray(content.content)) return false;
-  for (const node of content.content) {
-    if (!isRecord(node) || node.type !== 'object_ref' || !isRecord(node.attrs)) continue;
-    if (node.attrs.objectId === objectId) return true;
-  }
-  return false;
-}
-
-async function collectionDocCites(collectionId: string, objectId: string): Promise<boolean> {
-  try {
-    const res = await fetch(`/api/collections/${encodeURIComponent(collectionId)}/doc`, {
-      credentials: 'include',
-    });
-    if (!res.ok) return false;
-    const body: unknown = await res.json();
-    if (!isRecord(body)) return false;
-    return topLevelObjectRefCites(body.content, objectId);
-  } catch {
-    return false;
-  }
-}
-
 export class LibraryService extends Service {
-  domains: Domain[] = [];
-  objects: ObjectSummary[] = [];
-  current: ObjectSummary | null = null;
-  relations: FanRelation[] = [];
-  chains: ObjectChain[] = [];
-  graph: GraphView | null = null;
+  collections: LibraryCollection[] = [];
+  libraryGraph: Library | null = null;
+  graph: CollectionGraph = { nodes: [], edges: [] };
+  graphId = '';
+  nodeDetail: NodeDetail | null = null;
+  edgeDetail: EdgeDetail | null = null;
+  collectionEdgeDetail: CollectionEdgeDetail | null = null;
+  peek: NodeDetail | null = null;
+  searchHits: SearchHit[] = [];
   error = '';
-  notice = '';
-  private chainTicket = 0;
+
   private graphTicket = 0;
-  searchGroups: SearchGroup[] = [];
-  searchNotice = '';
-  searchError = '';
-  searchQuery = '';
+  private nodeTicket = 0;
+  private edgeTicket = 0;
+  private collectionEdgeTicket = 0;
+  private peekTicket = 0;
   private searchTicket = 0;
-  collections: Collection[] = [];
-  collectionError = '';
-  filedCollectionIds: string[] = [];
-  private filedTicket = 0;
-  suggestions: Suggestion[] = [];
-  suggestionNotice = '';
-  suggestionError = '';
-  private suggestionTicket = 0;
-  capabilities: Capability[] = [];
 
-  async loadDomains(): Promise<void> {
+  clearError(): void {
     this.error = '';
-    const res = await fetch('/api/domains', { credentials: 'include' });
-    if (!res.ok) {
-      this.error = '领域没有加载出来';
-      return;
-    }
-    this.domains = domainListSchema.parse(await res.json()).domains;
-  }
-
-  async createDomain(name: string): Promise<Domain | null> {
-    this.error = '';
-    const res = await fetch('/api/domains', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name }),
-    });
-    if (!res.ok) {
-      this.error = await errorMessage(res);
-      return null;
-    }
-    const domain = domainSchema.parse(await res.json());
-    this.domains = [...this.domains, domain];
-    return domain;
-  }
-
-  async createObject(body: CreateObjectBody): Promise<ObjectSummary | null> {
-    this.error = '';
-    const res = await fetch('/api/objects', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      this.error = await errorMessage(res);
-      return null;
-    }
-    return objectSummarySchema.parse(await res.json());
-  }
-
-  async loadObjects(domainId: string): Promise<void> {
-    this.error = '';
-    this.objects = [];
-    const res = await fetch(`/api/objects?domainId=${encodeURIComponent(domainId)}`, {
-      credentials: 'include',
-    });
-    if (!res.ok) {
-      this.error = await errorMessage(res);
-      return;
-    }
-    try {
-      const body = (await res.json()) as { objects?: unknown };
-      this.objects = objectSummarySchema.array().parse(body.objects);
-    } catch {
-      this.objects = [];
-      this.error = '点没有加载出来';
-    }
-  }
-
-  async loadObject(id: string): Promise<void> {
-    this.error = '';
-    this.current = null;
-    const res = await fetch(`/api/objects/${encodeURIComponent(id)}`, {
-      credentials: 'include',
-    });
-    if (res.status === 404) {
-      this.current = null;
-      this.error = '没有这个点';
-      return;
-    }
-    if (!res.ok) {
-      this.error = await errorMessage(res);
-      return;
-    }
-    this.current = objectSummarySchema.parse(await res.json());
-  }
-
-  async updateObject(id: string, body: { coreStatement: string }): Promise<ObjectSummary | null> {
-    this.error = '';
-    const res = await fetch(`/api/objects/${encodeURIComponent(id)}`, {
-      method: 'PATCH',
-      credentials: 'include',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      this.error = await errorMessage(res);
-      return null;
-    }
-    try {
-      const summary = objectSummarySchema.parse(await res.json());
-      if (this.current?.id === id) this.current = summary;
-      return summary;
-    } catch {
-      this.error = '保存结果无法读取';
-      return null;
-    }
-  }
-
-  async deleteObject(id: string): Promise<boolean> {
-    this.error = '';
-    const res = await fetch(`/api/objects/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-      credentials: 'include',
-    });
-    if (res.status === 204) {
-      if (this.current?.id === id) this.current = null;
-      return true;
-    }
-    this.error = await errorMessage(res, '没有删掉');
-    return false;
-  }
-
-  // 文档接口可能还没部署；解析失败只返回 null，不把页面打崩。
-  async loadDocument(id: string): Promise<DocumentResponse | null> {
-    try {
-      const res = await fetch(`/api/objects/${encodeURIComponent(id)}/doc`, {
-        credentials: 'include',
-      });
-      if (!res.ok) return null;
-      return documentResponseSchema.parse(await res.json());
-    } catch {
-      return null;
-    }
-  }
-
-  async saveDocument(
-    id: string,
-    body: { schemaVersion: number; content: unknown; plainText: string },
-  ): Promise<DocumentResponse | null> {
-    this.error = '';
-    const res = await fetch(`/api/objects/${encodeURIComponent(id)}/doc`, {
-      method: 'PUT',
-      credentials: 'include',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      this.error = await errorMessage(res);
-      return null;
-    }
-    try {
-      return documentResponseSchema.parse(await res.json());
-    } catch {
-      this.error = '保存结果无法读取';
-      return null;
-    }
-  }
-
-  async loadRelations(id: string): Promise<void> {
-    this.error = '';
-    try {
-      const res = await fetch(`/api/objects/${encodeURIComponent(id)}/relations`, {
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        this.error = await errorMessage(res, '连接没有加载出来');
-        return;
-      }
-      this.relations = fanRelationListSchema.parse(await res.json()).relations;
-    } catch {
-      this.error = '连接没有加载出来';
-    }
-  }
-
-  async loadChain(id: string): Promise<void> {
-    const ticket = ++this.chainTicket;
-    this.error = '';
-    try {
-      const res = await fetch(`/api/objects/${encodeURIComponent(id)}/chain`, {
-        credentials: 'include',
-      });
-      if (ticket !== this.chainTicket) return;
-      if (!res.ok) {
-        const message = await errorMessage(res, '链没有加载出来');
-        if (ticket !== this.chainTicket) return;
-        this.error = message;
-        this.chains = [];
-        return;
-      }
-      const body: unknown = await res.json();
-      if (ticket !== this.chainTicket) return;
-      const chains = readChains(body);
-      if (!chains) {
-        this.chains = [];
-        this.error = '链没有加载出来';
-        return;
-      }
-      this.chains = chains;
-    } catch {
-      if (ticket !== this.chainTicket) return;
-      this.chains = [];
-      this.error = '链没有加载出来';
-    }
-  }
-
-  async loadGraph(id: string): Promise<void> {
-    const ticket = ++this.graphTicket;
-    this.error = '';
-    try {
-      const res = await fetch(`/api/objects/${encodeURIComponent(id)}/graph`, {
-        credentials: 'include',
-      });
-      if (ticket !== this.graphTicket) return;
-      if (!res.ok) {
-        const message = await errorMessage(res, '图没有加载出来');
-        if (ticket !== this.graphTicket) return;
-        this.error = message;
-        this.graph = null;
-        return;
-      }
-      const body: unknown = await res.json();
-      if (ticket !== this.graphTicket) return;
-      const graph = readGraph(body);
-      if (!graph) {
-        this.graph = null;
-        this.error = '图没有加载出来';
-        return;
-      }
-      this.graph = graph;
-    } catch {
-      if (ticket !== this.graphTicket) return;
-      this.graph = null;
-      this.error = '图没有加载出来';
-    }
-  }
-
-  async createRelation(body: CreateRelationBody): Promise<Relation | null> {
-    this.error = '';
-    const res = await fetch('/api/relations', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      this.error = await errorMessage(res);
-      return null;
-    }
-    return relationSchema.parse(await res.json());
-  }
-
-  async search(q: string): Promise<void> {
-    const ticket = ++this.searchTicket;
-    try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { credentials: 'include' });
-      if (ticket !== this.searchTicket) return;
-      if (!res.ok) {
-        const message = await errorMessage(res, '检索没有完成');
-        if (ticket !== this.searchTicket) return;
-        this.searchGroups = [];
-        this.searchNotice = '';
-        this.searchError = message;
-        this.searchQuery = q;
-        return;
-      }
-      const body = searchResponseSchema.parse(await res.json());
-      if (ticket !== this.searchTicket) return;
-      this.searchGroups = body.groups; // 原样保留，禁止按 title 合并
-      this.searchNotice = body.notice;
-      this.searchError = '';
-      this.searchQuery = q;
-    } catch {
-      if (ticket !== this.searchTicket) return;
-      this.searchGroups = [];
-      this.searchNotice = '';
-      this.searchError = '检索没有完成';
-      this.searchQuery = q;
-    }
   }
 
   clearSearch(): void {
+    this.searchHits = [];
     this.searchTicket += 1;
-    this.searchGroups = [];
-    this.searchNotice = '';
-    this.searchError = '';
-    this.searchQuery = '';
   }
 
-  async loadCollections(domainId: string): Promise<Collection[]> {
-    try {
-      const res = await fetch(`/api/collections?domainId=${encodeURIComponent(domainId)}`, {
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        this.collectionError = '合集没有加载出来';
-        return [];
-      }
-      const loaded = collectionListSchema.parse(await res.json()).collections;
-      this.collections = [
-        ...this.collections.filter((item) => item.domainId !== domainId),
-        ...loaded,
-      ];
-      return loaded;
-    } catch {
-      this.collectionError = '合集没有加载出来';
-      return [];
+  private async read<T>(res: Response, parse: (data: unknown) => T, fallback: string): Promise<T | null> {
+    if (!res.ok) {
+      this.error = await errorMessage(res, fallback);
+      return null;
     }
-  }
-
-  async loadCollection(id: string): Promise<CollectionDetail | null> {
-    this.collectionError = '';
     try {
-      const res = await fetch(`/api/collections/${encodeURIComponent(id)}`, {
-        credentials: 'include',
-      });
-      if (res.status === 404) {
-        this.collectionError = '没有这个合集';
-        return null;
-      }
-      if (!res.ok) {
-        this.collectionError = '合集没有加载出来';
-        return null;
-      }
-      const collection = collectionDetailSchema.parse(await res.json());
-      this.collectionError = '';
-      return collection;
+      return parse(await res.json());
     } catch {
-      this.collectionError = '合集没有加载出来';
+      this.error = '响应没法读取';
       return null;
     }
   }
 
-  async confirmCollectionRead(collectionId: string, objectId: string): Promise<boolean> {
-    const res = await fetch(`/api/collections/${encodeURIComponent(collectionId)}/reads`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ objectId }),
-    });
-    return res.ok;
+  private async done(res: Response, fallback: string): Promise<boolean> {
+    if (res.ok) return true;
+    this.error = await errorMessage(res, fallback);
+    return false;
   }
 
-  async loadCollectionDocument(id: string): Promise<DocumentResponse | null> {
-    try {
-      const res = await fetch(`/api/collections/${encodeURIComponent(id)}/doc`, {
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        if (this.collectionError === '') this.collectionError = '文档没有加载出来';
-        return null;
-      }
-      return documentResponseSchema.parse(await res.json());
-    } catch {
-      if (this.collectionError === '') this.collectionError = '文档没有加载出来';
-      return null;
-    }
-  }
-
-  async loadFiledCollections(objectId: string, domainId: string): Promise<void> {
-    const ticket = ++this.filedTicket;
-    this.filedCollectionIds = [];
-    try {
-      const res = await fetch(`/api/collections?domainId=${encodeURIComponent(domainId)}`, {
-        credentials: 'include',
-      });
-      if (ticket !== this.filedTicket) return;
-      if (!res.ok) {
-        this.error = '合集没有加载出来';
-        this.filedCollectionIds = [];
-        return;
-      }
-      const loaded = collectionListSchema.parse(await res.json()).collections;
-      const cited = await Promise.all(
-        loaded.map((collection) => collectionDocCites(collection.id, objectId)),
-      );
-      if (ticket !== this.filedTicket) return;
-      const filed: string[] = [];
-      for (let index = 0; index < loaded.length; index += 1) {
-        if (!cited[index]) continue;
-        const id = loaded[index]?.id;
-        if (id) filed.push(id);
-      }
-      this.filedCollectionIds = filed;
-      this.collections = [
-        ...this.collections.filter((item) => item.domainId !== domainId),
-        ...loaded,
-      ];
-      if (this.error === '合集没有加载出来') this.error = '';
-    } catch {
-      if (ticket !== this.filedTicket) return;
-      this.error = '合集没有加载出来';
-      this.filedCollectionIds = [];
-    }
-  }
-
-  async fileObject(collectionId: string, objectId: string): Promise<boolean> {
+  async loadCollections(): Promise<boolean> {
     this.error = '';
-    const res = await fetch(`/api/collections/${encodeURIComponent(collectionId)}/refs`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ op: 'add', objectId }),
-    });
-    if (!res.ok) {
-      this.error = await errorMessage(res, '归位没有完成');
-      return false;
-    }
-    if (!this.filedCollectionIds.includes(collectionId)) {
-      this.filedCollectionIds = [...this.filedCollectionIds, collectionId];
-    }
+    const res = await fetch('/api/collections', { credentials: 'include' });
+    const body = await this.read(res, (data) => collectionListSchema.parse(data), '合集没有加载出来');
+    if (!body) return false;
+    this.collections = body.collections;
     return true;
   }
 
-  async unfileObject(collectionId: string, objectId: string): Promise<boolean> {
-    this.error = '';
-    const res = await fetch(`/api/collections/${encodeURIComponent(collectionId)}/refs`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ op: 'remove', objectId }),
-    });
-    if (!res.ok) {
-      this.error = await errorMessage(res, '归位没有完成');
-      return false;
-    }
-    this.filedCollectionIds = this.filedCollectionIds.filter((id) => id !== collectionId);
-    return true;
-  }
-
-  async moveFiledObject(collectionId: string, objectId: string, position: number): Promise<boolean> {
-    const res = await fetch(`/api/collections/${encodeURIComponent(collectionId)}/refs`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ op: 'move', objectId, position }),
-    });
-    return res.ok;
-  }
-
-  async createCollectionAndFile(
-    domainId: string,
-    title: string,
-    intent: string,
-    objectId: string,
-  ): Promise<boolean> {
+  async createCollection(title: string): Promise<Collection | null> {
     this.error = '';
     const res = await fetch('/api/collections', {
       method: 'POST',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ domainId, title, intent }),
+      body: JSON.stringify({ title }),
     });
-    if (!res.ok) {
-      this.error = await errorMessage(res);
-      return false;
-    }
-    let collection: Collection;
-    try {
-      collection = collectionSchema.parse(await res.json());
-    } catch {
-      this.error = '归位没有完成';
-      return false;
-    }
-    this.collections = [...this.collections.filter((item) => item.id !== collection.id), collection];
-    return this.fileObject(collection.id, objectId);
+    const created = await this.read(res, (data) => collectionSchema.parse(data), '合集没有建成');
+    if (!created) return null;
+    this.collections = [
+      ...this.collections.filter((item) => item.id !== created.id),
+      { ...created, nodeCount: 0 },
+    ];
+    return created;
   }
 
-  async undoStructure(): Promise<boolean> {
-    const res = await fetch('/api/undo', {
-      method: 'POST',
-      credentials: 'include',
-    });
-    if (!res.ok) {
-      this.error = await errorMessage(res, '没有可撤销的结构命令');
-      return false;
-    }
+  async renameCollection(id: string, title: string): Promise<boolean> {
     this.error = '';
+    const res = await fetch(`/api/collections/${id}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title }),
+    });
+    const next = await this.read(res, (data) => collectionSchema.parse(data), '标题没有改成');
+    if (!next) return false;
+    this.collections = this.collections.map((item) => (item.id === id ? { ...item, title: next.title } : item));
+    if (this.libraryGraph) {
+      this.libraryGraph = {
+        ...this.libraryGraph,
+        collections: this.libraryGraph.collections.map((item) =>
+          item.id === id ? { ...item, title: next.title } : item,
+        ),
+      };
+    }
     return true;
   }
 
-  async loadSuggestions(objectId: string): Promise<void> {
-    const ticket = ++this.suggestionTicket;
-    try {
-      const res = await fetch(`/api/objects/${encodeURIComponent(objectId)}/suggestions`, {
-        credentials: 'include',
-      });
-      if (ticket !== this.suggestionTicket) return;
-      if (!res.ok) {
-        this.suggestions = [];
-        this.suggestionNotice = '';
-        return;
-      }
-      const body: unknown = await res.json();
-      if (ticket !== this.suggestionTicket) return;
-      const parsed = suggestionListSchema.parse(body);
-      this.suggestions = parsed.suggestions;
-      this.suggestionNotice =
-        isRecord(body) && body.notice === '模型建议这次没有生成' ? '模型建议这次没有生成' : '';
-    } catch {
-      if (ticket !== this.suggestionTicket) return;
-      this.suggestions = [];
-      this.suggestionNotice = '';
-    }
-  }
-
-  async resolveSuggestion(
-    id: string,
-    status: 'accepted' | 'deferred' | 'rejected',
-  ): Promise<boolean> {
-    try {
-      const res = await fetch(`/api/suggest/${encodeURIComponent(id)}/resolve`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ status }),
-      });
-      if (!res.ok) {
-        this.suggestionError = await errorMessage(res, '建议没有处理完');
-        return false;
-      }
-      this.suggestionError = '';
-      return true;
-    } catch {
-      this.suggestionError = '建议没有处理完';
-      return false;
-    }
-  }
-
-  async deferSuggestions(objectId: string): Promise<boolean> {
-    const ticket = ++this.suggestionTicket;
-    try {
-      const res = await fetch(`/api/objects/${encodeURIComponent(objectId)}/suggestions/defer`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      if (ticket !== this.suggestionTicket) return false;
-      if (!res.ok) {
-        this.suggestionError = await errorMessage(res, '建议没有处理完');
-        return false;
-      }
-      const parsed = suggestionListSchema.parse(await res.json());
-      if (ticket !== this.suggestionTicket) return true;
-      this.suggestions = parsed.suggestions;
-      this.suggestionError = '';
-      return true;
-    } catch {
-      if (ticket !== this.suggestionTicket) return false;
-      this.suggestionError = '建议没有处理完';
-      return false;
-    }
-  }
-
-  async createCapability(body: {
-    statement: string;
-    kind: Capability['kind'];
-    primaryObjectId: string;
-    hints: string[];
-    hintThreshold: number;
-  }): Promise<Capability | null> {
+  async deleteCollection(id: string): Promise<boolean> {
     this.error = '';
-    const res = await fetch('/api/capabilities', {
+    const res = await fetch(`/api/collections/${id}`, { method: 'DELETE', credentials: 'include' });
+    const ok = await this.done(res, '合集没有删掉');
+    if (!ok) return false;
+    this.collections = this.collections.filter((item) => item.id !== id);
+    if (this.libraryGraph) {
+      this.libraryGraph = {
+        collections: this.libraryGraph.collections.filter((item) => item.id !== id),
+        edges: this.libraryGraph.edges.filter((edge) => edge.fromId !== id && edge.toId !== id),
+      };
+    }
+    return true;
+  }
+
+  async loadLibrary(): Promise<boolean> {
+    this.error = '';
+    const res = await fetch('/api/library', { credentials: 'include' });
+    const body = await this.read(res, (data) => librarySchema.parse(data), '全貌没有加载出来');
+    if (!body) return false;
+    this.libraryGraph = body;
+    return true;
+  }
+
+  async loadGraph(collectionId: string): Promise<boolean> {
+    const ticket = ++this.graphTicket;
+    this.error = '';
+    const res = await fetch(`/api/collections/${collectionId}/graph`, { credentials: 'include' });
+    if (ticket !== this.graphTicket) return false;
+    if (!res.ok) {
+      this.error = await errorMessage(res, '这个合集没有找到');
+      this.graph = { nodes: [], edges: [] };
+      this.graphId = collectionId;
+      return false;
+    }
+    try {
+      this.graph = collectionGraphSchema.parse(await res.json());
+    } catch {
+      this.error = '响应没法读取';
+      return false;
+    }
+    this.graphId = collectionId;
+    return true;
+  }
+
+  async createNode(collectionId: string, name: string): Promise<Node | null> {
+    this.error = '';
+    const res = await fetch(`/api/collections/${collectionId}/nodes`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        statement: body.statement,
-        kind: body.kind,
-        primaryObjectId: body.primaryObjectId,
-        hints: body.hints,
-        hintThreshold: body.hintThreshold,
-        prompt: '',
-        referenceNote: '',
-        objectIds: [],
-      }),
+      body: JSON.stringify({ name }),
     });
-    if (!res.ok) {
-      this.error = await errorMessage(res, '能力没有建出来');
-      return null;
-    }
+    return this.read(res, (data) => nodeSchema.parse(data), '点没有建成');
+  }
+
+  async addMember(collectionId: string, nodeId: string): Promise<boolean> {
+    this.error = '';
+    const res = await fetch(`/api/collections/${collectionId}/members`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ nodeId }),
+    });
+    return this.done(res, '没有放进去');
+  }
+
+  async removeMember(collectionId: string, nodeId: string): Promise<boolean> {
+    this.error = '';
+    const res = await fetch(`/api/collections/${collectionId}/members/${nodeId}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    return this.done(res, '没有移出');
+  }
+
+  async loadNode(id: string): Promise<NodeDetail | null> {
+    const ticket = ++this.nodeTicket;
+    this.error = '';
+    this.nodeDetail = null;
+    const res = await fetch(`/api/nodes/${id}`, { credentials: 'include' });
+    if (ticket !== this.nodeTicket) return null;
+    const detail = await this.read(res, (data) => nodeDetailSchema.parse(data), '点没有找到');
+    if (!detail || ticket !== this.nodeTicket) return null;
+    this.nodeDetail = detail;
+    return detail;
+  }
+
+  /** 悬停预览：不动 nodeDetail，失败静默 */
+  async loadPeek(id: string): Promise<void> {
+    const ticket = ++this.peekTicket;
+    const res = await fetch(`/api/nodes/${id}`, { credentials: 'include' });
+    if (ticket !== this.peekTicket || !res.ok) return;
     try {
-      const created = capabilitySchema.parse(await res.json());
-      this.capabilities = [...this.capabilities, created];
-      return created;
+      const detail = nodeDetailSchema.parse(await res.json());
+      if (ticket !== this.peekTicket) return;
+      this.peek = detail;
     } catch {
-      this.error = '能力没有建出来';
-      return null;
+      // 预览失败不打断
     }
   }
 
-  async loadCapabilities(objectId: string): Promise<void> {
+  clearPeek(): void {
+    this.peekTicket += 1;
+    this.peek = null;
+  }
+
+  async renameNode(id: string, name: string): Promise<boolean> {
     this.error = '';
-    try {
-      const res = await fetch(`/api/capabilities?objectId=${encodeURIComponent(objectId)}`, {
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        this.error = '能力没有加载出来';
-        this.capabilities = [];
-        return;
-      }
-      const body: unknown = await res.json();
-      if (!body || typeof body !== 'object' || !('capabilities' in body)) {
-        this.error = '能力没有加载出来';
-        this.capabilities = [];
-        return;
-      }
-      this.capabilities = capabilitySchema.array().parse(
-        (body as { capabilities: unknown }).capabilities,
-      );
-    } catch {
-      this.error = '能力没有加载出来';
-      this.capabilities = [];
+    const res = await fetch(`/api/nodes/${id}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const next = await this.read(res, (data) => nodeSchema.parse(data), '名字没有改成');
+    if (!next) return false;
+    this.graph = {
+      ...this.graph,
+      nodes: this.graph.nodes.map((node) => (node.id === id ? { ...node, name: next.name } : node)),
+    };
+    if (this.nodeDetail?.id === id) this.nodeDetail = { ...this.nodeDetail, name: next.name };
+    return true;
+  }
+
+  async describeNode(id: string, description: string): Promise<boolean> {
+    this.error = '';
+    const res = await fetch(`/api/nodes/${id}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ description }),
+    });
+    const next = await this.read(res, (data) => nodeSchema.parse(data), '描述没有改成');
+    if (!next) return false;
+    this.graph = {
+      ...this.graph,
+      nodes: this.graph.nodes.map((node) => (node.id === id ? { ...node, description } : node)),
+    };
+    if (this.nodeDetail?.id === id) this.nodeDetail = { ...this.nodeDetail, description };
+    return true;
+  }
+
+  async deleteNode(id: string): Promise<boolean> {
+    this.error = '';
+    const res = await fetch(`/api/nodes/${id}`, { method: 'DELETE', credentials: 'include' });
+    const ok = await this.done(res, '点没有删掉');
+    if (!ok) return false;
+    if (this.nodeDetail?.id === id) this.nodeDetail = null;
+    return true;
+  }
+
+  async createEdge(fromId: string, toId: string, label: string): Promise<Edge | null> {
+    this.error = '';
+    const res = await fetch('/api/edges', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ fromId, toId, label }),
+    });
+    return this.read(res, (data) => edgeSchema.parse(data), '关系没有连上');
+  }
+
+  async loadEdge(id: string): Promise<EdgeDetail | null> {
+    const ticket = ++this.edgeTicket;
+    this.error = '';
+    this.edgeDetail = null;
+    const res = await fetch(`/api/edges/${id}`, { credentials: 'include' });
+    if (ticket !== this.edgeTicket) return null;
+    const detail = await this.read(res, (data) => edgeDetailSchema.parse(data), '关系没有找到');
+    if (!detail || ticket !== this.edgeTicket) return null;
+    this.edgeDetail = detail;
+    return detail;
+  }
+
+  async renameEdge(id: string, label: string): Promise<boolean> {
+    this.error = '';
+    const res = await fetch(`/api/edges/${id}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ label }),
+    });
+    const next = await this.read(res, (data) => edgeSchema.parse(data), '关系说明没有改成');
+    if (!next) return false;
+    this.graph = {
+      ...this.graph,
+      edges: this.graph.edges.map((edge) => (edge.id === id ? { ...edge, label: next.label } : edge)),
+    };
+    if (this.edgeDetail?.id === id) this.edgeDetail = { ...this.edgeDetail, label: next.label };
+    return true;
+  }
+
+  async deleteEdge(id: string): Promise<boolean> {
+    this.error = '';
+    const res = await fetch(`/api/edges/${id}`, { method: 'DELETE', credentials: 'include' });
+    const ok = await this.done(res, '关系没有删掉');
+    if (!ok) return false;
+    if (this.edgeDetail?.id === id) this.edgeDetail = null;
+    return true;
+  }
+
+  async createCollectionEdge(fromId: string, toId: string, label: string): Promise<Edge | null> {
+    this.error = '';
+    const res = await fetch('/api/collection-edges', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ fromId, toId, label }),
+    });
+    return this.read(res, (data) => edgeSchema.parse(data), '合集没有连上');
+  }
+
+  async loadCollectionEdge(id: string): Promise<CollectionEdgeDetail | null> {
+    const ticket = ++this.collectionEdgeTicket;
+    this.error = '';
+    this.collectionEdgeDetail = null;
+    const res = await fetch(`/api/collection-edges/${id}`, { credentials: 'include' });
+    if (ticket !== this.collectionEdgeTicket) return null;
+    const detail = await this.read(res, (data) => collectionEdgeDetailSchema.parse(data), '关系没有找到');
+    if (!detail || ticket !== this.collectionEdgeTicket) return null;
+    this.collectionEdgeDetail = detail;
+    return detail;
+  }
+
+  async renameCollectionEdge(id: string, label: string): Promise<boolean> {
+    this.error = '';
+    const res = await fetch(`/api/collection-edges/${id}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ label }),
+    });
+    const next = await this.read(res, (data) => edgeSchema.parse(data), '关系说明没有改成');
+    if (!next) return false;
+    if (this.libraryGraph) {
+      this.libraryGraph = {
+        ...this.libraryGraph,
+        edges: this.libraryGraph.edges.map((edge) => (edge.id === id ? { ...edge, label: next.label } : edge)),
+      };
+    }
+    if (this.collectionEdgeDetail?.id === id) {
+      this.collectionEdgeDetail = { ...this.collectionEdgeDetail, label: next.label };
+    }
+    return true;
+  }
+
+  async deleteCollectionEdge(id: string): Promise<boolean> {
+    this.error = '';
+    const res = await fetch(`/api/collection-edges/${id}`, { method: 'DELETE', credentials: 'include' });
+    const ok = await this.done(res, '关系没有删掉');
+    if (!ok) return false;
+    if (this.collectionEdgeDetail?.id === id) this.collectionEdgeDetail = null;
+    if (this.libraryGraph) {
+      this.libraryGraph = {
+        ...this.libraryGraph,
+        edges: this.libraryGraph.edges.filter((edge) => edge.id !== id),
+      };
+    }
+    return true;
+  }
+
+  async createCard(body: CreateCardBody): Promise<Card | null> {
+    this.error = '';
+    const res = await fetch('/api/cards', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return this.read(res, (data) => cardSchema.parse(data), '卡片没有加上');
+  }
+
+  async updateCard(id: string, content: Card['content']): Promise<boolean> {
+    this.error = '';
+    const res = await fetch(`/api/cards/${id}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ content }),
+    });
+    const next = await this.read(res, (data) => cardSchema.parse(data), '卡片没有保存');
+    if (!next) return false;
+    this.replaceCard(next);
+    return true;
+  }
+
+  async deleteCard(id: string): Promise<boolean> {
+    this.error = '';
+    const res = await fetch(`/api/cards/${id}`, { method: 'DELETE', credentials: 'include' });
+    const ok = await this.done(res, '卡片没有删掉');
+    if (!ok) return false;
+    this.nodeDetail = this.nodeDetail
+      ? { ...this.nodeDetail, cards: this.nodeDetail.cards.filter((card) => card.id !== id) }
+      : null;
+    this.edgeDetail = this.edgeDetail
+      ? { ...this.edgeDetail, cards: this.edgeDetail.cards.filter((card) => card.id !== id) }
+      : null;
+    this.collectionEdgeDetail = this.collectionEdgeDetail
+      ? {
+          ...this.collectionEdgeDetail,
+          cards: this.collectionEdgeDetail.cards.filter((card) => card.id !== id),
+        }
+      : null;
+    return true;
+  }
+
+  async search(query: string): Promise<void> {
+    const trimmed = query.trim();
+    const ticket = ++this.searchTicket;
+    if (trimmed === '') {
+      this.searchHits = [];
+      return;
+    }
+    this.error = '';
+    const res = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}`, { credentials: 'include' });
+    if (ticket !== this.searchTicket) return;
+    const body = await this.read(res, (data) => searchResponseSchema.parse(data), '没有搜到');
+    if (!body || ticket !== this.searchTicket) return;
+    this.searchHits = body.hits;
+  }
+
+  private replaceCard(next: Card): void {
+    const swap = (cards: Card[]) => cards.map((card) => (card.id === next.id ? next : card));
+    if (this.nodeDetail) this.nodeDetail = { ...this.nodeDetail, cards: swap(this.nodeDetail.cards) };
+    if (this.edgeDetail) this.edgeDetail = { ...this.edgeDetail, cards: swap(this.edgeDetail.cards) };
+    if (this.collectionEdgeDetail) {
+      this.collectionEdgeDetail = { ...this.collectionEdgeDetail, cards: swap(this.collectionEdgeDetail.cards) };
     }
   }
 }

@@ -1,27 +1,18 @@
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
-import { loginBodySchema, todayResponseSchema } from '@unfold/dto';
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { loginBodySchema } from '@unfold/dto';
+import { and, eq, isNull } from 'drizzle-orm';
 import argon2 from 'argon2';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
+import { registerCardRoutes } from './cards.js';
+import { registerCollectionRoutes } from './collections.js';
 import { loadConfig } from './config.js';
 import { createDb, createPool } from './db/client.js';
-import { blockIndex, documents, domains, knowledgeObjects, suggestions, users } from './db/schema.js';
-import { registerChainRoutes } from './chain.js';
-import { registerGraphRoutes } from './graph.js';
-import { registerCollectionRefRoutes } from './collection-refs.js';
-import { registerCollectionRoutes } from './collections.js';
-import { registerDocumentRoutes } from './documents.js';
-import { registerExportRoutes } from './export.js';
-import { registerImportRoutes } from './import.js';
-import { registerObjectRoutes } from './objects.js';
-import { registerRelationRoutes } from './relations.js';
+import { users } from './db/schema.js';
+import { registerEdgeRoutes } from './edges.js';
+import type { SessionUser } from './http.js';
+import { registerNodeRoutes } from './nodes.js';
 import { registerSearchRoutes } from './search.js';
-import { registerSuggestionRoutes } from './suggestions.js';
-import { registerUndoRoutes } from './undo.js';
-import { registerCapabilityRoutes } from './capabilities.js';
-import { registerEvidenceRoutes } from './evidence.js';
-import { listDueCapabilities, registerReviewDueRoutes } from './review-due.js';
 
 const invalidCredentials = {
   error: { code: 'invalid_credentials', message: '用户名或密码不正确' },
@@ -29,10 +20,6 @@ const invalidCredentials = {
 
 const unauthenticated = {
   error: { code: 'unauthenticated', message: '未登录' },
-};
-
-const databaseUnavailable = {
-  error: { code: 'database_unavailable', message: '数据库暂时不可用' },
 };
 
 export async function buildApp() {
@@ -56,7 +43,10 @@ export async function buildApp() {
     signed: true,
   };
 
-  async function signedSessionUser(request: FastifyRequest, reply: FastifyReply) {
+  async function signedSessionUser(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<SessionUser | undefined> {
     const raw = request.cookies.unfold_session;
     if (!raw) {
       await reply.code(401).send(unauthenticated);
@@ -151,128 +141,13 @@ export async function buildApp() {
     return reply.code(200).send({ username: user.username });
   });
 
-  app.get('/api/today', async (request, reply) => {
-    const user = await signedSessionUser(request, reply);
-    if (!user) return;
-
-    try {
-      const result = await db.execute<{ name: string }>(sql`select current_database() as name`);
-      if (result.rows.length === 0) {
-        return reply.code(500).send(databaseUnavailable);
-      }
-      const counted = await db.execute<{ count: string }>(sql`
-        select count(*)::text as count
-        from knowledge_objects o
-        where o.user_id = ${user.id}
-          and o.status = 'active'
-          and o.deleted_at is null
-          and not exists (
-            select 1
-            from block_index b
-            join documents doc on doc.id = b.document_id
-            where b.block_type = 'object_ref'
-              and b.text_preview = o.id::text
-              and b.deleted_at is null
-              and doc.deleted_at is null
-              and doc.user_id = o.user_id
-              and doc.owner_type = 'collection'
-          )
-      `);
-      const freeCount = Number(counted.rows[0]?.count ?? 0);
-      if (!Number.isInteger(freeCount) || freeCount < 0) {
-        return reply.code(500).send(databaseUnavailable);
-      }
-
-      const focusRows = await db
-        .select({
-          id: knowledgeObjects.id,
-          canonicalName: knowledgeObjects.canonicalName,
-          coreStatement: knowledgeObjects.coreStatement,
-          domainName: domains.name,
-          type: knowledgeObjects.type,
-        })
-        .from(knowledgeObjects)
-        .innerJoin(documents, eq(documents.id, knowledgeObjects.documentId))
-        .innerJoin(domains, eq(domains.id, knowledgeObjects.domainId))
-        .where(
-          and(
-            eq(knowledgeObjects.userId, user.id),
-            eq(knowledgeObjects.status, 'active'),
-            isNull(knowledgeObjects.deletedAt),
-            isNull(documents.deletedAt),
-            isNull(domains.deletedAt),
-          ),
-        )
-        .orderBy(desc(documents.updatedAt), desc(knowledgeObjects.id))
-        .limit(1);
-
-      const pendingRows = await db
-        .select({ count: sql<string>`count(*)::text` })
-        .from(suggestions)
-        .where(
-          and(
-            eq(suggestions.userId, user.id),
-            isNull(suggestions.deletedAt),
-            inArray(suggestions.status, ['pending', 'deferred']),
-          ),
-        );
-      const pendingSuggestions = Number(pendingRows[0]?.count ?? 0);
-      if (!Number.isInteger(pendingSuggestions) || pendingSuggestions < 0) {
-        return reply.code(500).send(databaseUnavailable);
-      }
-
-      const openQuestions = await db
-        .select({
-          blockId: blockIndex.blockId,
-          text: blockIndex.textPreview,
-          objectId: knowledgeObjects.id,
-          objectName: knowledgeObjects.canonicalName,
-        })
-        .from(blockIndex)
-        .innerJoin(documents, eq(documents.id, blockIndex.documentId))
-        .innerJoin(knowledgeObjects, eq(knowledgeObjects.id, documents.ownerId))
-        .where(
-          and(
-            eq(blockIndex.blockType, 'question'),
-            isNull(blockIndex.deletedAt),
-            isNull(documents.deletedAt),
-            eq(documents.ownerType, 'object'),
-            eq(knowledgeObjects.userId, user.id),
-            eq(knowledgeObjects.status, 'active'),
-            isNull(knowledgeObjects.deletedAt),
-          ),
-        )
-        .orderBy(desc(documents.updatedAt), asc(blockIndex.position));
-
-      return todayResponseSchema.parse({
-        focus: focusRows[0] ?? null,
-        due: await listDueCapabilities(db, user.id, new Date()),
-        freeCount,
-        pendingSuggestions,
-        openQuestions,
-      });
-    } catch {
-      return reply.code(500).send(databaseUnavailable);
-    }
-  });
-
   app.get('/health', async () => ({ ok: true }));
 
-  registerObjectRoutes(app, db, signedSessionUser);
-  registerDocumentRoutes(app, db, signedSessionUser);
-  registerRelationRoutes(app, db, signedSessionUser);
-  registerChainRoutes(app, db, signedSessionUser);
-  registerGraphRoutes(app, db, signedSessionUser);
-  registerSearchRoutes(app, db, signedSessionUser);
   registerCollectionRoutes(app, db, signedSessionUser);
-  registerCollectionRefRoutes(app, db, signedSessionUser);
-  registerUndoRoutes(app, db, signedSessionUser);
-  registerSuggestionRoutes(app, db, signedSessionUser);
-  registerExportRoutes(app, db, signedSessionUser);
-  registerImportRoutes(app, db, signedSessionUser);
-  registerCapabilityRoutes(app, db, signedSessionUser);
-  registerEvidenceRoutes(app, db, signedSessionUser);
-  registerReviewDueRoutes(app, db, signedSessionUser);
+  registerNodeRoutes(app, db, signedSessionUser);
+  registerEdgeRoutes(app, db, signedSessionUser);
+  registerCardRoutes(app, db, signedSessionUser);
+  registerSearchRoutes(app, db, signedSessionUser);
 
   return app;
 }

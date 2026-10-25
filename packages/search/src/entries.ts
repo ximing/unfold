@@ -63,7 +63,14 @@ export function blockEntries(input: {
     if (text === '') {
       continue;
     }
-    if (block.blockType === 'object_ref' || block.blockType === 'collection_ref') {
+    // 书目两边都不进。合集上的主张要等谓词，不在这里写成 collection_sentence。
+    // 点文档上没有 aboutObjectId 的主张草稿仍是普通块。
+    if (
+      block.blockType === 'object_ref' ||
+      block.blockType === 'collection_ref' ||
+      block.blockType === 'work_frame' ||
+      (block.blockType === 'sourced_claim' && input.ownerType === 'collection')
+    ) {
       continue;
     }
 
