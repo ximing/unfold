@@ -6,7 +6,17 @@ import tseslint from 'typescript-eslint';
 
 export default defineConfig(
   {
-    ignores: ['**/node_modules/**', '**/dist/**', 'docs/**', 'pnpm-lock.yaml', '**/*.html'],
+    ignores: [
+      '**/node_modules/**',
+      '**/dist/**',
+      'docs/**',
+      'pnpm-lock.yaml',
+      '**/*.html',
+      '.agents/**',
+      '.claude/**',
+      '.grok/**',
+      '.codegraph/**',
+    ],
   },
   {
     files: ['**/*.{js,mjs,cjs,ts,mts,cts,tsx}'],
