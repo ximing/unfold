@@ -4,15 +4,15 @@ import { loginBodySchema } from '@unfold/dto';
 import { and, eq, isNull } from 'drizzle-orm';
 import argon2 from 'argon2';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
-import { registerCardRoutes } from './cards.js';
-import { registerCollectionRoutes } from './collections.js';
+import { registerCardRoutes } from './cards/routes.js';
+import { registerCollectionRoutes } from './collections/routes.js';
 import { loadConfig } from './config.js';
 import { createDb, createPool } from './db/client.js';
 import { users } from './db/schema.js';
-import { registerEdgeRoutes } from './edges.js';
+import { registerEdgeRoutes } from './edges/routes.js';
 import type { SessionUser } from './http.js';
-import { registerNodeRoutes } from './nodes.js';
-import { registerSearchRoutes } from './search.js';
+import { registerNodeRoutes } from './nodes/routes.js';
+import { registerSearchRoutes } from './search/routes.js';
 
 const invalidCredentials = {
   error: { code: 'invalid_credentials', message: '用户名或密码不正确' },

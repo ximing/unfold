@@ -1,0 +1,19 @@
+/* ---------- 工具类 ---------- */
+.muted { color: var(--mute); }
+.faint { color: var(--faint); }
+.mono { font-family: var(--mono); }
+.kbd {
+  font: 10px var(--mono);
+  opacity: 0.6;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+[role="alert"], .fail {
+  color: var(--warn);
+  font-size: 13px;
+  background: var(--warn-soft);
+  border-radius: var(--r-s);
+  padding: 8px 12px;
+  margin: 10px 0 0;
+}

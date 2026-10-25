@@ -1,0 +1,35 @@
+/* ============================================================
+   按钮
+   ============================================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 13px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  text-decoration: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
+}
+.btn:hover { border-color: rgba(0, 0, 0, 0.16); text-decoration: none; }
+.btn:active { background: rgba(0, 0, 0, 0.04); }
+.btn.primary {
+  background: linear-gradient(180deg, #2e7bff, #0a5cf5);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(10, 102, 255, 0.4);
+}
+.btn.primary:hover { background: linear-gradient(180deg, #1f6fff, #0053d6); }
+.btn.ghost { border-color: transparent; background: transparent; box-shadow: none; color: var(--mute); }
+.btn.ghost:hover { color: var(--ink); background: rgba(0, 0, 0, 0.05); }
+.btn.danger { background: var(--warn); border-color: transparent; color: #fff; }
+.btn.danger:hover { background: #b92518; }
+.btn.big { padding: 10px 20px; font-size: 14px; border-radius: 10px; }
+.btn:disabled { opacity: 0.45; cursor: default; pointer-events: none; }
+.btn-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 16px; }

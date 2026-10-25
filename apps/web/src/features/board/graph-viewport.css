@@ -1,0 +1,51 @@
+/* ============================================================
+   图视口（平移/缩放/minimap/右键）
+   ============================================================ */
+.gvp { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; touch-action: none; }
+.gvp-canvas { width: 100%; height: 100%; display: block; cursor: grab; }
+.gvp-canvas.panning { cursor: grabbing; }
+.gvp-tools {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  box-shadow: var(--sh-raise);
+  padding: 3px;
+}
+.gvp-tools button {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font: 500 14px var(--sans);
+  color: var(--mute);
+}
+.gvp-tools button:hover { background: var(--accent-soft); color: var(--accent); }
+.gvp-tools .zoom-pct { font: 10px var(--mono); color: var(--faint); min-width: 38px; text-align: center; }
+.gvp-minimap {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  z-index: 3;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-m);
+  box-shadow: var(--sh-raise);
+  overflow: hidden;
+  cursor: crosshair;
+}
+.gvp-minimap svg { display: block; }
+.gvp-minimap .vp-rect { fill: rgba(10, 102, 255, 0.08); stroke: var(--accent); stroke-width: 1; }
+.gvp-minimap .mm-node { fill: rgba(0, 0, 0, 0.22); }
+.gvp-minimap .mm-node.focus { fill: var(--accent); }

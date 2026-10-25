@@ -1,0 +1,89 @@
+/* ============================================================
+   卡片栈
+   ============================================================ */
+.card-stack { margin-top: 18px; }
+.card-add { display: flex; flex-wrap: wrap; gap: 5px; }
+.card-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  padding: 4px 10px 4px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--mute);
+  transition: border-color 0.12s, color 0.12s;
+}
+.card-add-btn i {
+  width: 14px;
+  height: 14px;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  font-size: 8px;
+  font-style: normal;
+  color: #fff;
+}
+.card-add-btn:hover { border-color: currentColor; color: var(--ink); }
+
+.kind-card {
+  background: var(--card);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-l);
+  padding: 12px 14px;
+  margin-top: 10px;
+  box-shadow: var(--sh-raise);
+}
+.kind-card header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 10px;
+}
+.kind-card header .kind-glyph {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-style: normal;
+  color: #fff;
+  flex: none;
+}
+.kind-card header .kind-name { font-size: 12px; font-weight: 600; color: var(--mute); flex: 1; }
+.kind-card header button {
+  color: var(--faint);
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 5px;
+}
+.kind-card header button:hover { color: var(--warn); background: var(--warn-soft); }
+.kind-card .tf { font-size: 13px; padding: 6px 9px; }
+.kind-note textarea { font-family: var(--serif); font-size: 15px; line-height: 1.7; min-height: 110px; }
+.kind-code { background: #f7f7f9; }
+.kind-code textarea { font-family: var(--mono); font-size: 12.5px; line-height: 1.55; background: transparent; min-height: 90px; }
+.kind-code input { font-family: var(--mono); margin-bottom: 6px; }
+.code-view {
+  margin: 0;
+  border-radius: 8px;
+  border: 1px solid var(--line-soft);
+  background: var(--card);
+  overflow-x: auto;
+  cursor: text;
+  min-height: 40px;
+}
+.code-view code {
+  display: block;
+  padding: 10px 12px;
+  font: 12.5px/1.55 var(--mono);
+  background: transparent;
+  white-space: pre;
+}
+
+.kind-formula .preview { margin-top: 10px; overflow-x: auto; font-size: 17px; }
+.kind-formula .preview-error { margin-top: 8px; color: var(--warn); font-size: 12px; }
+.kind-line { display: grid; grid-template-columns: 40px 1fr; gap: 8px; align-items: start; margin-top: 6px; font-size: 12px; color: var(--mute); }
+.kind-line > span { padding-top: 8px; }
+.kind-line textarea.tf { font-family: var(--sans); font-size: 13px; line-height: 1.5; min-height: 34px; }
