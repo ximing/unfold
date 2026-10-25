@@ -4,46 +4,11 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Database } from './graph-db.js';
 import { invalidBody, type SessionLookup } from './http.js';
+import { likePattern, snippetOf } from './search-text.js';
 
 const searchQuerySchema = z.object({
   q: z.string().optional(),
 });
-
-function likePattern(query: string) {
-  return `%${query.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
-}
-
-function clip(text: string) {
-  return [...text].slice(0, 80).join('');
-}
-
-function readable(cardText: string) {
-  try {
-    const value = JSON.parse(cardText) as unknown;
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      const parts = Object.values(value).filter((item): item is string => typeof item === 'string');
-      if (parts.length > 0) return stripTags(parts.join(' '));
-    }
-  } catch {
-    return cardText;
-  }
-  return cardText;
-}
-
-/** 笔记存的是 HTML，摘录时去掉标签 */
-function stripTags(text: string) {
-  return text
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&[a-z]+;/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function snippetOf(name: string, cardText: string | null, query: string) {
-  if (name.toLowerCase().includes(query.toLowerCase())) return clip(name);
-  if (!cardText) return clip(name);
-  return clip(readable(cardText));
-}
 
 export function registerSearchRoutes(app: FastifyInstance, db: Database, session: SessionLookup) {
   app.get('/api/search', async (request, reply) => {
