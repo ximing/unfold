@@ -1,5 +1,4 @@
 node_modules/
-docs/deploy.md
 dist/
 .DS_Store
 *.tsbuildinfo
