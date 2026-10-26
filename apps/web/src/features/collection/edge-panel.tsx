@@ -34,9 +34,7 @@ export const EdgePanel = observer(function EdgePanel(props: { edgeId: string; on
             label="关系"
             maxLength={40}
             value={detail.label}
-            onSave={(value) => {
-              void library.renameEdge(detail.id, value);
-            }}
+            onSave={(value) => library.renameEdge(detail.id, value)}
           />
           <CardStack
             types={EDGE_CARD_TYPES}
@@ -49,9 +47,7 @@ export const EdgePanel = observer(function EdgePanel(props: { edgeId: string; on
                 props.onTouched();
               })();
             }}
-            onUpdate={(cardId, content) => {
-              void library.updateCard(cardId, content);
-            }}
+            onUpdate={(cardId, content) => library.updateCard(cardId, content)}
             onDelete={(cardId) => {
               void (async () => {
                 const ok = await library.deleteCard(cardId);

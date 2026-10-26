@@ -15,6 +15,7 @@
   - `src/<domain>/routes.ts`：按领域拆分的 HTTP 路由注册函数（`avatar`、`collections`、`nodes`、`edges`、`cards`、`search`）。
   - `src/avatar/`：头像 multipart 解析、S3 读写与预签名临时地址（`ATTACHMENT_S3_*`，私有桶每次现签）。
   - `src/graph/db.ts`：跨表图谱查询、卡片位置计算与级联删除事务（合集、点、边、卡片的组合读写）。
+  - `src/sync/`：同一账号两处打开时的变更通知。只在当前进程的内存里转发，不落库。
   - `src/db/`：数据库连接池（`client.ts`）与 Drizzle 表定义（`schema.ts`）。
 - **不放什么**：
   - 前后端共享的请求体/响应体 Zod schema（应放在 `packages/dto/src/graph.ts`）。

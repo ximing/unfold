@@ -24,6 +24,7 @@ import {
 } from './http.js';
 import { registerNodeRoutes } from './nodes/routes.js';
 import { registerSearchRoutes } from './search/routes.js';
+import { registerLive } from './sync/routes.js';
 import { registerWebStatic } from './web-static.js';
 
 const invalidCredentials = {
@@ -33,6 +34,9 @@ const invalidCredentials = {
 const unauthenticated = {
   error: { code: 'unauthenticated', message: '未登录' },
 };
+
+/** WebView 会在进程退出时丢掉没有过期时间的会话 Cookie。400 天是 Chromium 上限。 */
+const SESSION_MAX_AGE_SECONDS = 400 * 24 * 60 * 60;
 
 export type AppOverrides = { avatarStore?: AvatarStore };
 
@@ -65,6 +69,7 @@ export async function buildApp(overrides?: AppOverrides) {
     sameSite: 'lax' as const,
     secure: config.isProduction,
     signed: true,
+    maxAge: SESSION_MAX_AGE_SECONDS,
   };
 
   async function signedSessionUser(
@@ -226,6 +231,7 @@ export async function buildApp(overrides?: AppOverrides) {
   registerEdgeRoutes(app, db, signedSessionUser);
   registerCardRoutes(app, db, signedSessionUser);
   registerSearchRoutes(app, db, signedSessionUser);
+  await registerLive(app);
 
   await registerWebStatic(app, config.isProduction);
 

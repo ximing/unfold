@@ -33,9 +33,7 @@ export const CollectionPanel = observer(function CollectionPanel(props: {
         id={props.id}
         label="标题"
         value={props.title}
-        onSave={(value) => {
-          void library.renameCollection(props.id, value);
-        }}
+        onSave={(value) => library.renameCollection(props.id, value)}
       />
       <div className="panel-actions" style={{ marginTop: 0 }}>
         <UButton variant="primary" onClick={props.onOpen}>

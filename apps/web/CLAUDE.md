@@ -11,9 +11,13 @@
   - `src/foundation/`：全局 CSS 变量令牌、基础重置、通用工具类与动效定义（`base.css`、`utilities.css`、`motion.css`）。
   - `src/shared/ui/<name>/`：与业务解耦的基础 UI 组件（`UButton`、`UField`、`USelect`、`UModal`、`UDateField`、`Toast` 等）及其同名样式 `<name>.css`。
   - `src/shared/panel/` 与 `src/shared/name-field/`：跨页面复用的检查器外壳（`PanelShell`）与内联名称编辑组件。
+  - `src/shared/save/`：保存总线。草稿登记、写入计数、停下两秒提交、⌘S。`shared/ui` 可以登记草稿，不要从这里引用 `LibraryService`。
+  - `src/shared/live/`：这一页的客户端标识，写请求带给服务端。
   - `src/features/<feature>/`：按业务功能划分的模块：
     - `session/`：登录页、注册页、首页路由分流与 `SessionService`（含改名与头像上传）。
-    - `shell/`：浮在画布顶部的操作区（头像账号菜单、合集切换、搜索、设置导航）、全局快捷键（`⌘K` 搜索、`⌘N` 新建合集）。
+    - `shell/`：浮在画布顶部的操作区（保存状态、头像账号菜单、合集切换、搜索、设置导航）、全局快捷键（`⌘K` 搜索、`⌘N` 新建合集、`⌘S` 保存）、停下两秒的静默保存。
+    - `live/`：登录后连接 `/api/live`，另一处写入时拉取当前页；页面可见时约每 5 秒再拉一次。
+    - `save/`：`SaveService`，订阅 `shared/save/` 的写入状态。
     - `library/`：全貌页及 `LibraryService`（状态壳层在 `library.service.ts`，领域操作按 `api`、`collections`、`graph`、`nodes`、`edges`、`collection-edges`、`cards`、`search` 拆分）。
     - `collection/`：合集详情页及点/边的右侧检查器面板與悬停预览（`NodePeek`）。
     - `board/`：自定义 SVG 视口（`GraphViewport`）、画布渲染（`BoardCanvas`、`BoardNodes`、`BoardEdges`）与图布局算法（`board-layout.ts`）。
@@ -34,4 +38,4 @@
   - 自动排布逻辑集中在 `features/board/board-layout.ts`（`layoutBoard` 纯函数），保持可独立单测。
 - **卡片扩展与渲染**：
   - 九种卡片（原八种加富文本 `rich`）的颜色与标签统一以 `features/cards/card-meta.ts` 为准，点本身不设类型色标。
-  - 卡片内容采用失焦自动保存（blur save），创建后不可更改卡片 `type`。
+  - 卡片内容停下输入大约两秒后保存，失焦也会保存，⌘S 立刻保存。创建后不可更改卡片 `type`。

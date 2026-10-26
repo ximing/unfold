@@ -43,9 +43,7 @@ export const CollectionEdgePanel = observer(function CollectionEdgePanel(props: 
             label="关系"
             maxLength={40}
             value={detail.label}
-            onSave={(value) => {
-              void library.renameCollectionEdge(detail.id, value);
-            }}
+            onSave={(value) => library.renameCollectionEdge(detail.id, value)}
           />
           <CardStack
             types={EDGE_CARD_TYPES}
@@ -56,9 +54,7 @@ export const CollectionEdgePanel = observer(function CollectionEdgePanel(props: 
                 if (created) await reload();
               })();
             }}
-            onUpdate={(id, content) => {
-              void library.updateCard(id, content);
-            }}
+            onUpdate={(id, content) => library.updateCard(id, content)}
             onDelete={(id) => {
               void library.deleteCard(id);
             }}

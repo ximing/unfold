@@ -32,6 +32,14 @@ export const LibraryPage = observer(function LibraryPage() {
     void library.loadCollectionEdge(selection.id);
   }, [library, selection]);
 
+  useEffect(() => {
+    library.watchView({
+      kind: 'library',
+      edgeId: selection?.kind === 'edge' ? selection.id : null,
+    });
+    return () => library.watchView(null);
+  }, [library, selection]);
+
   const graph = library.libraryGraph;
   const collections = graph?.collections ?? [];
   const edges = graph?.edges ?? [];

@@ -48,6 +48,7 @@ describe('auth', () => {
     const header = Array.isArray(setCookie) ? setCookie.join(';') : String(setCookie);
     expect(header).toContain('HttpOnly');
     expect(header).toContain('SameSite=Lax');
+    expect(header).toContain('Max-Age=34560000');
     expect(header).not.toMatch(/(?:^|;)\s*Secure(?:;|$)/i);
   });
 

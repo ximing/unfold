@@ -1,5 +1,12 @@
 import { errorBodySchema } from '@unfold/dto';
+import { clientId } from '../../shared/live/client-id.js';
 import type { LibraryState } from './library.service.js';
+
+let mutations = 0;
+
+export function mutationStamp(): number {
+  return mutations;
+}
 
 export async function errorMessage(res: Response, fallback: string): Promise<string> {
   try {
@@ -11,8 +18,12 @@ export async function errorMessage(res: Response, fallback: string): Promise<str
 
 /** 网络断开时返回 null。不写 error，避免过期请求盖住新请求。 */
 export async function apiSend(input: string, init?: RequestInit): Promise<Response | null> {
+  const method = (init?.method ?? 'GET').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') mutations += 1;
+  const headers = new Headers(init?.headers);
+  headers.set('x-unfold-client', clientId());
   try {
-    return await fetch(input, init);
+    return await fetch(input, { ...init, headers });
   } catch {
     return null;
   }

@@ -3,7 +3,11 @@ import { CardFrame } from './card-frame.js';
 import { text } from './content.js';
 import { NoteEditor } from './note-editor.js';
 
-export function NoteCard(props: { card: Card; onUpdate: (content: Card['content']) => void; onDelete: () => void }) {
+export function NoteCard(props: {
+  card: Card;
+  onUpdate: (content: Card['content']) => Promise<boolean> | void;
+  onDelete: () => void;
+}) {
   return (
     <CardFrame type="note" className="kind-note" onDelete={props.onDelete}>
       <NoteEditor

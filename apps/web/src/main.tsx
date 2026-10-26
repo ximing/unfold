@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { register } from '@rabjs/react';
 import { BrowserRouter, Route, Routes } from 'react-router';
+import { SaveService } from './features/save/save.service.js';
 import { SessionService } from './features/session/session.service.js';
 import { CollectionPage } from './features/collection/collection-page.js';
 import { HomePage } from './features/session/home-page.js';
@@ -15,6 +16,7 @@ import './foundation/motion.css';
 import 'katex/dist/katex.min.css';
 
 register(SessionService);
+register(SaveService);
 
 const root = document.getElementById('root');
 if (!root) throw new Error('missing root');

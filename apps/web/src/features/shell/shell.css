@@ -9,10 +9,44 @@
 }
 .stage-wrap { display: flex; min-width: 0; min-height: 0; height: 100%; }
 
+.save-status {
+  position: absolute;
+  z-index: 21;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 16px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--faint);
+  white-space: nowrap;
+  user-select: none;
+}
+.save-status[data-phase='dirty'],
+.save-status[data-phase='saving'] { color: var(--mute); }
+.save-status[data-phase='failed'] { color: var(--warn); }
+.save-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.save-status[data-phase='saving'] .save-dot {
+  animation: save-pulse 1.1s ease-in-out infinite;
+}
+@keyframes save-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
 /* ---------- 顶部浮动操作区 ---------- */
 .dock {
   position: absolute;
-  top: 12px;
+  top: 28px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 20;

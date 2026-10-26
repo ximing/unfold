@@ -2,6 +2,10 @@ import { observer, useService } from '@rabjs/react';
 import type { CardType } from '@unfold/dto';
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { PanelShell } from '../../shared/panel/panel-shell.js';
+import { createHandoff } from '../../shared/save/handoff.js';
+import { noteDraft } from '../../shared/save/save-bus.js';
+import { takeServerText } from '../../shared/save/server-text.js';
+import { useSaveDraft } from '../../shared/save/use-save-draft.js';
 import { NameField } from '../../shared/name-field/name-field.js';
 import { UButton } from '../../shared/ui/button/button.js';
 import { UTextArea } from '../../shared/ui/field/field.js';
@@ -131,13 +135,46 @@ export const NodePanel = observer(function NodePanel(props: {
   const [confirm, setConfirm] = useState(false);
   const detail = library.nodeDetail?.id === props.nodeId ? library.nodeDetail : null;
   useAskDelete(() => setConfirm(true));
-  const [descDraft, setDescDraft] = useState('');
+  const [descDraft, setDescDraft] = useState(detail?.description ?? '');
+  const descRef = useRef(detail?.description ?? '');
+  const savedDesc = useRef(detail?.description ?? '');
+  const boundId = useRef(detail?.id ?? props.nodeId);
+  const hand = useRef(createHandoff()).current;
+  descRef.current = descDraft;
 
   useEffect(() => {
     setTargetCollection('');
-    setDescDraft(detail?.description ?? '');
-     
+    const incoming = detail?.description ?? '';
+    const switched = boundId.current !== (detail?.id ?? props.nodeId);
+    boundId.current = detail?.id ?? props.nodeId;
+    const decision = takeServerText(descRef.current.trim(), savedDesc.current, incoming, switched);
+    if (decision === 'keep') {
+      noteDraft();
+      return;
+    }
+    if (decision === 'echo') {
+      savedDesc.current = incoming;
+      noteDraft();
+      return;
+    }
+    savedDesc.current = incoming;
+    descRef.current = incoming;
+    setDescDraft(incoming);
+    noteDraft();
   }, [props.nodeId, detail?.id, detail?.description]);
+
+  function commitDescription() {
+    if (!detail) return;
+    const next = descRef.current.trim();
+    return hand.send(next, savedDesc.current, () => library.describeNode(detail.id, next));
+  }
+
+  useSaveDraft(
+    () => detail !== null && hand.dirty(descRef.current.trim(), savedDesc.current),
+    () => {
+      void commitDescription();
+    },
+  );
 
   const memberIds = new Set(detail?.collections.map((item) => item.id) ?? []);
   const others = library.collections.filter((item) => !memberIds.has(item.id));
@@ -179,9 +216,7 @@ export const NodePanel = observer(function NodePanel(props: {
             id={detail.id}
             label="名字"
             value={detail.name}
-            onSave={(value) => {
-              void library.renameNode(detail.id, value);
-            }}
+            onSave={(value) => library.renameNode(detail.id, value)}
           />
           <div className="field">
             <label htmlFor={`desc-${detail.id}`}>描述</label>
@@ -191,10 +226,13 @@ export const NodePanel = observer(function NodePanel(props: {
               placeholder="一句话，图上会直接显示"
               maxLength={160}
               value={descDraft}
-              onChange={(event) => setDescDraft(event.target.value)}
+              onChange={(event) => {
+                descRef.current = event.target.value;
+                setDescDraft(event.target.value);
+                hand.edit();
+              }}
               onBlur={() => {
-                const next = descDraft.trim();
-                if (next !== detail.description) void library.describeNode(detail.id, next);
+                void commitDescription();
               }}
             />
           </div>
@@ -243,9 +281,7 @@ export const NodePanel = observer(function NodePanel(props: {
                 props.onTouched();
               })();
             }}
-            onUpdate={(cardId, content) => {
-              void library.updateCard(cardId, content);
-            }}
+            onUpdate={(cardId, content) => library.updateCard(cardId, content)}
             onDelete={(cardId) => {
               void (async () => {
                 const ok = await library.deleteCard(cardId);

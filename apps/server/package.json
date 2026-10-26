@@ -18,6 +18,7 @@
     "@fastify/multipart": "^10.1.6",
     "@fastify/rate-limit": "^11.2.1",
     "@fastify/static": "^10.1.7",
+    "@fastify/websocket": "^11.3.4",
     "@unfold/dto": "workspace:*",
     "argon2": "^0.45.1",
     "drizzle-orm": "^0.45.4",
@@ -28,9 +29,11 @@
   "devDependencies": {
     "@types/node": "^22.19.0",
     "@types/pg": "^8.23.1",
+    "@types/ws": "^8.18.2",
     "drizzle-kit": "^0.31.11",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "ws": "^8.22.0"
   }
 }

@@ -15,7 +15,11 @@ import { NoteCard } from './note-card.js';
 import { RichCard } from './rich/rich-editor.js';
 import './card-stack.css';
 
-function OneCard(props: { card: Card; onUpdate: (content: Card['content']) => void; onDelete: () => void }) {
+function OneCard(props: {
+  card: Card;
+  onUpdate: (content: Card['content']) => Promise<boolean> | void;
+  onDelete: () => void;
+}) {
   switch (props.card.type) {
     case 'note':
       return <NoteCard card={props.card} onUpdate={props.onUpdate} onDelete={props.onDelete} />;
@@ -96,7 +100,7 @@ export function CardStack(props: {
   cards: Card[];
   types?: CardType[];
   onCreate: (type: CardType) => void;
-  onUpdate: (id: string, content: Card['content']) => void;
+  onUpdate: (id: string, content: Card['content']) => Promise<boolean> | void;
   onDelete: (id: string) => void;
 }) {
   const types = props.types ?? CARD_TYPES;

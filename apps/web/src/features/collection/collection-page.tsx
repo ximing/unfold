@@ -85,6 +85,20 @@ export const CollectionPage = observer(function CollectionPage() {
     );
   }, [ready, id, library, library.graph, library.graphId]);
 
+  useEffect(() => {
+    if (!id) {
+      library.watchView(null);
+      return;
+    }
+    library.watchView({
+      kind: 'collection',
+      id,
+      nodeId: selection?.kind === 'node' ? selection.id : null,
+      edgeId: selection?.kind === 'edge' ? selection.id : null,
+    });
+    return () => library.watchView(null);
+  }, [id, library, selection]);
+
   if (!id || missing) {
     return (
       <div className="board-stage">

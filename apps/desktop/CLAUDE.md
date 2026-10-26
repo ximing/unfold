@@ -4,7 +4,7 @@
 
 - 基于 Tauri 2（`src-tauri/`）的轻量桌面外壳。
 - 开发模式加载 `http://localhost:5173`，生产模式直接加载 `https://unfold.aimo.plus`。
-- 会话沿用页面同源的 HttpOnly Cookie `unfold_session`。壳和系统浏览器不共享 Cookie。
+- 会话沿用页面同源的 HttpOnly Cookie `unfold_session`，服务端写 `Max-Age` 400 天。没有过期时间时，WebView 会在进程退出后丢掉它。壳和系统浏览器不共享 Cookie。
 
 ## 放置约束
 

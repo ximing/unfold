@@ -3,6 +3,10 @@ import type { EditorProps } from '@tiptap/pm/view';
 import { EditorContent, useEditor } from '@tiptap/react';
 import type { Card, RichDoc } from '@unfold/dto';
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { createHandoff } from '../../../shared/save/handoff.js';
+import { noteDraft } from '../../../shared/save/save-bus.js';
+import { takeServerText } from '../../../shared/save/server-text.js';
+import { useSaveDraft } from '../../../shared/save/use-save-draft.js';
 import { CardFrame } from '../card-frame.js';
 import { createRichExtensions } from './extensions.js';
 import { htmlHasFormatting, preparePastedHtml } from './paste-html.js';
@@ -19,7 +23,7 @@ function savedText(value: unknown): string {
 export function RichCard(props: {
   cardId: string;
   doc: RichDoc;
-  onUpdate: (content: Card['content']) => void;
+  onUpdate: (content: Card['content']) => Promise<boolean> | void;
   onDelete: () => void;
 }) {
   const initialDoc = useRef(props.doc);
@@ -30,6 +34,7 @@ export function RichCard(props: {
   const cardIdRef = useRef(props.cardId);
   const onUpdateRef = useRef(props.onUpdate);
   const flushRef = useRef<() => void>(() => {});
+  const hand = useRef(createHandoff()).current;
   const [uploadError, setUploadError] = useState('');
   cardIdRef.current = props.cardId;
   onUpdateRef.current = props.onUpdate;
@@ -61,8 +66,7 @@ export function RichCard(props: {
     }
     const doc = sanitizeDoc(current.getJSON());
     const next = JSON.stringify(doc);
-    if (next === saved.current) return;
-    onUpdateRef.current({ doc } as Card['content']);
+    void hand.send(next, saved.current, () => onUpdateRef.current({ doc } as Card['content']));
   }
 
   flushRef.current = flush;
@@ -77,6 +81,7 @@ export function RichCard(props: {
       saved.current = savedText(current.getJSON());
     },
     onUpdate() {
+      hand.edit();
       if (timer.current !== null) window.clearTimeout(timer.current);
       timer.current = window.setTimeout(() => {
         timer.current = null;
@@ -89,6 +94,15 @@ export function RichCard(props: {
   });
 
   editorRef.current = editor;
+
+  useSaveDraft(
+    () => {
+      const current = editorRef.current;
+      if (!current || current.isDestroyed) return false;
+      return hand.dirty(savedText(current.getJSON()), saved.current);
+    },
+    () => flushRef.current(),
+  );
 
   useEffect(() => {
     mounted.current = true;
@@ -107,13 +121,19 @@ export function RichCard(props: {
     if (!current || current.isDestroyed) return;
     const incoming = savedText(props.doc);
     const local = savedText(current.getJSON());
-    if (incoming === local) {
-      saved.current = incoming;
+    const decision = takeServerText(local, saved.current, incoming, false);
+    if (decision === 'keep') {
+      noteDraft();
       return;
     }
-    if (local !== saved.current) return;
+    if (decision === 'echo') {
+      saved.current = incoming;
+      noteDraft();
+      return;
+    }
     current.commands.setContent(sanitizeDoc(props.doc) as JSONContent, { emitUpdate: false });
     saved.current = savedText(current.getJSON());
+    noteDraft();
   }, [props.doc]);
 
   function report(message: string) {

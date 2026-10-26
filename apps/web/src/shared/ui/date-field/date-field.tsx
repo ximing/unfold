@@ -1,5 +1,9 @@
 import { Calendar } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createHandoff } from '../../save/handoff.js';
+import { noteDraft } from '../../save/save-bus.js';
+import { takeServerText } from '../../save/server-text.js';
+import { useSaveDraft } from '../../save/use-save-draft.js';
 import './date-field.css';
 
 const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
@@ -37,13 +41,17 @@ function IconCalendar() {
  */
 export function UDateField(props: {
   value: string;
-  onCommit: (value: string) => void;
+  onCommit: (value: string) => void | Promise<boolean | void>;
   ariaLabel?: string;
   placeholder?: string;
 }) {
   const [draft, setDraft] = useState(props.value);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const draftRef = useRef(props.value);
+  const savedRef = useRef(props.value);
+  const hand = useRef(createHandoff()).current;
+  draftRef.current = draft;
 
   const parsed = useMemo(() => parseDate(draft), [draft]);
   const today = useMemo(() => {
@@ -52,7 +60,33 @@ export function UDateField(props: {
   }, []);
   const [view, setView] = useState(() => ({ y: (parsed ?? today).y, m: (parsed ?? today).m }));
 
-  useEffect(() => setDraft(props.value), [props.value]);
+  useEffect(() => {
+    const decision = takeServerText(draftRef.current.trim(), savedRef.current, props.value, false);
+    if (decision === 'keep') {
+      noteDraft();
+      return;
+    }
+    if (decision === 'echo') {
+      savedRef.current = props.value;
+      noteDraft();
+      return;
+    }
+    savedRef.current = props.value;
+    draftRef.current = props.value;
+    setDraft(props.value);
+    noteDraft();
+  }, [props.value]);
+
+  function commit(next = draftRef.current.trim()) {
+    return hand.send(next, savedRef.current, () => props.onCommit(next));
+  }
+
+  useSaveDraft(
+    () => hand.dirty(draftRef.current.trim(), savedRef.current),
+    () => {
+      void commit();
+    },
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -93,8 +127,9 @@ export function UDateField(props: {
 
   function pick(day: number) {
     const text = formatDate(view.y, view.m, day);
+    draftRef.current = text;
     setDraft(text);
-    props.onCommit(text);
+    void commit(text);
     setOpen(false);
   }
 
@@ -115,9 +150,13 @@ export function UDateField(props: {
         aria-label={props.ariaLabel}
         placeholder={props.placeholder ?? 'YYYY-MM-DD'}
         value={draft}
-        onChange={(event) => setDraft(event.target.value)}
+        onChange={(event) => {
+          draftRef.current = event.target.value;
+          setDraft(event.target.value);
+          hand.edit();
+        }}
         onBlur={() => {
-          if (draft.trim() !== props.value) props.onCommit(draft.trim());
+          void commit();
         }}
       />
       <button

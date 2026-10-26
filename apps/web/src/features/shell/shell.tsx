@@ -1,12 +1,15 @@
 import { bindServices, observer, useService } from '@rabjs/react';
 import { useEffect, useState } from 'react';
 import { Navigate, Outlet, useNavigate } from 'react-router';
+import { hasUnsaved, saveNow, startQuietSave } from '../../shared/save/save-bus.js';
 import { IconSearch } from '../../shared/ui/icons/icons.js';
 import { ToastHost } from '../../shared/ui/toast/toast.js';
 import { CreateCollectionDialog } from '../collection/create-collection.js';
 import { LibraryService } from '../library/library.service.js';
+import { startLive } from '../live/live.js';
 import { SessionService } from '../session/session.service.js';
 import { CollectionSwitch } from './collection-switch.js';
+import { SaveStatus } from './save-status.js';
 import { MoreMenu } from './more-menu.js';
 import { SearchPalette } from './search-palette.js';
 import { SettingsMenu } from './settings-menu.js';
@@ -43,10 +46,43 @@ const ShellView = observer(function ShellView() {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [library]);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
+      if (event.key.toLowerCase() !== 's') return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.repeat) return;
+      saveNow();
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, []);
+
+  useEffect(() => {
+    const onLeave = (event: BeforeUnloadEvent) => {
+      if (!hasUnsaved()) return;
+      saveNow();
+      event.preventDefault();
+    };
+    window.addEventListener('beforeunload', onLeave);
+    return () => window.removeEventListener('beforeunload', onLeave);
+  }, []);
+
+  useEffect(() => startQuietSave(2000), []);
+
+  useEffect(() => {
+    if (!session.username) return;
+    return startLive(() => {
+      void library.pull();
+    });
+  }, [library, session.username]);
+
   if (session.ready && !session.username) return <Navigate to="/login" replace />;
 
   return (
     <div className="wk">
+      <SaveStatus />
       <div className="stage-wrap">
         <Outlet />
       </div>

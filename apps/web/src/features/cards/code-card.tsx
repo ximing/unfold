@@ -1,28 +1,75 @@
 import type { Card } from '@unfold/dto';
 import hljs from 'highlight.js/lib/common';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createHandoff } from '../../shared/save/handoff.js';
+import { noteDraft } from '../../shared/save/save-bus.js';
+import { takeServerText } from '../../shared/save/server-text.js';
+import { useSaveDraft } from '../../shared/save/use-save-draft.js';
 import { UTextArea, UTextInput } from '../../shared/ui/field/field.js';
 import { CardFrame } from './card-frame.js';
 import { text } from './content.js';
 
-export function CodeCard(props: { card: Card; onUpdate: (content: Card['content']) => void; onDelete: () => void }) {
-  const [language, setLanguage] = useState(text(props.card.content, 'language'));
-  const [source, setSource] = useState(text(props.card.content, 'source'));
-  const [editing, setEditing] = useState(text(props.card.content, 'source').trim() === '');
-  useEffect(() => {
-    setLanguage(text(props.card.content, 'language'));
-    setSource(text(props.card.content, 'source'));
-  }, [props.card.id, props.card.content]);
+function snap(language: string, source: string): string {
+  return JSON.stringify([language, source]);
+}
 
-  function save(nextLanguage: string, nextSource: string) {
-    if (
-      nextLanguage === text(props.card.content, 'language') &&
-      nextSource === text(props.card.content, 'source')
-    ) {
+export function CodeCard(props: {
+  card: Card;
+  onUpdate: (content: Card['content']) => Promise<boolean> | void;
+  onDelete: () => void;
+}) {
+  const initialLanguage = text(props.card.content, 'language');
+  const initialSource = text(props.card.content, 'source');
+  const [language, setLanguage] = useState(initialLanguage);
+  const [source, setSource] = useState(initialSource);
+  const [editing, setEditing] = useState(initialSource.trim() === '');
+  const languageRef = useRef(initialLanguage);
+  const sourceRef = useRef(initialSource);
+  const savedRef = useRef(snap(initialLanguage, initialSource));
+  const cardIdRef = useRef(props.card.id);
+  const hand = useRef(createHandoff()).current;
+  languageRef.current = language;
+  sourceRef.current = source;
+
+  useEffect(() => {
+    const nextLanguage = text(props.card.content, 'language');
+    const nextSource = text(props.card.content, 'source');
+    const incoming = snap(nextLanguage, nextSource);
+    const switched = cardIdRef.current !== props.card.id;
+    cardIdRef.current = props.card.id;
+    const decision = takeServerText(snap(languageRef.current, sourceRef.current), savedRef.current, incoming, switched);
+    if (decision === 'keep') {
+      noteDraft();
       return;
     }
-    props.onUpdate({ language: nextLanguage, source: nextSource });
+    if (decision === 'echo') {
+      savedRef.current = incoming;
+      noteDraft();
+      return;
+    }
+    savedRef.current = incoming;
+    languageRef.current = nextLanguage;
+    sourceRef.current = nextSource;
+    setLanguage(nextLanguage);
+    setSource(nextSource);
+    if (switched) setEditing(nextSource.trim() === '');
+    noteDraft();
+  }, [props.card.id, props.card.content]);
+
+  function commit() {
+    const nextLanguage = languageRef.current;
+    const nextSource = sourceRef.current;
+    return hand.send(snap(nextLanguage, nextSource), savedRef.current, () =>
+      props.onUpdate({ language: nextLanguage, source: nextSource }),
+    );
   }
+
+  useSaveDraft(
+    () => hand.dirty(snap(languageRef.current, sourceRef.current), savedRef.current),
+    () => {
+      void commit();
+    },
+  );
 
   const highlighted = useMemo(() => {
     if (source.trim() === '') return null;
@@ -41,18 +88,28 @@ export function CodeCard(props: { card: Card; onUpdate: (content: Card['content'
         aria-label="语言"
         placeholder="语言"
         value={language}
-        onChange={(event) => setLanguage(event.target.value)}
-        onBlur={() => save(language, source)}
+        onChange={(event) => {
+          languageRef.current = event.target.value;
+          setLanguage(event.target.value);
+          hand.edit();
+        }}
+        onBlur={() => {
+          void commit();
+        }}
       />
       {editing ? (
         <UTextArea
           aria-label="代码"
           autoFocus
           value={source}
-          onChange={(event) => setSource(event.target.value)}
+          onChange={(event) => {
+            sourceRef.current = event.target.value;
+            setSource(event.target.value);
+            hand.edit();
+          }}
           onBlur={() => {
-            save(language, source);
-            if (source.trim() !== '') setEditing(false);
+            void commit();
+            if (sourceRef.current.trim() !== '') setEditing(false);
           }}
         />
       ) : highlighted ? (

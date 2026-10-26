@@ -259,6 +259,10 @@ export const searchResponseSchema = z.object({
   hits: z.array(searchHitSchema).max(30),
 });
 
+export const liveNoticeSchema = z.object({
+  client: z.uuid(),
+});
+
 export type OwnerKind = z.infer<typeof ownerKindSchema>;
 export type CardType = z.infer<typeof cardTypeSchema>;
 export type Collection = z.infer<typeof collectionSchema>;
@@ -286,3 +290,4 @@ export type CreateCardBody = z.infer<typeof createCardBodySchema>;
 export type UpdateCardBody = z.infer<typeof updateCardBodySchema>;
 export type SearchHit = z.infer<typeof searchHitSchema>;
 export type SearchResponse = z.infer<typeof searchResponseSchema>;
+export type LiveNotice = z.infer<typeof liveNoticeSchema>;
