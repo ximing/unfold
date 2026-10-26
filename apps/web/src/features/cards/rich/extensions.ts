@@ -1,6 +1,5 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import type { NodeViewRendererProps } from '@tiptap/core';
-import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
 import { Mathematics } from '@tiptap/extension-mathematics';
 import Subscript from '@tiptap/extension-subscript';
@@ -11,15 +10,11 @@ import TextAlign from '@tiptap/extension-text-align';
 import { BackgroundColor, Color, FontSize, TextStyle } from '@tiptap/extension-text-style';
 import StarterKit from '@tiptap/starter-kit';
 import type { Node as PmNode } from '@tiptap/pm/model';
-import { common, createLowlight } from 'lowlight';
 import { normalizeColor, normalizeFontSize } from './palette.js';
+import { RichCodeBlock } from './rich-code-block.js';
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-const lowlight = createLowlight(common);
-
-export const CODE_LANGUAGES = lowlight.listLanguages().slice().sort((left, right) => left.localeCompare(right));
 
 const ALIGN_TYPES = [
   'paragraph',
@@ -357,7 +352,7 @@ export function createRichExtensions() {
     TableRow,
     RichTableCell,
     RichTableHeader,
-    CodeBlockLowlight.configure({ lowlight }),
+    RichCodeBlock,
     Mathematics,
     RichImage,
     Uploading,

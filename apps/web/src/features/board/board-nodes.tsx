@@ -3,7 +3,7 @@ import { cardMeta } from '../cards/card-meta.js';
 import type { BoardCanvasItem } from './board-canvas.js';
 import { IMAGE_NAME_LINE } from './image-frame.js';
 import type { BoardBox } from './board-layout.js';
-import { shortDesc, shortLabel } from './label.js';
+import { shortLabel } from './label.js';
 
 export function BoardNodes(props: {
   items: BoardCanvasItem[];
@@ -52,8 +52,8 @@ export function BoardNodes(props: {
         const types = (item.types ?? []).slice(0, 6);
         const desc = (item.description ?? '').trim();
         const cy = box.y + box.h / 2;
-        const nameY = desc !== '' ? box.y + 19 : types.length > 0 ? cy - 4 : cy;
-        const dotsY = desc !== '' ? box.y + box.h - 6 : box.y + box.h - 7;
+        const nameY = desc !== '' ? box.y + 15 : types.length > 0 ? cy - 4 : cy;
+        const dotsY = desc !== '' ? box.y + box.h - 8 : box.y + box.h - 7;
         const renaming = props.renamingId === item.id;
         return (
           <g
@@ -81,9 +81,17 @@ export function BoardNodes(props: {
               </text>
             ) : null}
             {desc !== '' && !renaming ? (
-              <text className="bnode-desc" x={box.x + box.w / 2} y={box.y + 37} textAnchor="middle">
-                {shortDesc(desc)}
-              </text>
+              <foreignObject
+                className="bnode-desc-fo"
+                x={box.x + 10}
+                y={box.y + 28}
+                width={Math.max(0, box.w - 20)}
+                height={28}
+              >
+                <div className="bnode-desc" style={{ width: Math.max(0, box.w - 20) }}>
+                  {desc}
+                </div>
+              </foreignObject>
             ) : null}
             {types.length > 0
               ? types.map((type, index) => (

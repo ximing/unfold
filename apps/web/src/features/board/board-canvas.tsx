@@ -10,7 +10,8 @@ import {
 } from 'react';
 import { BoardEdges } from './board-edges.js';
 import { anchorOnBorder, edgeGeometry, edgeLanes, edgeMidpoint } from './edge-geometry.js';
-import { isFiniteNumber, layoutBoard, layoutPlaced, nextPlacementZ } from './board-layout.js';
+import { isFiniteNumber, layoutBoard, layoutPlaced, nextPlacementZ, textNodeHeight } from './board-layout.js';
+import { GROW_H, GROW_W, planGrow } from './grow.js';
 import { imageFrame } from './image-frame.js';
 import { BoardNodes } from './board-nodes.js';
 import { BoardToolbar, type BoardTool } from './board-toolbar.js';
@@ -43,6 +44,7 @@ type Editing =
   | { kind: 'rename'; id: string }
   | { kind: 'link'; fromId: string; toId: string }
   | { kind: 'relabel'; id: string }
+  | { kind: 'grow'; fromId: string | null; x: number; y: number }
   | null;
 
 type DragGesture = {
@@ -177,6 +179,10 @@ export function BoardCanvas(props: {
   enableTools?: boolean;
   /** 改边的标签。空字符串或与原来相同由调用方忽略 */
   onRelabel?: (id: string, label: string) => void;
+  /** 选中点后 Tab 建下级、Enter 建同级。名字写完才调用。fromId 为空表示不连边 */
+  onGrowNode?: (draft: { name: string; fromId: string | null; x: number; y: number }) => void;
+  /** 同级有多个上级时 */
+  onGrowBlocked?: (message: string) => void;
   /** 选文件、粘贴或拖入后交给调用方。不传则只回到选择工具 */
   onInsertImages?: (files: File[], at: Pt, anchor: 'center' | 'corner') => void;
 }) {
@@ -187,6 +193,7 @@ export function BoardCanvas(props: {
   const [tool, setTool] = useState<BoardTool>('select');
   const [peekId, setPeekId] = useState<string | null>(null);
   const peekTimer = useRef(0);
+  const peekCloseTimer = useRef(0);
   const dragRef = useRef<DragGesture | null>(null);
   const dragSerial = useRef(0);
   const [dragBox, setDragBox] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -242,7 +249,7 @@ export function BoardCanvas(props: {
   const imageHeights = new Map<string, number>();
   const boxes = moved.map((box) => {
     const item = itemById.get(box.id);
-    if (item?.kind !== 'image') return box;
+    if (item?.kind !== 'image') return { ...box, h: textNodeHeight(item?.description) };
     const width = resizePreview?.id === item.id ? resizePreview.width : item.imageWidth;
     const stored = item.assetId ? imageRatios[item.assetId] : undefined;
     const ratio = stored !== undefined && stored > 0 && Number.isFinite(stored) ? stored : 1;
@@ -351,21 +358,51 @@ export function BoardCanvas(props: {
   function armPeek(id: string) {
     if (!props.renderPeek || isUploading(id)) return;
     window.clearTimeout(peekTimer.current);
+    if (peekId === id) {
+      window.clearTimeout(peekCloseTimer.current);
+      return;
+    }
+    window.clearTimeout(peekCloseTimer.current);
+    if (peekId !== null) {
+      setPeekId(null);
+      props.onPeekItem?.(null);
+    }
     peekTimer.current = window.setTimeout(() => {
       setPeekId(id);
       props.onPeekItem?.(id);
     }, 450);
   }
 
+  /** 点和预览之间有空隙。晚一点关，指针还能移到预览上滚动。 */
+  function scheduleClosePeek() {
+    window.clearTimeout(peekTimer.current);
+    window.clearTimeout(peekCloseTimer.current);
+    peekCloseTimer.current = window.setTimeout(() => {
+      setPeekId(null);
+      props.onPeekItem?.(null);
+    }, 280);
+  }
+
+  function holdPeek() {
+    window.clearTimeout(peekCloseTimer.current);
+  }
+
   function disarmPeek() {
     window.clearTimeout(peekTimer.current);
+    window.clearTimeout(peekCloseTimer.current);
     if (peekId !== null) {
       setPeekId(null);
       props.onPeekItem?.(null);
     }
   }
 
-  useEffect(() => () => window.clearTimeout(peekTimer.current), []);
+  useEffect(
+    () => () => {
+      window.clearTimeout(peekTimer.current);
+      window.clearTimeout(peekCloseTimer.current);
+    },
+    [],
+  );
 
   /* ---------- 键盘：工具快捷键、方向键、Enter、Esc ---------- */
   useEffect(() => {
@@ -455,10 +492,35 @@ export function BoardCanvas(props: {
         if (best) props.onSelectItem(best.id);
         return;
       }
+      const beginGrow = (role: 'child' | 'sibling', nodeId: string) => {
+        const anchor = boxOf.get(nodeId);
+        if (!anchor) return;
+        event.preventDefault();
+        disarmPeek();
+        const plan = planGrow(role, nodeId, props.links, anchor, boxes);
+        if (!plan.ok) {
+          props.onGrowBlocked?.(plan.message);
+          return;
+        }
+        const next: Editing = { kind: 'grow', fromId: plan.fromId, x: plan.x, y: plan.y };
+        editingRef.current = next;
+        setEditing(next);
+      };
+      if (event.key === 'Tab' && !event.shiftKey && props.onGrowNode && !event.repeat) {
+        const item = props.items.find((entry) => entry.id === props.selectedId);
+        if (!item || item.uploading) return;
+        beginGrow('child', item.id);
+        return;
+      }
       if (event.key === 'Enter') {
         const item = props.items.find((entry) => entry.id === props.selectedId);
         const link = props.links.find((entry) => entry.id === props.selectedId);
         if (item?.uploading) return;
+        if (item && props.onGrowNode) {
+          if (event.repeat) return;
+          beginGrow('sibling', item.id);
+          return;
+        }
         if (item) {
           event.preventDefault();
           disarmPeek();
@@ -863,8 +925,10 @@ export function BoardCanvas(props: {
   }, [hasSaved, missingKey, spotCenter]);
 
   const peekBox = peekId ? boxOf.get(peekId) : undefined;
-  const peekWidth = 240;
-  const peekFlip = peekBox ? peekBox.x + peekBox.w + 12 + peekWidth > world.worldX + world.worldWidth : false;
+  const peekGap = 12;
+  const peekCardWidth = 240;
+  const peekOuter = peekCardWidth + peekGap;
+  const peekFlip = peekBox ? peekBox.x + peekBox.w + peekOuter > world.worldX + world.worldWidth : false;
   const canvasClass = !toolsOn ? undefined : tool === 'text' ? 'tool-text' : tool === 'connect' ? 'tool-connect' : undefined;
 
   return (
@@ -965,7 +1029,7 @@ export function BoardCanvas(props: {
               }
             }}
             onPointerEnter={armPeek}
-            onPointerLeave={disarmPeek}
+            onPointerLeave={scheduleClosePeek}
             onPointerDown={disarmPeek}
             onDragPointerDown={props.onMove && selectTool ? beginDrag : undefined}
             onBeginLink={props.onConnect && selectTool ? beginLink : undefined}
@@ -991,14 +1055,58 @@ export function BoardCanvas(props: {
           {peekBox && props.renderPeek ? (
             <foreignObject
               className="bpeek"
-              x={peekFlip ? peekBox.x - 12 - peekWidth : peekBox.x + peekBox.w + 12}
-              y={peekBox.y + peekBox.h / 2 - 56}
-              width={peekWidth}
-              height={140}
+              x={peekFlip ? peekBox.x - peekOuter : peekBox.x + peekBox.w}
+              y={peekBox.y}
+              width={peekOuter}
+              height={300}
             >
-              {props.renderPeek(peekBox.id)}
+              <div
+                className={peekFlip ? 'bpeek-hold flip' : 'bpeek-hold'}
+                onPointerEnter={holdPeek}
+                onPointerLeave={scheduleClosePeek}
+              >
+                {props.renderPeek(peekBox.id)}
+              </div>
             </foreignObject>
           ) : null}
+
+          {editing?.kind === 'grow'
+            ? (() => {
+                const draft = { x: editing.x, y: editing.y, w: GROW_W, h: GROW_H };
+                const from = editing.fromId ? boxOf.get(editing.fromId) : undefined;
+                const seg = from ? edgeGeometry(from, draft, 0, 1, false) : null;
+                return (
+                  <g className="node bnode on">
+                    {seg ? (
+                      <line
+                        className="bedge"
+                        x1={seg.x1}
+                        y1={seg.y1}
+                        x2={seg.x2}
+                        y2={seg.y2}
+                        markerEnd="url(#board-arrow)"
+                        pointerEvents="none"
+                      />
+                    ) : null}
+                    <rect className="bnode-rect" x={draft.x} y={draft.y} width={draft.w} height={draft.h} rx={11} />
+                    <InlineInput
+                      x={draft.x}
+                      y={draft.y + (draft.h - 34) / 2}
+                      w={draft.w}
+                      h={34}
+                      placeholder="点的名字"
+                      onCommit={(name) => {
+                        if (editingRef.current?.kind !== 'grow') return;
+                        const current = editingRef.current;
+                        finishEditing();
+                        props.onGrowNode?.({ name, fromId: current.fromId, x: current.x, y: current.y });
+                      }}
+                      onCancel={stopEditing}
+                    />
+                  </g>
+                );
+              })()
+            : null}
 
           {editing?.kind === 'create' ? (
             <InlineInput

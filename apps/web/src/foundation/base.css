@@ -40,9 +40,6 @@
   --sh-float: 0 4px 16px rgba(0, 0, 0, 0.08), 0 16px 48px rgba(0, 0, 0, 0.12);
   --sh-overlay: 0 8px 32px rgba(0, 0, 0, 0.14), 0 32px 80px rgba(0, 0, 0, 0.18);
 
-  --rail-w: 54px;
-  --side-w: 236px;
-
   --ease-spring: cubic-bezier(0.32, 1.4, 0.5, 1);
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
 }

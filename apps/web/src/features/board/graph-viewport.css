@@ -30,6 +30,7 @@
   color: var(--mute);
 }
 .gvp-tools button:hover { background: var(--accent-soft); color: var(--accent); }
+.gvp-tools svg { width: 15px; height: 15px; }
 .gvp-tools .zoom-pct { font: 10px var(--mono); color: var(--faint); min-width: 38px; text-align: center; }
 .gvp-minimap {
   position: absolute;

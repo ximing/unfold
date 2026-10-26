@@ -2,10 +2,16 @@ export type BoardItem = { id: string };
 export type BoardLink = { fromId: string; toId: string };
 export type BoardBox = { id: string; x: number; y: number; w: number; h: number };
 
-const NODE_W = 168;
-const NODE_H = 56;
-const GAP_X = 36;
-const GAP_Y = 28;
+export const NODE_W = 168;
+export const NODE_H = 56;
+/** 有描述时放下名字、两行描述和底部色点。 */
+export const NODE_DESC_H = 74;
+
+export function textNodeHeight(description: string | null | undefined): number {
+  return (description ?? '').trim() === '' ? NODE_H : NODE_DESC_H;
+}
+export const GAP_X = 36;
+export const GAP_Y = 28;
 const LAYER_STEP = 220;
 const ORIGIN_X = 32;
 const ORIGIN_Y = 48;

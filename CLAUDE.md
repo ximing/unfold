@@ -8,7 +8,6 @@
   - `apps/server`：Fastify 5 + Drizzle ORM + PostgreSQL 服务端，提供会话认证与图谱 CRUD / 搜索 API。
   - `apps/web`：React 19 + Vite 6 + `@rabjs/react` 前端应用，使用自定义 SVG 渲染全貌图与合集画布。
   - `packages/dto`：前后端共用的 Zod 4 契约与类型定义。
-  - `packages/doc-schema`、`packages/markdown`、`packages/search`：粘贴实验夹具（`/paste-bench`）与独立纯函数包，**不参与**现行图谱主链路。
 
 ## 全局规则
 
@@ -17,7 +16,7 @@
 - **概念边界**：不为特定领域新增结构名词，新内容形态只通过扩展或复用九种卡片承接（原八种加富文本 `rich`）。严禁按已废弃历史方案恢复“领域、点类型、扇区、固定关系词表、能力、证据、FSRS 复习、一跳星图”等概念。
 - **文档与实现同步**：
   - 现行产品与技术基准为 `docs/prd/2026-10-25-graph.md` 与 `docs/tech/2026-10-25-graph.md`。
-  - 待落地目标规格（如 `docs/prd/2026-10-25-canvas.md`）在实现时需先并入现行 PRD 与技术方案，再同步修改代码。
+  - 待落地目标规格在实现时需先并入现行 PRD 与技术方案，再同步修改代码。
 - **密钥安全**：环境变量仅存放在 `apps/server/.env`，代码、测试与文档中只引用变量名（如 `DATABASE_URL`、`SESSION_SECRET`、`SEED_USERNAME`、`SEED_PASSWORD`），严禁硬编码真实凭据。
 
 ## 开发入口

@@ -2,7 +2,6 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { register } from '@rabjs/react';
 import { BrowserRouter, Route, Routes } from 'react-router';
-import { PasteBench } from './features/paste-bench/paste-bench.js';
 import { SessionService } from './features/session/session.service.js';
 import { CollectionPage } from './features/collection/collection-page.js';
 import { HomePage } from './features/session/home-page.js';
@@ -27,7 +26,6 @@ createRoot(root).render(
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
-        <Route path="/paste-bench" element={<PasteBench />} />
         <Route element={<Shell />}>
           <Route path="/library" element={<LibraryPage />} />
           <Route path="/c/:id" element={<CollectionPage />} />

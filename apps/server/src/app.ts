@@ -24,6 +24,7 @@ import {
 } from './http.js';
 import { registerNodeRoutes } from './nodes/routes.js';
 import { registerSearchRoutes } from './search/routes.js';
+import { registerWebStatic } from './web-static.js';
 
 const invalidCredentials = {
   error: { code: 'invalid_credentials', message: '用户名或密码不正确' },
@@ -225,6 +226,8 @@ export async function buildApp(overrides?: AppOverrides) {
   registerEdgeRoutes(app, db, signedSessionUser);
   registerCardRoutes(app, db, signedSessionUser);
   registerSearchRoutes(app, db, signedSessionUser);
+
+  await registerWebStatic(app, config.isProduction);
 
   return app;
 }

@@ -80,10 +80,6 @@ export const LibraryPage = observer(function LibraryPage() {
               </p>
             </div>
           ) : null}
-          <div className="canvas-chip">
-            合集全貌
-            <span className="cnt">{collections.length} 合集</span>
-          </div>
           {ready && collections.length > 0 && collections.length <= 3 ? (
             <p className="canvas-hint">双击空白新建 · 拖动圆点连线 · 双击打开 · 方向键选中</p>
           ) : null}

@@ -5,7 +5,7 @@ import type { Card, RichDoc } from '@unfold/dto';
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { CardFrame } from '../card-frame.js';
 import { createRichExtensions } from './extensions.js';
-import { pasteMarkdown } from './paste.js';
+import { insertPasted, markdownFromClipboard } from './paste-insert.js';
 import { sanitizeDoc } from './sanitize.js';
 import { RichToolbar } from './toolbar.js';
 import { filesFromTransfer, isFileDrag, placeImages } from './upload.js';
@@ -13,16 +13,6 @@ import './rich-editor.css';
 
 function savedText(value: unknown): string {
   return JSON.stringify(sanitizeDoc(value));
-}
-
-function insertPasted(editor: Editor, doc: RichDoc) {
-  const blocks = doc.content ?? [];
-  const only = blocks.length === 1 ? blocks[0] : undefined;
-  if (only?.type === 'paragraph' && editor.isActive('paragraph')) {
-    editor.chain().focus().insertContent((only.content ?? []) as JSONContent[]).run();
-    return;
-  }
-  editor.chain().focus().insertContent(blocks as JSONContent[]).run();
 }
 
 export function RichCard(props: {
@@ -137,11 +127,11 @@ export function RichCard(props: {
       return true;
     }
     if (current.isActive('codeBlock')) return false;
-    const text = event.clipboardData?.getData('text/plain') ?? '';
-    const doc = text === '' ? null : pasteMarkdown(text);
+    const doc = markdownFromClipboard(event.clipboardData);
     if (!doc) return false;
+    if (!insertPasted(current, doc)) return false;
     event.preventDefault();
-    insertPasted(current, doc);
+    event.stopPropagation();
     return true;
   };
 

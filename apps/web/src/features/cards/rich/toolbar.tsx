@@ -1,8 +1,71 @@
 import type { Editor } from '@tiptap/core';
 import { useEditorState } from '@tiptap/react';
+import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  Baseline,
+  BetweenHorizontalEnd,
+  BetweenHorizontalStart,
+  BetweenVerticalEnd,
+  BetweenVerticalStart,
+  Bold,
+  Code,
+  Columns3,
+  Ellipsis,
+  Heading,
+  Highlighter,
+  Image,
+  Italic,
+  Link,
+  List,
+  ListOrdered,
+  ListTodo,
+  Minus,
+  PaintBucket,
+  Quote,
+  Redo2,
+  RemoveFormatting,
+  Rows3,
+  Sigma,
+  Strikethrough,
+  Table,
+  TableCellsMerge,
+  TableCellsSplit,
+  TableProperties,
+  Trash2,
+  Undo2,
+  Workflow,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
-import { CODE_LANGUAGES } from './extensions.js';
+import { USelect, type USelectOption } from '../../../shared/ui/select/select.js';
 import { BACKGROUND_COLORS, FONT_SIZES, TEXT_COLORS, normalizeColor, normalizeFontSize, parseCustomColor } from './palette.js';
+
+const FONT_SIZE_OPTIONS: USelectOption[] = [
+  { value: '', label: '默认' },
+  ...FONT_SIZES.map((size) => ({ value: size, label: size })),
+];
+
+function alignGlyph(Icon: LucideIcon) {
+  return <Icon strokeWidth={1.75} aria-hidden />;
+}
+
+const ALIGN_OPTIONS: USelectOption[] = [
+  { value: 'left', label: '居左', icon: alignGlyph(AlignLeft) },
+  { value: 'center', label: '居中', icon: alignGlyph(AlignCenter) },
+  { value: 'right', label: '居右', icon: alignGlyph(AlignRight) },
+];
+
+const HEADING_OPTIONS: USelectOption[] = [
+  { value: '0', label: '正文' },
+  { value: '1', label: '标题 1' },
+  { value: '2', label: '标题 2' },
+  { value: '3', label: '标题 3' },
+  { value: '4', label: '标题 4' },
+  { value: '5', label: '标题 5' },
+  { value: '6', label: '标题 6' },
+];
 
 const TOOLS = [
   'undo',
@@ -14,21 +77,19 @@ const TOOLS = [
   'size',
   'color',
   'background',
-  'left',
-  'center',
-  'right',
+  'align',
   'heading',
-  'quote',
   'bullet',
   'ordered',
   'task',
   'code',
+  'table',
+  'formula',
   'link',
   'image',
-  'table',
   'rule',
-  'formula',
   'mermaid',
+  'quote',
 ] as const;
 
 type ToolId = (typeof TOOLS)[number];
@@ -44,7 +105,6 @@ function readActive(editor: Editor) {
       break;
     }
   }
-  const language = editor.getAttributes('codeBlock').language;
   const link = editor.getAttributes('link').href;
   const cell =
     normalizeColor(editor.getAttributes('tableCell').backgroundColor) ??
@@ -68,7 +128,6 @@ function readActive(editor: Editor) {
     task: editor.isActive('taskList'),
     quote: editor.isActive('blockquote'),
     code: editor.isActive('codeBlock'),
-    language: typeof language === 'string' ? language : '',
     link: typeof link === 'string' ? link : '',
     inTable: editor.isActive('table'),
     canUndo: editor.can().undo(),
@@ -194,10 +253,8 @@ export function RichToolbar(props: { editor: Editor; onImages: (files: File[]) =
   const [linkHref, setLinkHref] = useState('');
   const [mathOpen, setMathOpen] = useState(false);
   const [latex, setLatex] = useState('');
-  const [rememberedLanguage, setRememberedLanguage] = useState('');
 
-  const languageValue = active.code ? active.language : rememberedLanguage;
-  const measureKey = `${active.language}|${active.fontSize}|${active.heading}|${languageValue}`;
+  const measureKey = `${active.fontSize}|${active.heading}|${active.align}`;
 
   useLayoutEffect(() => {
     const bar = barRef.current;
@@ -243,12 +300,14 @@ export function RichToolbar(props: { editor: Editor; onImages: (files: File[]) =
 
   function button(
     label: string,
+    icon: LucideIcon,
     on: boolean,
     disabled: boolean,
     live: boolean,
     command: () => void,
-    hold?: { more?: boolean; color?: boolean },
+    hold?: { more?: boolean; color?: boolean; quiet?: boolean },
   ) {
+    const Icon = icon;
     return (
       <button
         type="button"
@@ -256,6 +315,8 @@ export function RichToolbar(props: { editor: Editor; onImages: (files: File[]) =
         disabled={disabled}
         tabIndex={live ? undefined : -1}
         aria-pressed={on}
+        aria-label={label}
+        data-tip={hold?.quiet ? undefined : label}
         onMouseDown={live ? keepSelection : undefined}
         onClick={() => {
           if (!live) return;
@@ -264,7 +325,7 @@ export function RichToolbar(props: { editor: Editor; onImages: (files: File[]) =
           if (!hold?.color) setColorOpen(null);
         }}
       >
-        {label}
+        <Icon strokeWidth={1.75} aria-hidden />
       </button>
     );
   }
@@ -283,50 +344,56 @@ export function RichToolbar(props: { editor: Editor; onImages: (files: File[]) =
     setColorOpen(null);
   }
 
+  function toolSelect(
+    label: string,
+    value: string,
+    options: USelectOption[],
+    live: boolean,
+    onChange: (next: string) => void,
+    tip?: string,
+  ) {
+    return (
+      <USelect
+        ariaLabel={label}
+        tip={live ? tip : undefined}
+        value={value}
+        options={options}
+        tabIndex={live ? undefined : -1}
+        holdFocus={live}
+        onChange={(next) => {
+          if (!live) return;
+          onChange(next);
+        }}
+      />
+    );
+  }
+
   function renderTool(id: ToolId, live: boolean, inMore = false): ReactNode {
     switch (id) {
       case 'undo':
-        return button('撤销', false, !active.canUndo, live, () => editor.chain().focus().undo().run());
+        return button('撤销', Undo2, false, !active.canUndo, live, () => editor.chain().focus().undo().run());
       case 'redo':
-        return button('重做', false, !active.canRedo, live, () => editor.chain().focus().redo().run());
+        return button('重做', Redo2, false, !active.canRedo, live, () => editor.chain().focus().redo().run());
       case 'bold':
-        return button('粗体', active.bold, false, live, () => editor.chain().focus().toggleBold().run());
+        return button('粗体', Bold, active.bold, false, live, () => editor.chain().focus().toggleBold().run());
       case 'italic':
-        return button('斜体', active.italic, false, live, () => editor.chain().focus().toggleItalic().run());
+        return button('斜体', Italic, active.italic, false, live, () => editor.chain().focus().toggleItalic().run());
       case 'strike':
-        return button('删除线', active.strike, false, live, () => editor.chain().focus().toggleStrike().run());
+        return button('删除线', Strikethrough, active.strike, false, live, () => editor.chain().focus().toggleStrike().run());
       case 'clear':
-        return button('清除格式', false, false, live, () => clearFormat(editor));
+        return button('清除格式', RemoveFormatting, false, false, live, () => clearFormat(editor));
       case 'size':
-        return (
-          <span className="rich-tool-slot">
-            <span className="rich-tool-label">字号</span>
-            <select
-              className="rich-select"
-              aria-label="字号"
-              tabIndex={live ? undefined : -1}
-              value={active.fontSize}
-              onChange={(event) => {
-                const next = event.target.value;
-                if (next === '') editor.chain().focus().unsetFontSize().run();
-                else editor.chain().focus().setFontSize(next).run();
-              }}
-            >
-              <option value="">默认</option>
-              {FONT_SIZES.map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
-            </select>
-          </span>
-        );
+        return toolSelect('字号', active.fontSize, FONT_SIZE_OPTIONS, live, (next) => {
+          if (next === '') editor.chain().focus().unsetFontSize().run();
+          else editor.chain().focus().setFontSize(next).run();
+        });
       case 'color':
         return (
           <span className="rich-color-wrap">
-            {button('字色', colorOpen === 'text', false, live, () => setColorOpen((current) => (current === 'text' ? null : 'text')), {
+            {button('字色', Baseline, colorOpen === 'text', false, live, () => setColorOpen((current) => (current === 'text' ? null : 'text')), {
               more: inMore,
               color: true,
+              quiet: colorOpen === 'text',
             })}
             {live && colorOpen === 'text' ? (
               <ColorPop colors={TEXT_COLORS} current={active.color} onPick={(hex) => pickColor('text', hex)} />
@@ -338,123 +405,67 @@ export function RichToolbar(props: { editor: Editor; onImages: (files: File[]) =
           <span className="rich-color-wrap">
             {button(
               '字的底色',
+              Highlighter,
               colorOpen === 'back',
               false,
               live,
               () => setColorOpen((current) => (current === 'back' ? null : 'back')),
-              { more: inMore, color: true },
+              { more: inMore, color: true, quiet: colorOpen === 'back' },
             )}
             {live && colorOpen === 'back' ? (
               <ColorPop colors={BACKGROUND_COLORS} current={active.background} onPick={(hex) => pickColor('back', hex)} />
             ) : null}
           </span>
         );
-      case 'left':
-        return button('居左', active.align === 'left', false, live, () => {
-          if (active.align === 'left') editor.chain().focus().unsetTextAlign().run();
-          else editor.chain().focus().setTextAlign('left').run();
-        });
-      case 'center':
-        return button('居中', active.align === 'center', false, live, () => {
-          if (active.align === 'center') editor.chain().focus().unsetTextAlign().run();
-          else editor.chain().focus().setTextAlign('center').run();
-        });
-      case 'right':
-        return button('居右', active.align === 'right', false, live, () => {
-          if (active.align === 'right') editor.chain().focus().unsetTextAlign().run();
-          else editor.chain().focus().setTextAlign('right').run();
-        });
-      case 'heading':
-        return (
-          <select
-            className="rich-select"
-            aria-label="标题"
-            tabIndex={live ? undefined : -1}
-            value={active.heading}
-            onChange={(event) => {
-              const level = Number(event.target.value);
-              if (!Number.isInteger(level) || level < 1 || level > 6) {
-                editor.chain().focus().setParagraph().run();
-                return;
-              }
-              editor.chain().focus().setHeading({ level: level as 1 | 2 | 3 | 4 | 5 | 6 }).run();
-            }}
-          >
-            <option value="0">正文</option>
-            <option value="1">标题 1</option>
-            <option value="2">标题 2</option>
-            <option value="3">标题 3</option>
-            <option value="4">标题 4</option>
-            <option value="5">标题 5</option>
-            <option value="6">标题 6</option>
-          </select>
-        );
-      case 'quote':
-        return button('引用', active.quote, false, live, () => editor.chain().focus().toggleBlockquote().run());
-      case 'bullet':
-        return button('无序列表', active.bullet, false, live, () => editor.chain().focus().toggleBulletList().run());
-      case 'ordered':
-        return button('有序列表', active.ordered, false, live, () => editor.chain().focus().toggleOrderedList().run());
-      case 'task':
-        return button('任务列表', active.task, false, live, () => editor.chain().focus().toggleTaskList().run());
-      case 'code': {
-        const extra = languageValue !== '' && !CODE_LANGUAGES.includes(languageValue) ? languageValue : null;
-        return (
-          <span className="rich-tool-slot">
-            {button('代码块', active.code, false, live, () => {
-              if (active.code) {
-                editor.chain().focus().toggleCodeBlock().run();
-                return;
-              }
-              const chain = editor.chain().focus().toggleCodeBlock();
-              if (rememberedLanguage !== '') chain.updateAttributes('codeBlock', { language: rememberedLanguage });
-              chain.run();
-            })}
-            <select
-              className="rich-select rich-select-lang"
-              aria-label="代码语言"
-              tabIndex={live ? undefined : -1}
-              value={languageValue}
-              onChange={(event) => {
-                const next = event.target.value;
-                setRememberedLanguage(next);
-                if (editor.isActive('codeBlock')) {
-                  editor.chain().focus().updateAttributes('codeBlock', { language: next === '' ? null : next }).run();
-                }
-              }}
-            >
-              <option value="">纯文本</option>
-              {extra ? <option value={extra}>{extra}</option> : null}
-              {CODE_LANGUAGES.map((language) => (
-                <option key={language} value={language}>
-                  {language}
-                </option>
-              ))}
-            </select>
-          </span>
-        );
+      case 'align': {
+        const align = active.align === 'center' || active.align === 'right' ? active.align : 'left';
+        const alignLabel = align === 'center' ? '居中' : align === 'right' ? '居右' : '居左';
+        return toolSelect(alignLabel, align, ALIGN_OPTIONS, live, (next) => {
+          if (next === 'left' || next === 'center' || next === 'right') {
+            editor.chain().focus().setTextAlign(next).run();
+          }
+        }, alignLabel);
       }
+      case 'heading':
+        return toolSelect('标题', active.heading, HEADING_OPTIONS, live, (next) => {
+          const level = Number(next);
+          if (!Number.isInteger(level) || level < 1 || level > 6) {
+            editor.chain().focus().setParagraph().run();
+            return;
+          }
+          editor.chain().focus().setHeading({ level: level as 1 | 2 | 3 | 4 | 5 | 6 }).run();
+        });
+      case 'quote':
+        return button('引用', Quote, active.quote, false, live, () => editor.chain().focus().toggleBlockquote().run());
+      case 'bullet':
+        return button('无序列表', List, active.bullet, false, live, () => editor.chain().focus().toggleBulletList().run());
+      case 'ordered':
+        return button('有序列表', ListOrdered, active.ordered, false, live, () => editor.chain().focus().toggleOrderedList().run());
+      case 'task':
+        return button('任务列表', ListTodo, active.task, false, live, () => editor.chain().focus().toggleTaskList().run());
+      case 'code':
+        return button('代码块', Code, active.code, false, live, () => editor.chain().focus().toggleCodeBlock().run());
       case 'link':
-        return button('链接', linkOpen || active.link !== '', false, live, () => {
+        return button('链接', Link, linkOpen || active.link !== '', false, live, () => {
           setLinkHref(active.link);
           setLinkOpen((open) => !open);
           setMathOpen(false);
-        });
+        }, { quiet: linkOpen });
       case 'image':
-        return button('图片', false, false, live, () => fileRef.current?.click());
+        return button('图片', Image, false, false, live, () => fileRef.current?.click());
       case 'table':
-        return button('表格', false, false, live, () =>
+        return button('表格', Table, false, false, live, () =>
           editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
         );
       case 'rule':
-        return button('分割线', false, false, live, () => editor.chain().focus().setHorizontalRule().run());
+        return button('分割线', Minus, false, false, live, () => editor.chain().focus().setHorizontalRule().run());
       case 'formula':
-        return button('公式', mathOpen, false, live, () => {
+        return button('公式', Sigma, mathOpen, false, live, () => {
           setMathOpen((open) => !open);
           setLinkOpen(false);
-        });
+        }, { quiet: mathOpen });
       case 'mermaid':
-        return button('Mermaid', false, false, live, () =>
+        return button('Mermaid', Workflow, false, false, live, () =>
           editor.chain().focus().insertContent({ type: 'mermaid', attrs: { source: '' } }).run(),
         );
       default:
@@ -489,11 +500,13 @@ export function RichToolbar(props: { editor: Editor; onImages: (files: File[]) =
             <button
               type="button"
               className={moreOpen ? 'rich-tool is-on' : 'rich-tool'}
+              aria-label="更多"
               aria-expanded={moreOpen}
+              data-tip={moreOpen ? undefined : '更多'}
               onMouseDown={keepSelection}
               onClick={() => setMoreOpen((open) => !open)}
             >
-              更多
+              <Ellipsis strokeWidth={1.75} aria-hidden />
             </button>
             {moreOpen ? (
               <div className="rich-more">
@@ -514,7 +527,7 @@ export function RichToolbar(props: { editor: Editor; onImages: (files: File[]) =
           </span>
         ))}
         <button type="button" data-more="" className="rich-tool" tabIndex={-1}>
-          更多
+          <Ellipsis strokeWidth={1.75} aria-hidden />
         </button>
       </div>
       <input
@@ -531,30 +544,31 @@ export function RichToolbar(props: { editor: Editor; onImages: (files: File[]) =
       />
       {active.inTable ? (
         <div className="rich-table-bar">
-          {button('上加行', false, false, true, () => editor.chain().focus().addRowBefore().run())}
-          {button('下加行', false, false, true, () => editor.chain().focus().addRowAfter().run())}
-          {button('左加列', false, false, true, () => editor.chain().focus().addColumnBefore().run())}
-          {button('右加列', false, false, true, () => editor.chain().focus().addColumnAfter().run())}
-          {button('删行', false, false, true, () => editor.chain().focus().deleteRow().run())}
-          {button('删列', false, false, true, () => editor.chain().focus().deleteColumn().run())}
-          {button('合并', false, false, true, () => editor.chain().focus().mergeCells().run())}
-          {button('拆分', false, false, true, () => editor.chain().focus().splitCell().run())}
-          {button('表头行', false, false, true, () => editor.chain().focus().toggleHeaderRow().run())}
-          {button('表头列', false, false, true, () => editor.chain().focus().toggleHeaderColumn().run())}
+          {button('上加行', BetweenHorizontalStart, false, false, true, () => editor.chain().focus().addRowBefore().run())}
+          {button('下加行', BetweenHorizontalEnd, false, false, true, () => editor.chain().focus().addRowAfter().run())}
+          {button('左加列', BetweenVerticalStart, false, false, true, () => editor.chain().focus().addColumnBefore().run())}
+          {button('右加列', BetweenVerticalEnd, false, false, true, () => editor.chain().focus().addColumnAfter().run())}
+          {button('删行', Rows3, false, false, true, () => editor.chain().focus().deleteRow().run())}
+          {button('删列', Columns3, false, false, true, () => editor.chain().focus().deleteColumn().run())}
+          {button('合并', TableCellsMerge, false, false, true, () => editor.chain().focus().mergeCells().run())}
+          {button('拆分', TableCellsSplit, false, false, true, () => editor.chain().focus().splitCell().run())}
+          {button('表头行', Heading, false, false, true, () => editor.chain().focus().toggleHeaderRow().run())}
+          {button('表头列', TableProperties, false, false, true, () => editor.chain().focus().toggleHeaderColumn().run())}
           <span className="rich-color-wrap">
             {button(
               '单元格底色',
+              PaintBucket,
               colorOpen === 'cell',
               false,
               true,
               () => setColorOpen((current) => (current === 'cell' ? null : 'cell')),
-              { color: true },
+              { color: true, quiet: colorOpen === 'cell' },
             )}
             {colorOpen === 'cell' ? (
               <ColorPop colors={BACKGROUND_COLORS} current={active.cell} onPick={(hex) => pickColor('cell', hex)} />
             ) : null}
           </span>
-          {button('删除表格', false, false, true, () => editor.chain().focus().deleteTable().run())}
+          {button('删除表格', Trash2, false, false, true, () => editor.chain().focus().deleteTable().run())}
         </div>
       ) : null}
       {linkOpen ? (

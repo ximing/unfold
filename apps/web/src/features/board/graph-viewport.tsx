@@ -1,3 +1,4 @@
+import { Expand, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { UContextMenu } from '../../shared/ui/context-menu/context-menu.js';
 import './graph-viewport.css';
@@ -78,6 +79,8 @@ export function GraphViewport(props: GraphViewportProps) {
     const el = hostRef.current;
     if (!el) return;
     const onWheel = (event: WheelEvent) => {
+      const overPeek = event.composedPath().some((node) => node instanceof Element && node.classList.contains('bpeek'));
+      if (overPeek) return;
       event.preventDefault();
       if (event.ctrlKey || event.metaKey) {
         const rect = el.getBoundingClientRect();
@@ -95,7 +98,7 @@ export function GraphViewport(props: GraphViewportProps) {
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return;
-    if (event.target instanceof Element && event.target.closest('.node')) return;
+    if (event.target instanceof Element && event.target.closest('.node, .bpeek')) return;
     dragRef.current = { pointerId: event.pointerId, lastX: event.clientX, lastY: event.clientY };
     event.currentTarget.setPointerCapture(event.pointerId);
     setPanning(true);
@@ -157,7 +160,7 @@ export function GraphViewport(props: GraphViewportProps) {
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
       onDoubleClick={(event) => {
-        if (event.target instanceof Element && event.target.closest('.node')) return;
+        if (event.target instanceof Element && event.target.closest('.node, .bpeek')) return;
         if (props.onBackgroundDoubleClick) {
           const rect = event.currentTarget.getBoundingClientRect();
           const px = event.clientX - rect.left;
@@ -168,7 +171,7 @@ export function GraphViewport(props: GraphViewportProps) {
         zoomButton(1.35);
       }}
       onContextMenu={(event) => {
-        if (event.target instanceof Element && event.target.closest('.node')) return;
+        if (event.target instanceof Element && event.target.closest('.node, .bpeek')) return;
         event.preventDefault();
         setBgMenu({ x: event.clientX, y: event.clientY });
       }}
@@ -181,15 +184,15 @@ export function GraphViewport(props: GraphViewportProps) {
         <g transform={`translate(${t.tx} ${t.ty}) scale(${t.k})`}>{props.children}</g>
       </svg>
       <div className="gvp-tools">
-        <button type="button" aria-label="缩小" onClick={() => zoomButton(1 / 1.3)}>
-          −
+        <button type="button" aria-label="缩小" title="缩小" onClick={() => zoomButton(1 / 1.3)}>
+          <ZoomOut size={15} strokeWidth={1.75} aria-hidden />
         </button>
         <span className="zoom-pct">{Math.round(t.k * 100)}%</span>
-        <button type="button" aria-label="放大" onClick={() => zoomButton(1.3)}>
-          +
+        <button type="button" aria-label="放大" title="放大" onClick={() => zoomButton(1.3)}>
+          <ZoomIn size={15} strokeWidth={1.75} aria-hidden />
         </button>
         <button type="button" aria-label="适应屏幕" title="适应屏幕" onClick={fit}>
-          ⤢
+          <Expand size={15} strokeWidth={1.75} aria-hidden />
         </button>
       </div>
       {props.minimap ? (

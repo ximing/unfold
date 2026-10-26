@@ -69,6 +69,24 @@ describe('register', () => {
     expect(login.json().username).toBe(name);
   });
 
+  it('does not create a collection on register', async () => {
+    const name = freshUsername();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/register',
+      payload: { username: name, password: 'secret-88' },
+    });
+    expect(res.statusCode).toBe(201);
+
+    const list = await app.inject({
+      method: 'GET',
+      url: '/api/collections',
+      headers: { cookie: cookiePair(res.headers['set-cookie']) },
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().collections).toEqual([]);
+  });
+
   it('rejects a taken username with 409', async () => {
     const res = await app.inject({
       method: 'POST',

@@ -1,4 +1,3 @@
-export { normalizeName } from './normalize-name.js';
 export {
   accountSchema,
   errorBodySchema,

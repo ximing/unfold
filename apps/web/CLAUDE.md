@@ -13,12 +13,11 @@
   - `src/shared/panel/` 与 `src/shared/name-field/`：跨页面复用的检查器外壳（`PanelShell`）与内联名称编辑组件。
   - `src/features/<feature>/`：按业务功能划分的模块：
     - `session/`：登录页、注册页、首页路由分流与 `SessionService`（含改名与头像上传）。
-    - `shell/`：左侧图标栏、合集目录侧栏、全局快捷键（`⌘K` 搜索、`⌘N` 新建合集）与「更多」账号弹层。
+    - `shell/`：浮在画布顶部的操作区（头像账号菜单、合集切换、搜索、设置导航）、全局快捷键（`⌘K` 搜索、`⌘N` 新建合集）。
     - `library/`：全貌页及 `LibraryService`（状态壳层在 `library.service.ts`，领域操作按 `api`、`collections`、`graph`、`nodes`、`edges`、`collection-edges`、`cards`、`search` 拆分）。
     - `collection/`：合集详情页及点/边的右侧检查器面板與悬停预览（`NodePeek`）。
     - `board/`：自定义 SVG 视口（`GraphViewport`）、画布渲染（`BoardCanvas`、`BoardNodes`、`BoardEdges`）与图布局算法（`board-layout.ts`）。
     - `cards/`：九种卡片组件（原八种加富文本 `rich`）、Tiptap 笔记编辑器、highlight.js 代码卡、KaTeX 公式卡及卡片元数据注册表（`card-meta.ts`）。
-    - `paste-bench/`：独立于产品壳层之外的粘贴调测夹具页（`/paste-bench`）。
 - **不放什么**：
   - 不要在 `src/shared/ui/` 中引入 `LibraryService`、`SessionService` 或具体图谱业务类型。
   - 不要在 `src/` 根目录堆放巨型全局样式表（原先的 `styles.css` 与 `workspace.css` 已拆解下沉，样式应跟随所属组件或功能目录放置）。

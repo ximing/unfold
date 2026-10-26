@@ -10,6 +10,7 @@
 
 - **放什么**：
   - `src/app.ts`：Fastify 实例组装、Cookie/限流插件注册、登录会话校验与路由模块挂载。
+  - `src/web-static.ts`：`UNFOLD_ENV=production` 且 `apps/web/dist/index.html` 存在时托管前端构建结果。开发与测试不注册。
   - `src/http.ts`：路由公共参数 schema、统一错误响应构造器与数据库唯一约束冲突判断。
   - `src/<domain>/routes.ts`：按领域拆分的 HTTP 路由注册函数（`avatar`、`collections`、`nodes`、`edges`、`cards`、`search`）。
   - `src/avatar/`：头像 multipart 解析、S3 读写与预签名临时地址（`ATTACHMENT_S3_*`，私有桶每次现签）。
@@ -17,8 +18,7 @@
   - `src/db/`：数据库连接池（`client.ts`）与 Drizzle 表定义（`schema.ts`）。
 - **不放什么**：
   - 前后端共享的请求体/响应体 Zod schema（应放在 `packages/dto/src/graph.ts`）。
-  - 外部检索引擎（Meilisearch、Qdrant）、向量召回或定时复习任务逻辑（服务端搜索仅使用 `src/search/` 下的 PostgreSQL `ILIKE`）。
-  - 对 `@unfold/doc-schema` 或 `@unfold/search` 的运行时依赖。
+  - 外部检索引擎、向量召回或定时复习任务逻辑（服务端搜索仅使用 `src/search/` 下的 PostgreSQL `ILIKE`）。
 
 ## 开发偏好
 

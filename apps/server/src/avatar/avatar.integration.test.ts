@@ -4,7 +4,7 @@ import { inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../app.js';
 import { createDb, createPool } from '../db/client.js';
-import { users } from '../db/schema.js';
+import { collections, users } from '../db/schema.js';
 import { MAX_AVATAR_BYTES } from './upload.js';
 import type { AvatarStore } from './store.js';
 
@@ -61,7 +61,16 @@ describe('avatar', () => {
     await app.close();
     const pool = createPool();
     try {
-      await createDb(pool).delete(users).where(inArray(users.username, createdUsernames));
+      const db = createDb(pool);
+      const rows = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(inArray(users.username, createdUsernames));
+      const ids = rows.map((row) => row.id);
+      if (ids.length > 0) {
+        await db.delete(collections).where(inArray(collections.userId, ids));
+        await db.delete(users).where(inArray(users.id, ids));
+      }
     } finally {
       await pool.end();
     }

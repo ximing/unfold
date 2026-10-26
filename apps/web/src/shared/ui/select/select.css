@@ -15,7 +15,9 @@
 .usel-btn:hover { border-color: rgba(0, 0, 0, 0.18); }
 .usel-btn.open { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .usel-btn .ph { color: var(--faint); }
-.usel-btn svg { margin-left: auto; width: 13px; height: 13px; color: var(--faint); flex: none; }
+.usel-btn > svg { margin-left: auto; width: 13px; height: 13px; color: var(--faint); flex: none; }
+.usel-icon { display: inline-flex; }
+.usel-icon svg { width: 16px; height: 16px; flex: none; }
 .usel-pop {
   position: absolute;
   top: calc(100% + 5px);
@@ -42,3 +44,4 @@
 }
 .usel-pop .opt:hover, .usel-pop .opt.hl { background: var(--accent-soft); color: var(--accent); }
 .usel-pop .opt .tick { margin-left: auto; font-size: 12px; color: var(--accent); }
+.usel-pop .opt.has-icon { gap: 8px; }

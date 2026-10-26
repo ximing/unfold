@@ -27,7 +27,7 @@ export function BoardEdges(props: {
             key={link.id}
             className={selected ? 'node bedge-g on' : 'node bedge-g'}
             role="button"
-            aria-label={link.label}
+            aria-label={link.label === '' ? '关系' : link.label}
             onClick={() => props.onSelect(link.id)}
             onDoubleClick={(event) => {
               event.stopPropagation();
@@ -44,10 +44,10 @@ export function BoardEdges(props: {
               y2={seg.y2}
               markerEnd={selected ? 'url(#board-arrow-on)' : 'url(#board-arrow)'}
             />
-            {props.editingId === link.id ? null : (
+            {props.editingId === link.id || (link.label === '' && (link.count ?? 0) === 0) ? null : (
               <text className="bedge-label" x={mid.x} y={mid.y - 9} textAnchor="middle">
                 {shortLabel(link.label)}
-                {(link.count ?? 0) > 0 ? <tspan className="cnt" dx={5}>·{link.count}</tspan> : null}
+                {(link.count ?? 0) > 0 ? <tspan className="cnt" dx={link.label === '' ? 0 : 5}>·{link.count}</tspan> : null}
               </text>
             )}
           </g>

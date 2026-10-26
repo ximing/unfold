@@ -15,27 +15,7 @@
 .board-empty, .board-wait { margin: auto; }
 .board-missing { padding: 28px; }
 
-/* 画布上的浮动碎屑与提示 */
-.canvas-chip {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--glass);
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
-  border: 1px solid var(--line-soft);
-  border-radius: 999px;
-  box-shadow: var(--sh-raise);
-  padding: 6px 14px;
-  font-size: 13px;
-  font-weight: 600;
-  max-width: 50%;
-}
-.canvas-chip .cnt { font: 11px var(--mono); color: var(--faint); font-weight: 400; }
+/* 画布上的浮动提示 */
 .canvas-hint {
   position: absolute;
   left: 204px;
@@ -48,7 +28,7 @@
 .canvas-hint .kbd { margin: 0 2px; }
 .canvas-error {
   position: absolute;
-  top: 54px;
+  top: 12px;
   left: 12px;
   z-index: 2;
   margin: 0;
@@ -78,12 +58,22 @@
   dominant-baseline: middle;
   pointer-events: none;
 }
-.bnode-desc {
-  fill: var(--faint);
-  font-size: 10px;
-  font-family: var(--sans);
-  dominant-baseline: middle;
+.bnode-desc-fo {
+  overflow: hidden;
   pointer-events: none;
+}
+.bnode-desc {
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  overflow: hidden;
+  color: var(--faint);
+  font: 10px/14px var(--sans);
+  text-align: center;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
 }
 .bnode-badge rect { fill: var(--accent); }
 .bnode-badge text {
@@ -209,9 +199,19 @@
 .blink-temp-dot { fill: var(--accent); pointer-events: none; }
 
 /* 悬停预览 / 内联输入（foreignObject 内） */
-.bpeek { pointer-events: none; }
+.bpeek { pointer-events: none; overflow: visible; }
+.bpeek-hold {
+  pointer-events: auto;
+  width: 100%;
+  box-sizing: border-box;
+  padding-left: 12px;
+}
+.bpeek-hold.flip { padding-left: 0; padding-right: 12px; }
 .bpeek-card {
-  width: 232px;
+  width: 100%;
+  max-height: 280px;
+  overflow: auto;
+  overscroll-behavior: contain;
   background: var(--glass);
   -webkit-backdrop-filter: blur(24px) saturate(1.6);
   backdrop-filter: blur(24px) saturate(1.6);
@@ -225,7 +225,14 @@
 .bpeek-card .pk-cnt { margin-left: auto; font: 10px var(--mono); color: var(--faint); }
 .bpeek-card .pk-dots { display: flex; gap: 4px; margin-top: 7px; }
 .bpeek-card .pk-dots i { width: 6px; height: 6px; border-radius: 50%; }
-.bpeek-card .pk-desc { margin-top: 6px; font-size: 12px; color: var(--mute); }
+.bpeek-card .pk-desc {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--mute);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .bpeek-card .pk-text {
   margin-top: 7px;
   font: 12px/1.6 var(--serif);

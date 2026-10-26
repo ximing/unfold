@@ -97,7 +97,6 @@ export const CollectionPage = observer(function CollectionPage() {
   const current = library.graphId === id;
   const nodes = current ? library.graph.nodes : [];
   const edges = current ? library.graph.edges : [];
-  const title = library.collections.find((item) => item.id === id)?.title ?? '';
 
   async function refresh() {
     await Promise.all([library.loadGraph(id as string), library.loadCollections()]);
@@ -214,6 +213,30 @@ export const CollectionPage = observer(function CollectionPage() {
               links={edges}
               selectedId={selection?.id ?? null}
               createPlaceholder="点的名字"
+              onGrowBlocked={(message) => {
+                library.error = message;
+              }}
+              onGrowNode={(draft) => {
+                void (async () => {
+                  if (!id || pageIdRef.current !== id) return;
+                  const collectionId = id;
+                  const created = await library.createNode(collectionId, draft.name);
+                  if (!created || pageIdRef.current !== collectionId) return;
+                  placeTried.current.add(`${collectionId}:node:${created.id}`);
+                  const z = nextPlacementZ(library.graph.nodes.map((node) => node.z));
+                  const saved = await library.savePlacements(collectionId, [
+                    { nodeId: created.id, x: draft.x, y: draft.y, z },
+                  ]);
+                  const placementError = saved ? '' : library.error;
+                  if (pageIdRef.current !== collectionId) return;
+                  await refresh();
+                  if (pageIdRef.current !== collectionId) return;
+                  setSelection({ kind: 'node', id: created.id });
+                  await library.loadNode(created.id);
+                  if (pageIdRef.current !== collectionId) return;
+                  if (placementError !== '') library.error = placementError;
+                })();
+              }}
               onCreate={(name, at) => {
                 void (async () => {
                   const created = await library.createNode(id, name);
@@ -317,12 +340,8 @@ export const CollectionPage = observer(function CollectionPage() {
               <p className="muted">先添加一个点</p>
             </div>
           ) : null}
-          <div className="canvas-chip">
-            {title || '合集'}
-            <span className="cnt">{nodes.length} 点</span>
-          </div>
           {ready && nodes.length <= 2 ? (
-            <p className="canvas-hint">双击空白添加文字 · 拖入图片 · 拖动点 · 拖动手柄或按 L 连线 · 双击线改标签</p>
+            <p className="canvas-hint">双击空白添加文字 · 拖入图片 · 拖动点 · 拖动手柄或按 L 连线 · 选中点后 Tab 建下级、Enter 建同级</p>
           ) : null}
           {library.error !== '' ? <p role="alert" className="canvas-error">{library.error}</p> : null}
         </div>

@@ -4,6 +4,7 @@ import {
   cardSchema,
   createCardBodySchema,
   createCollectionBodySchema,
+  createEdgeBodySchema,
   graphNodeSchema,
   placementsBodySchema,
   richDocSchema,
@@ -22,6 +23,27 @@ describe('createCollectionBodySchema', () => {
   it('trims a title down to 80 characters', () => {
     expect(createCollectionBodySchema.parse({ title: '  合集  ' }).title).toBe('合集');
     expect(createCollectionBodySchema.parse({ title: `  ${'a'.repeat(80)}  ` }).title).toBe('a'.repeat(80));
+  });
+});
+
+describe('createEdgeBodySchema', () => {
+  const toId = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
+
+  it('rejects a blank label', () => {
+    const blank = createEdgeBodySchema.safeParse({ fromId: ownerId, toId, label: '   ' });
+    expect(blank.success).toBe(false);
+    if (!blank.success) {
+      expect(blank.error.issues.some((issue) => issue.message === '关系说明不能是空的')).toBe(true);
+    }
+    expect(createEdgeBodySchema.safeParse({ fromId: ownerId, toId, label: '' }).success).toBe(false);
+  });
+
+  it('trims a non-empty label', () => {
+    expect(createEdgeBodySchema.parse({ fromId: ownerId, toId, label: '  前提  ' })).toEqual({
+      fromId: ownerId,
+      toId,
+      label: '前提',
+    });
   });
 });
 

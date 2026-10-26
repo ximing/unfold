@@ -14,6 +14,8 @@ describe('pasteMarkdown', () => {
     expect(pasteMarkdown('今天没有标记')).toBeNull();
     expect(pasteMarkdown('甲\n乙')).toBeNull();
     expect(pasteMarkdown('花了 $12.50 元')).toBeNull();
+    expect(pasteMarkdown('a_b_c')).toBeNull();
+    expect(pasteMarkdown('2 * 3 * 4')).toBeNull();
   });
 
   it('标题去掉井号', () => {
@@ -106,5 +108,50 @@ describe('pasteMarkdown', () => {
         ],
       },
     ]);
+  });
+
+  it('行内记号转成格式，文字留下', () => {
+    expect(doc('这是 **粗体**、*斜体*、~~删除~~ 和 `代码`').content).toEqual([
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: '这是 ' },
+          { type: 'text', text: '粗体', marks: [{ type: 'bold' }] },
+          { type: 'text', text: '、' },
+          { type: 'text', text: '斜体', marks: [{ type: 'italic' }] },
+          { type: 'text', text: '、' },
+          { type: 'text', text: '删除', marks: [{ type: 'strike' }] },
+          { type: 'text', text: ' 和 ' },
+          { type: 'text', text: '代码', marks: [{ type: 'code' }] },
+        ],
+      },
+    ]);
+    expect(doc('***粗斜***').content?.[0]?.content).toEqual([
+      { type: 'text', text: '粗斜', marks: [{ type: 'bold' }, { type: 'italic' }] },
+    ]);
+    expect(doc('[Unfold](https://example.com/a)').content?.[0]?.content).toEqual([
+      { type: 'text', text: 'Unfold', marks: [{ type: 'link', attrs: { href: 'https://example.com/a' } }] },
+    ]);
+    expect(doc('看 ![图](https://example.com/a.png)').content?.[0]?.content).toEqual([
+      { type: 'text', text: '看 ' },
+      { type: 'text', text: '图', marks: [{ type: 'link', attrs: { href: 'https://example.com/a.png' } }] },
+    ]);
+    const unsafe = JSON.stringify(doc('# 标题\n[点](javascript:alert(1))'));
+    expect(unsafe).toContain('[点](javascript:alert(1))');
+    expect(unsafe).not.toContain('"href":"javascript:alert(1)"');
+    expect(unsafe).toContain('"type":"heading"');
+  });
+
+  it('整篇粘贴不丢段落', () => {
+    const source = ['# 标题', '', '一段 **粗体** 和 [链接](https://example.com)。', '', '- 甲', '- 乙', '', '> 引用', '', '```ts', 'const a = 1', '```', '', '```mermaid', 'graph TD', 'A-->B', '```'].join('\n');
+    const parsed = doc(source);
+    const flat = JSON.stringify(parsed);
+    for (const word of ['标题', '一段 ', '粗体', '链接', '甲', '乙', '引用', 'const a = 1', 'graph TD']) {
+      expect(flat).toContain(word);
+    }
+    expect(flat).not.toContain('**');
+    expect(flat).not.toContain('```');
+    expect(parsed.content?.some((node) => node.type === 'mermaid')).toBe(true);
+    expect(parsed.content?.some((node) => node.type === 'codeBlock')).toBe(true);
   });
 });

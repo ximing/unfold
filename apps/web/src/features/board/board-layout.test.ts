@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { layoutBoard, layoutPlaced, placeNewCorners } from './board-layout.js';
+import { layoutBoard, layoutPlaced, placeNewCorners, textNodeHeight } from './board-layout.js';
 
 describe('layoutBoard', () => {
   it('没有节点时是空的', () => {
@@ -34,6 +34,16 @@ describe('layoutBoard', () => {
     expect(boxes.map((box) => box.id)).toEqual(['a', 'b']);
     expect(boxes[0]?.y).toBe(boxes[1]?.y);
     expect(boxes[0]?.x).toBeLessThan(boxes[1]?.x ?? 0);
+  });
+});
+
+describe('textNodeHeight', () => {
+  it('空描述保持 56，有描述时为 74', () => {
+    expect(textNodeHeight('')).toBe(56);
+    expect(textNodeHeight('  ')).toBe(56);
+    expect(textNodeHeight(undefined)).toBe(56);
+    expect(textNodeHeight(null)).toBe(56);
+    expect(textNodeHeight('一句')).toBe(74);
   });
 });
 

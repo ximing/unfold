@@ -1,23 +1,7 @@
-import type { ReactNode } from 'react';
+import { Image, MousePointer2, Spline, Type } from 'lucide-react';
 import './board-toolbar.css';
 
 export type BoardTool = 'select' | 'text' | 'connect';
-
-function Glyph(props: { children: ReactNode }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      {props.children}
-    </svg>
-  );
-}
 
 export function BoardToolbar(props: {
   tool: BoardTool;
@@ -34,9 +18,7 @@ export function BoardToolbar(props: {
         title="选择 V"
         onClick={() => props.onTool('select')}
       >
-        <Glyph>
-          <path d="M5 4l6.2 15 1.6-5.6L18.5 12z" />
-        </Glyph>
+        <MousePointer2 size={18} strokeWidth={1.75} aria-hidden />
       </button>
       <button
         type="button"
@@ -46,16 +28,10 @@ export function BoardToolbar(props: {
         title="文字 T"
         onClick={() => props.onTool('text')}
       >
-        <Glyph>
-          <path d="M7 6h10M12 6v12" />
-        </Glyph>
+        <Type size={18} strokeWidth={1.75} aria-hidden />
       </button>
       <button type="button" aria-label="图片" title="图片 I" onClick={props.onImage}>
-        <Glyph>
-          <rect x="4" y="5" width="16" height="14" rx="2" />
-          <circle cx="9" cy="10" r="1.3" fill="currentColor" stroke="none" />
-          <path d="m4 16 4.2-3.2 2.8 2.2 2.4-1.8L20 17" />
-        </Glyph>
+        <Image size={18} strokeWidth={1.75} aria-hidden />
       </button>
       <button
         type="button"
@@ -65,12 +41,7 @@ export function BoardToolbar(props: {
         title="连线 L"
         onClick={() => props.onTool('connect')}
       >
-        <Glyph>
-          <circle cx="6" cy="12" r="2" />
-          <circle cx="18" cy="12" r="2" />
-          <path d="M8 12h7" />
-          <path d="m12.5 9.2 3.5 2.8-3.5 2.8" />
-        </Glyph>
+        <Spline size={18} strokeWidth={1.75} aria-hidden />
       </button>
     </nav>
   );

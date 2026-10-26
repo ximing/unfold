@@ -1,8 +1,8 @@
 import { observer, useService } from '@rabjs/react';
 import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { IconMore } from '../../shared/ui/icons/icons.js';
 import { SessionService } from '../session/session.service.js';
+import { closeOtherPops, onPopClose } from './pop-bus.js';
 
 export const MoreMenu = observer(function MoreMenu() {
   const session = useService(SessionService);
@@ -15,6 +15,10 @@ export const MoreMenu = observer(function MoreMenu() {
 
   useEffect(() => {
     if (!open) return;
+    const offPop = onPopClose(() => {
+      setOpen(false);
+      setRenaming(false);
+    });
     const onMouseDown = (event: MouseEvent) => {
       const root = rootRef.current;
       if (root && event.target instanceof Node && root.contains(event.target)) return;
@@ -22,7 +26,10 @@ export const MoreMenu = observer(function MoreMenu() {
       setRenaming(false);
     };
     document.addEventListener('mousedown', onMouseDown);
-    return () => document.removeEventListener('mousedown', onMouseDown);
+    return () => {
+      offPop();
+      document.removeEventListener('mousedown', onMouseDown);
+    };
   }, [open]);
 
   function onAvatarError() {
@@ -50,19 +57,28 @@ export const MoreMenu = observer(function MoreMenu() {
   const initial = Array.from(session.username ?? '？')[0] ?? '？';
 
   return (
-    <div className="rail-pop-wrap" ref={rootRef}>
+    <div className="pop-wrap" ref={rootRef}>
       <button
         type="button"
-        className="rail-btn"
-        title="更多"
-        aria-label="更多"
+        className="avatar-btn"
+        title="账号"
+        aria-label="账号"
         aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          if (!open) closeOtherPops();
+          setOpen((value) => !value);
+        }}
       >
-        <IconMore />
+        {session.avatarUrl ? (
+          <img className="avatar-img" src={session.avatarUrl} alt="头像" onError={onAvatarError} />
+        ) : (
+          <span className="avatar-img avatar-text" aria-hidden>
+            {initial}
+          </span>
+        )}
       </button>
       {open ? (
-        <div className="rail-pop">
+        <div className="dock-pop">
           <div className="account-head">
             {session.avatarUrl ? (
               <img className="account-avatar" src={session.avatarUrl} alt="头像" onError={onAvatarError} />
