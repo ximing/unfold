@@ -5,6 +5,7 @@ import { PanelShell } from '../../shared/panel/panel-shell.js';
 import { NameField } from '../../shared/name-field/name-field.js';
 import { UButton } from '../../shared/ui/button/button.js';
 import { UTextArea } from '../../shared/ui/field/field.js';
+import { useAskDelete } from '../../shared/ui/modal/delete-key.js';
 import { UConfirm } from '../../shared/ui/modal/modal.js';
 import { USelect } from '../../shared/ui/select/select.js';
 import { toast } from '../../shared/ui/toast/toast.js';
@@ -129,6 +130,7 @@ export const NodePanel = observer(function NodePanel(props: {
   const [targetCollection, setTargetCollection] = useState('');
   const [confirm, setConfirm] = useState(false);
   const detail = library.nodeDetail?.id === props.nodeId ? library.nodeDetail : null;
+  useAskDelete(() => setConfirm(true));
   const [descDraft, setDescDraft] = useState('');
 
   useEffect(() => {

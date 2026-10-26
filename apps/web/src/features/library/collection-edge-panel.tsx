@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { PanelShell } from '../../shared/panel/panel-shell.js';
 import { NameField } from '../../shared/name-field/name-field.js';
 import { UButton } from '../../shared/ui/button/button.js';
+import { useAskDelete } from '../../shared/ui/modal/delete-key.js';
 import { UConfirm } from '../../shared/ui/modal/modal.js';
 import { CARD_TYPES } from '../cards/card-meta.js';
 import { CardStack } from '../cards/card-stack.js';
@@ -20,6 +21,7 @@ export const CollectionEdgePanel = observer(function CollectionEdgePanel(props: 
   const library = useService(LibraryService);
   const [confirm, setConfirm] = useState(false);
   const detail = library.collectionEdgeDetail?.id === props.id ? library.collectionEdgeDetail : null;
+  useAskDelete(() => setConfirm(true));
 
   async function reload() {
     await library.loadCollectionEdge(props.id);

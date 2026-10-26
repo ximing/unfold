@@ -5,6 +5,7 @@ import type { Card, RichDoc } from '@unfold/dto';
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { CardFrame } from '../card-frame.js';
 import { createRichExtensions } from './extensions.js';
+import { htmlHasFormatting, preparePastedHtml } from './paste-html.js';
 import { insertPasted, markdownFromClipboard } from './paste-insert.js';
 import { sanitizeDoc } from './sanitize.js';
 import { RichToolbar } from './toolbar.js';
@@ -41,6 +42,9 @@ export function RichCard(props: {
   const editorProps = useMemo<EditorProps>(
     () => ({
       attributes: { class: 'rich-prose', 'aria-label': '富文本' },
+      transformPastedHTML(html) {
+        return preparePastedHtml(html);
+      },
       handlePaste(_view, event) {
         return handlers.current.onPaste(event);
       },
@@ -119,8 +123,14 @@ export function RichCard(props: {
   handlers.current.onPaste = (event) => {
     const current = editorRef.current;
     if (!current || current.isDestroyed) return false;
+    let html = '';
+    try {
+      html = event.clipboardData?.getData('text/html') ?? '';
+    } catch {
+      html = '';
+    }
     const files = filesFromTransfer(event.clipboardData);
-    if (files.length > 0) {
+    if (files.length > 0 && !htmlHasFormatting(html)) {
       event.preventDefault();
       event.stopPropagation();
       void placeImages(current, cardIdRef.current, files, undefined, report);

@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { UButton } from '../button/button.js';
 import './modal.css';
 
@@ -22,7 +23,8 @@ export function UModal(props: {
 
   const size = props.xl ? 'xl' : props.wide ? 'wide' : '';
 
-  return (
+  // 检查器的 backdrop-filter 会把 fixed 弹层困在面板里，挂到 body 才盖住整页。
+  return createPortal(
     <div
       className="modal-wrap"
       onMouseDown={(event) => {
@@ -33,7 +35,8 @@ export function UModal(props: {
         {props.title ? <h4>{props.title}</h4> : null}
         <div className="modal-body">{props.children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

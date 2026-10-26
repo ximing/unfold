@@ -8,6 +8,7 @@
   - `apps/server`：Fastify 5 + Drizzle ORM + PostgreSQL 服务端，提供会话认证与图谱 CRUD / 搜索 API。
   - `apps/web`：React 19 + Vite 6 + `@rabjs/react` 前端应用，使用自定义 SVG 渲染全貌图与合集画布。
   - `packages/dto`：前后端共用的 Zod 4 契约与类型定义。
+  - `apps/desktop`：Tauri 2 桌面壳。开发加载 `http://localhost:5173`，生产加载 `https://unfold.aimo.plus`。不打包前端产物。
 
 ## 全局规则
 
@@ -22,6 +23,7 @@
 ## 开发入口
 
 - **启动开发服务**：`pnpm dev`（并行启动 `@unfold/server` 端口 `3000` 与 `@unfold/web` 端口 `5173`）
+- **桌面壳**：`pnpm --filter @unfold/desktop dev`（本机需有 Rust。先让 `pnpm dev` 把 3000 和 5173 拉起来）
 - **运行全部测试**：`pnpm test`
 - **全仓类型检查**：`pnpm typecheck`
 - **代码规范检查**：`pnpm lint`
@@ -35,6 +37,7 @@
   - `apps/server/CLAUDE.md`：Fastify 路由分片、Drizzle 事务与软删除规则、多租户隔离与 HTTP 错误契约。
   - `apps/web/CLAUDE.md`：`foundation / shared / features` 分层边界、`@rabjs/react` 状态管理与自定义 SVG 画布约定。
   - `packages/dto/CLAUDE.md`：Zod 4 共享契约规范与新旧 schema 边界。
+  - `apps/desktop/CLAUDE.md`：Tauri 2 壳的远程 URL、Cookie 会话与导航约束。
 - **路径级横切规则（按文件模式匹配加载）**：
   - `.claude/rules/testing.md`：单元与服务端集成测试规范（`**/*.test.ts`、`**/__tests__/**/*.ts`）。
   - `.claude/rules/react-components.md`：React 组件、响应式状态绑定与同目录样式规范（`apps/web/src/**/*.{tsx,css}`）。

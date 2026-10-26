@@ -7,3 +7,5 @@ dist/
 .env.*
 !.env.example
 apps/server/data/assets/
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/

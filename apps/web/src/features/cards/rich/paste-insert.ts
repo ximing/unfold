@@ -2,6 +2,7 @@ import type { Editor, JSONContent } from '@tiptap/core';
 import { Fragment, Slice } from '@tiptap/pm/model';
 import { TextSelection, type Transaction } from '@tiptap/pm/state';
 import type { RichDoc } from '@unfold/dto';
+import { htmlHasFormatting } from './paste-html.js';
 import { pasteMarkdown } from './paste.js';
 
 function placeCursor(tr: Transaction, pos: number) {
@@ -68,10 +69,20 @@ export function insertPasted(editor: Editor, doc: RichDoc): boolean {
   }
 }
 
+function clipText(data: DataTransfer, type: string): string {
+  try {
+    return data.getData(type);
+  } catch {
+    return '';
+  }
+}
+
+/** 有 HTML 格式时返回 null，交给编辑器按原格式插入。没有 HTML 格式时才解析 Markdown。 */
 export function markdownFromClipboard(data: DataTransfer | null): RichDoc | null {
   if (!data) return null;
+  if (htmlHasFormatting(clipText(data, 'text/html'))) return null;
   for (const type of ['text/markdown', 'text/x-markdown', 'text/plain']) {
-    const value = data.getData(type);
+    const value = clipText(data, type);
     if (value.trim() === '') continue;
     const parsed = pasteMarkdown(value);
     if (parsed) return parsed;

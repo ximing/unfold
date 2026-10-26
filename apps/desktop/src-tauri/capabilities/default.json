@@ -1,0 +1,7 @@
+{
+  "identifier": "default",
+  "description": "Main window, local to the app URL. The page has no IPC permissions.",
+  "windows": ["main"],
+  "local": true,
+  "permissions": []
+}

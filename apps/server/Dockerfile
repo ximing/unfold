@@ -13,6 +13,7 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY packages/dto/package.json packages/dto/
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
+COPY apps/desktop/package.json apps/desktop/
 RUN pnpm install --frozen-lockfile --filter=@unfold/server...
 
 FROM base AS web-build
@@ -20,6 +21,7 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY packages/dto/package.json packages/dto/
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
+COPY apps/desktop/package.json apps/desktop/
 RUN pnpm install --frozen-lockfile --filter=@unfold/web...
 COPY tsconfig.base.json ./
 COPY packages/dto packages/dto

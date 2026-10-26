@@ -69,6 +69,12 @@ ssh root@39.96.159.212 'docker exec openresty nginx -t && docker exec openresty 
 
 `UNFOLD_ENV=production` 时登录 Cookie 带 `Secure`，必须走这条 HTTPS。应用听 `0.0.0.0:3000`，由 compose 映射到宿主机 `13009`。
 
+## 桌面客户端
+
+安装包不包含页面。窗口打开 `https://unfold.aimo.plus`。页面更新只靠上面的镜像发布，不靠用户重装壳。壳的标识是 `plus.aimo.unfold`。壳里的登录 Cookie 留在这个标识的 WebView 里，和系统浏览器不是同一份。
+
+安装包由 `.github/workflows/desktop-release.yml` 构建，不在应用机上编译。覆盖 Windows x64、Linux x64、macOS Apple 芯片和 macOS Intel。把 `apps/desktop/package.json`、`src-tauri/tauri.conf.json` 和 `src-tauri/Cargo.toml` 的版本改成同一个 `x.y.z`，提交后打标签 `desktop-vx.y.z`。Release 与标签同名，资产可直接下载。手动跑这条 workflow 时，标签是 `desktop-v` 加上配置里的版本。macOS 只做临时签名，没有公证。
+
 ## 验收
 
 - 应用机 `curl http://127.0.0.1:13009/health` → `{"ok":true}`，容器状态 healthy，镜像是 `ghcr.io/ximing/unfold-server:stable`

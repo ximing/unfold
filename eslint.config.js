@@ -9,6 +9,8 @@ export default defineConfig(
     ignores: [
       '**/node_modules/**',
       '**/dist/**',
+      'apps/desktop/src-tauri/target/**',
+      'apps/desktop/src-tauri/gen/**',
       'docs/**',
       'pnpm-lock.yaml',
       '**/*.html',

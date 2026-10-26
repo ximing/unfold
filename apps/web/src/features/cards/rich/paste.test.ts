@@ -1,6 +1,13 @@
 import { richDocSchema } from '@unfold/dto';
 import { describe, expect, it } from 'vitest';
+import { normalizeColor, normalizeFontSize } from './palette.js';
+import { htmlHasFormatting, preparePastedHtml } from './paste-html.js';
+import { markdownFromClipboard } from './paste-insert.js';
 import { pasteMarkdown } from './paste.js';
+
+function clip(data: Record<string, string>): DataTransfer {
+  return { getData: (type: string) => data[type] ?? '' } as DataTransfer;
+}
 
 function doc(source: string) {
   const parsed = pasteMarkdown(source);
@@ -153,5 +160,42 @@ describe('pasteMarkdown', () => {
     expect(flat).not.toContain('```');
     expect(parsed.content?.some((node) => node.type === 'mermaid')).toBe(true);
     expect(parsed.content?.some((node) => node.type === 'codeBlock')).toBe(true);
+  });
+});
+
+describe('富文本粘贴保留格式', () => {
+  it('HTML 已有格式时不用纯文本覆盖', () => {
+    const html = '<ul><li><span style="color:#b3402a;font-weight:700">红色</span></li></ul>';
+    expect(htmlHasFormatting(html)).toBe(true);
+    expect(htmlHasFormatting('<img data-rich-image src="/api/assets/x">')).toBe(true);
+    expect(htmlHasFormatting('<div data-type="block-math" data-latex="a"></div>')).toBe(true);
+    expect(markdownFromClipboard(clip({ 'text/html': html, 'text/plain': '- 红色', 'text/markdown': '- 红色' }))).toBeNull();
+  });
+
+  it('没有 HTML 格式时仍解析 Markdown', () => {
+    expect(htmlHasFormatting('<p>**甲**</p>')).toBe(false);
+    const parsed = markdownFromClipboard(clip({ 'text/html': '<p>**甲**</p>', 'text/plain': '**甲**' }));
+    expect(parsed?.content?.[0]).toMatchObject({
+      type: 'paragraph',
+      content: [{ type: 'text', text: '甲', marks: [{ type: 'bold' }] }],
+    });
+    expect(markdownFromClipboard(clip({ 'text/markdown': '# 标题' }))?.content?.[0]).toMatchObject({
+      type: 'heading',
+      attrs: { level: 1 },
+    });
+  });
+
+  it('font 标签和 pt 字号收成编辑器能认的样式', () => {
+    const html = preparePastedHtml('<font color="red" size="4">红</font><span style="font-size: 14pt !important">大</span>');
+    expect(html).toContain('color: #ff0000');
+    expect(html).toContain('font-size: 18px');
+    expect(html).not.toContain('<font');
+    expect(html).not.toContain('!important');
+    expect(preparePastedHtml('<p>font-size: 14pt</p>')).toContain('font-size: 14pt');
+    expect(normalizeFontSize('11pt')).toBe('15');
+    expect(normalizeFontSize('18px')).toBe('18');
+    expect(normalizeFontSize('14.666px')).toBe('15');
+    expect(normalizeColor('red')).toBe('#ff0000');
+    expect(normalizeColor('rgb(179, 64, 42)')).toBe('#b3402a');
   });
 });
