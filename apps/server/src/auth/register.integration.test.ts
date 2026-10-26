@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
+import { defaultCanvasPrefs } from '@unfold/dto';
 import { buildApp } from '../app.js';
 import { createDb, createPool } from '../db/client.js';
 import { users } from '../db/schema.js';
@@ -50,7 +51,7 @@ describe('register', () => {
       payload: { username: name, password: 'secret-88' },
     });
     expect(res.statusCode).toBe(201);
-    expect(res.json()).toEqual({ username: name, avatarUrl: null });
+    expect(res.json()).toEqual({ username: name, avatarUrl: null, canvas: defaultCanvasPrefs });
 
     const me = await app.inject({
       method: 'GET',
@@ -58,7 +59,7 @@ describe('register', () => {
       headers: { cookie: cookiePair(res.headers['set-cookie']) },
     });
     expect(me.statusCode).toBe(200);
-    expect(me.json()).toEqual({ username: name, avatarUrl: null });
+    expect(me.json()).toEqual({ username: name, avatarUrl: null, canvas: defaultCanvasPrefs });
 
     const login = await app.inject({
       method: 'POST',

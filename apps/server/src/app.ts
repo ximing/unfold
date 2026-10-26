@@ -10,6 +10,8 @@ import { MAX_IMAGE_BYTES } from './assets/upload.js';
 import { accountBody, registerAvatarRoutes } from './avatar/routes.js';
 import { createS3AvatarStore, type AvatarStore } from './avatar/store.js';
 import { registerCardRoutes } from './cards/routes.js';
+import { canvasFromRow, canvasSelection } from './canvas/row.js';
+import { registerCanvasRoutes } from './canvas/routes.js';
 import { registerCollectionRoutes } from './collections/routes.js';
 import { loadConfig } from './config.js';
 import { createDb, createPool } from './db/client.js';
@@ -89,7 +91,7 @@ export async function buildApp(overrides?: AppOverrides) {
     }
 
     const found = await db
-      .select({ id: users.id, username: users.username, avatarKey: users.avatarKey })
+      .select({ id: users.id, username: users.username, avatarKey: users.avatarKey, ...canvasSelection })
       .from(users)
       .where(and(eq(users.id, unsigned.value), isNull(users.deletedAt)))
       .limit(1);
@@ -100,7 +102,7 @@ export async function buildApp(overrides?: AppOverrides) {
       return;
     }
 
-    return user;
+    return { id: user.id, username: user.username, avatarKey: user.avatarKey, canvas: canvasFromRow(user) };
   }
 
   app.post(
@@ -130,6 +132,7 @@ export async function buildApp(overrides?: AppOverrides) {
           username: users.username,
           passwordHash: users.passwordHash,
           avatarKey: users.avatarKey,
+          ...canvasSelection,
         })
         .from(users)
         .where(and(eq(users.username, parsed.data.username), isNull(users.deletedAt)))
@@ -150,7 +153,12 @@ export async function buildApp(overrides?: AppOverrides) {
       }
 
       reply.setCookie('unfold_session', user.id, cookieOptions);
-      return reply.code(200).send(await accountBody(user, avatarStore));
+      return reply.code(200).send(
+        await accountBody(
+          { id: user.id, username: user.username, avatarKey: user.avatarKey, canvas: canvasFromRow(user) },
+          avatarStore,
+        ),
+      );
     },
   );
 
@@ -183,15 +191,15 @@ export async function buildApp(overrides?: AppOverrides) {
       }
 
       const passwordHash = await argon2.hash(parsed.data.password, { type: argon2.argon2id });
-      let created: { id: string; username: string };
+      let created: SessionUser;
       try {
         const inserted = await db
           .insert(users)
           .values({ username: parsed.data.username, passwordHash })
-          .returning({ id: users.id, username: users.username });
+          .returning({ id: users.id, username: users.username, ...canvasSelection });
         const row = inserted[0];
         if (!row) throw new Error('register failed');
-        created = row;
+        created = { id: row.id, username: row.username, avatarKey: null, canvas: canvasFromRow(row) };
       } catch (error) {
         if (isUniqueViolation(error)) {
           return reply.code(409).send(usernameTaken);
@@ -200,7 +208,7 @@ export async function buildApp(overrides?: AppOverrides) {
       }
 
       reply.setCookie('unfold_session', created.id, cookieOptions);
-      return reply.code(201).send({ username: created.username, avatarUrl: null });
+      return reply.code(201).send(await accountBody(created, avatarStore));
     },
   );
 
@@ -224,6 +232,7 @@ export async function buildApp(overrides?: AppOverrides) {
   app.get('/health', async () => ({ ok: true }));
 
   registerAvatarRoutes(app, db, signedSessionUser, avatarStore);
+  registerCanvasRoutes(app, db, signedSessionUser);
 
   registerAssetRoutes(app, db, signedSessionUser);
   registerCollectionRoutes(app, db, signedSessionUser);

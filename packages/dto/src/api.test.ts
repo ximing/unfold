@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   accountSchema,
+  defaultCanvasPrefs,
   errorBodySchema,
   loginBodySchema,
   registerBodySchema,
@@ -52,8 +53,8 @@ describe('usernameBodySchema', () => {
 
 describe('accountSchema', () => {
   it('parses the account payload with a nullable avatar', () => {
-    const body = { username: 'ximing', avatarUrl: null } satisfies Account;
+    const body = { username: 'ximing', avatarUrl: null, canvas: defaultCanvasPrefs } satisfies Account;
     expect(accountSchema.parse(body)).toEqual(body);
-    expect(accountSchema.safeParse({ username: 'ximing' }).success).toBe(false);
+    expect(accountSchema.safeParse({ username: 'ximing', avatarUrl: null }).success).toBe(false);
   });
 });

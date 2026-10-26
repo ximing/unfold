@@ -1,4 +1,6 @@
-import { Image, MousePointer2, Spline, Type } from 'lucide-react';
+import type { CanvasPrefs, EdgeAppearance } from '@unfold/dto';
+import { Image, MousePointer2, SlidersHorizontal, Spline, Type } from 'lucide-react';
+import { BoardSettings } from './board-settings.js';
 import './board-toolbar.css';
 
 export type BoardTool = 'select' | 'text' | 'connect';
@@ -7,6 +9,12 @@ export function BoardToolbar(props: {
   tool: BoardTool;
   onTool: (tool: BoardTool) => void;
   onImage: () => void;
+  settingsOpen: boolean;
+  appearance: EdgeAppearance;
+  canvas: CanvasPrefs;
+  onToggleSettings: () => void;
+  onAppearance: (next: EdgeAppearance) => void;
+  onCanvas: (patch: Partial<CanvasPrefs>) => void;
 }) {
   return (
     <nav className="board-toolbar" aria-label="画布工具">
@@ -43,6 +51,25 @@ export function BoardToolbar(props: {
       >
         <Spline size={18} strokeWidth={1.75} aria-hidden />
       </button>
+      <span className="board-toolbar-sep" />
+      <button
+        type="button"
+        className={`board-settings-btn${props.settingsOpen ? ' on' : ''}`}
+        aria-label="属性"
+        aria-expanded={props.settingsOpen}
+        title="属性"
+        onClick={props.onToggleSettings}
+      >
+        <SlidersHorizontal size={18} strokeWidth={1.75} aria-hidden />
+      </button>
+      {props.settingsOpen ? (
+        <BoardSettings
+          appearance={props.appearance}
+          canvas={props.canvas}
+          onAppearance={props.onAppearance}
+          onCanvas={props.onCanvas}
+        />
+      ) : null}
     </nav>
   );
 }

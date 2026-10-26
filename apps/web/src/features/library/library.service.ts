@@ -6,6 +6,7 @@ import type {
   CollectionGraph,
   CreateCardBody,
   Edge,
+  EdgeAppearance,
   EdgeDetail,
   Library,
   LibraryCollection,
@@ -13,7 +14,9 @@ import type {
   NodeDetail,
   SearchHit,
 } from '@unfold/dto';
+import { defaultEdgeAppearance } from '@unfold/dto';
 import { watchWrite } from '../../shared/save/save-bus.js';
+import { saveAppearance } from './appearance.js';
 import { createCard, deleteCard, updateCard } from './cards.js';
 import { createCollection, addMember, createNode, deleteCollection, loadCollections, removeMember, renameCollection } from './collections.js';
 import {
@@ -55,7 +58,7 @@ export type LibraryState = {
 export class LibraryService extends Service implements LibraryState {
   collections: LibraryCollection[] = [];
   libraryGraph: Library | null = null;
-  graph: CollectionGraph = { nodes: [], edges: [] };
+  graph: CollectionGraph = { nodes: [], edges: [], appearance: defaultEdgeAppearance };
   graphId = '';
   nodeDetail: NodeDetail | null = null;
   edgeDetail: EdgeDetail | null = null;
@@ -107,6 +110,11 @@ export class LibraryService extends Service implements LibraryState {
 
   async loadGraph(collectionId: string): Promise<boolean> {
     return loadGraph(this, collectionId);
+  }
+
+  /** 改这个合集的连线外观。不进入未保存状态。 */
+  async updateAppearance(collectionId: string, next: EdgeAppearance): Promise<boolean> {
+    return saveAppearance(this, collectionId, next);
   }
 
   async savePlacements(collectionId: string, placements: PlacementWrite[]): Promise<boolean> {

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
+import { defaultEdgeAppearance } from '@unfold/dto';
 import { buildApp } from '../app.js';
 
 const username = process.env.SEED_USERNAME;
@@ -80,7 +81,7 @@ describe('graph', () => {
 
     const emptyGraph = await call('GET', `/api/collections/${collectionA.id}/graph`);
     expect(emptyGraph.statusCode).toBe(200);
-    expect(emptyGraph.json()).toEqual({ nodes: [], edges: [] });
+    expect(emptyGraph.json()).toEqual({ nodes: [], edges: [], appearance: defaultEdgeAppearance });
 
     const missing = await call('GET', `/api/nodes/${randomUUID()}`);
     expect(missing.statusCode).toBe(404);

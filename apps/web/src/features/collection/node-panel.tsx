@@ -127,6 +127,8 @@ export const NodePanel = observer(function NodePanel(props: {
   nodeId: string;
   onLeave: () => void;
   onTouched: () => void;
+  /** 非 0 时打开删除确认。右键菜单和检查器共用这一条 */
+  askRemove?: number;
 }) {
   const library = useService(LibraryService);
   const panel = useNodePanelWidth();
@@ -135,6 +137,10 @@ export const NodePanel = observer(function NodePanel(props: {
   const [confirm, setConfirm] = useState(false);
   const detail = library.nodeDetail?.id === props.nodeId ? library.nodeDetail : null;
   useAskDelete(() => setConfirm(true));
+  useEffect(() => {
+    if (!props.askRemove) return;
+    setConfirm(true);
+  }, [props.askRemove]);
   const [descDraft, setDescDraft] = useState(detail?.description ?? '');
   const descRef = useRef(detail?.description ?? '');
   const savedDesc = useRef(detail?.description ?? '');

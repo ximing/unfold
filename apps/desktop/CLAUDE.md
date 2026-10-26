@@ -20,8 +20,7 @@
 
 修改后运行 `pnpm --filter @unfold/desktop test`。
 
-- 安装包由仓库 `.github/workflows/desktop-release.yml` 构建并上传到 GitHub Release。标签是 `desktop-v` 加上版本号。版本在 `package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml` 三处保持相同。
-- 矩阵是 Windows x64、Linux x64、macOS Apple 芯片（`aarch64-apple-darwin`）和 macOS Intel（`x86_64-apple-darwin`）。不要把 `apps/web` 的构建塞进这条 workflow。
+- 版本与发布矩阵约束见 `.claude/rules/desktop-release.md`，按配置文件和 workflow 路径加载。
 
 - `devUrl` 必须是 `http://localhost:5173`。不要改成 `127.0.0.1`。Vite 代理到 `3000`，浏览器看到的源仍是 `localhost`。
 - 不设置 `beforeBuildCommand`。`frontendDist` 保持 `https://unfold.aimo.plus`，无路径、无末尾斜杠。
@@ -29,3 +28,9 @@
 - macOS 红灯隐藏窗口。托盘图标使用 `icon_as_template(true)`。
 - `window-state` 排除 `VISIBLE`。不要把该插件或托盘的 JS 权限写进 capability。
 - Web 源码不检测 Tauri。壳不提供截图、剪贴板或自定义命令。
+
+## 指令文件双向同步
+
+- 同目录的 `AGENTS.md` 与 `CLAUDE.md` 是同一份项目规则，内容必须保持完全一致。
+- 后续 Agent 修改任意一方时，必须在同一次变更中同步更新另一方；新增、移动或删除项目级指令文件时也要成对处理。
+- 完成前逐对检查内容一致；若已有差异，先核对实际代码与用户要求再合并，不能直接覆盖另一方独有的有效规则。

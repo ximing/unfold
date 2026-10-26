@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { canvasPrefsSchema } from './graph.js';
 
 export const loginBodySchema = z.object({
   username: z.string().min(1),
@@ -24,6 +25,7 @@ export const usernameBodySchema = z.strictObject({
 export const accountSchema = z.object({
   username: z.string(),
   avatarUrl: z.string().nullable(),
+  canvas: canvasPrefsSchema,
 });
 
 export const errorBodySchema = z.object({

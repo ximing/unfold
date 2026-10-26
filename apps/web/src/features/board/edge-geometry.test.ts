@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { edgeGeometry, edgeLanes, edgeMidpoint } from './edge-geometry.js';
+import { arrowPath, edgeDraw, edgeGeometry, edgeLanes, edgeMidpoint } from './edge-geometry.js';
 
 const from = { x: 32, y: 48, w: 168, h: 56 };
 const to = { x: 252, y: 48, w: 168, h: 56 };
@@ -43,6 +43,42 @@ describe('edgeGeometry', () => {
     const mid = edgeMidpoint(seg);
     expect(mid.x).toBe((seg.x1 + seg.x2) / 2);
     expect(mid.y).toBe((seg.y1 + seg.y2) / 2);
+  });
+});
+
+describe('edgeDraw', () => {
+  it('曲线的标签离开直线中点', () => {
+    const straight = edgeDraw(from, to, 0, 1, false, 'straight');
+    const curve = edgeDraw(from, to, 0, 1, false, 'curve');
+    expect(curve.label.x).toBeCloseTo(straight.label.x);
+    expect(curve.label.y).not.toBeCloseTo(straight.label.y);
+    expect(curve.d.startsWith('M ')).toBe(true);
+    expect(curve.d.includes(' C ')).toBe(true);
+  });
+
+  it('左右并排时折线从右边框接到左边框，两条边错开', () => {
+    const a = edgeDraw(from, to, 0, 2, false, 'orthogonal');
+    const b = edgeDraw(from, to, 1, 2, false, 'orthogonal');
+    expect(a.d.startsWith(`M ${from.x + from.w} `)).toBe(true);
+    expect(a.d.endsWith(` ${to.x}`)).toBe(false);
+    expect(a.d.includes(`L ${to.x} `) || a.d.endsWith(String(to.x))).toBe(true);
+    expect(a.label.y).not.toBe(b.label.y);
+    expect(a.d.includes(' Q ')).toBe(true);
+  });
+
+  it('有箭头时线停在箭头底部，尖端仍在终点边框，标签不跟着缩短', () => {
+    const plain = edgeDraw(from, to, 0, 1, false, 'straight');
+    const drawn = edgeDraw(from, to, 0, 1, false, 'straight', 8);
+    expect(drawn.tip).toEqual({ x: to.x, y: centerY, ux: 1, uy: 0 });
+    expect(drawn.d).toBe(`M ${from.x + from.w} ${centerY} L ${to.x - 8} ${centerY}`);
+    expect(drawn.label).toEqual(plain.label);
+    expect(arrowPath(drawn.tip)).toBe(`M ${to.x} ${centerY} L ${to.x - 8} ${centerY + 3.5} L ${to.x - 8} ${centerY - 3.5} Z`);
+
+    const elbow = edgeDraw(from, to, 0, 1, false, 'orthogonal', 8);
+    const elbowPlain = edgeDraw(from, to, 0, 1, false, 'orthogonal');
+    expect(elbow.tip.x).toBe(to.x);
+    expect(elbow.label).toEqual(elbowPlain.label);
+    expect(elbow.d.includes(String(to.x))).toBe(false);
   });
 });
 

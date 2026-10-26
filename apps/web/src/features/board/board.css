@@ -85,14 +85,15 @@
 }
 .bnode-dot { pointer-events: none; }
 .bnode-handle {
-  fill: var(--card);
-  stroke: var(--accent);
+  fill: var(--accent);
+  stroke: #fff;
   stroke-width: 1.5;
   opacity: 0;
+  pointer-events: none;
   cursor: crosshair;
   transition: opacity 0.12s;
 }
-.bnode:hover .bnode-handle { opacity: 1; }
+.bnode:hover .bnode-handle { opacity: 1; pointer-events: auto; }
 .bnode.bnode-image .bnode-rect,
 .bnode.bnode-image:hover .bnode-rect {
   stroke: none;
@@ -178,8 +179,6 @@
   pointer-events: none;
   transition: stroke 0.12s;
 }
-.bedge-g:hover .bedge { stroke: rgba(0, 0, 0, 0.45); }
-.bedge-g.on .bedge { stroke: var(--accent); stroke-width: 1.8; }
 .bedge-label {
   fill: var(--mute);
   font-size: 11px;
@@ -195,18 +194,24 @@
 .bedge-label .cnt { fill: var(--faint); font-family: var(--mono); font-size: 10px; }
 
 /* 拖拽中的临时连线 */
-.blink-temp { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 5 4; pointer-events: none; }
+.blink-temp { fill: none; stroke-dasharray: 6 4; pointer-events: none; }
 .blink-temp-dot { fill: var(--accent); pointer-events: none; }
 
-/* 悬停预览 / 内联输入（foreignObject 内） */
-.bpeek { pointer-events: none; overflow: visible; }
-.bpeek-hold {
-  pointer-events: auto;
-  width: 100%;
+/* 悬停预览：视口上的浮层，不跟世界缩放 */
+.bpeek-pop {
+  position: absolute;
+  z-index: 4;
+  width: 252px;
   box-sizing: border-box;
+  pointer-events: auto;
   padding-left: 12px;
 }
-.bpeek-hold.flip { padding-left: 0; padding-right: 12px; }
+.bpeek-pop.flip { padding-left: 0; padding-right: 12px; }
+html.board-dragging,
+html.board-dragging * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
 .bpeek-card {
   width: 100%;
   max-height: 280px;

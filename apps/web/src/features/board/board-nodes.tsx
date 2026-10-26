@@ -5,6 +5,33 @@ import { IMAGE_NAME_LINE } from './image-frame.js';
 import type { BoardBox } from './board-layout.js';
 import { shortLabel } from './label.js';
 
+const LINK_HANDLES = [
+  { side: 'up', label: '向上连线', cx: (box: BoardBox) => box.x + box.w / 2, cy: (box: BoardBox) => box.y },
+  { side: 'right', label: '向右连线', cx: (box: BoardBox) => box.x + box.w, cy: (box: BoardBox) => box.y + box.h / 2 },
+  { side: 'down', label: '向下连线', cx: (box: BoardBox) => box.x + box.w / 2, cy: (box: BoardBox) => box.y + box.h },
+  { side: 'left', label: '向左连线', cx: (box: BoardBox) => box.x, cy: (box: BoardBox) => box.y + box.h / 2 },
+] as const;
+
+function LinkHandles(props: {
+  box: BoardBox;
+  id: string;
+  onBeginLink: (event: ReactPointerEvent, id: string) => void;
+}) {
+  return LINK_HANDLES.map((spot) => (
+    <circle
+      key={spot.side}
+      className="bnode-handle"
+      data-side={spot.side}
+      role="button"
+      aria-label={spot.label}
+      cx={spot.cx(props.box)}
+      cy={spot.cy(props.box)}
+      r={6}
+      onPointerDown={(event) => props.onBeginLink(event, props.id)}
+    />
+  ));
+}
+
 export function BoardNodes(props: {
   items: BoardCanvasItem[];
   boxOf: Map<string, BoardBox>;
@@ -20,7 +47,10 @@ export function BoardNodes(props: {
   onBeginLink?: (event: ReactPointerEvent, id: string) => void;
   onBeginResizeImage?: (event: ReactPointerEvent, id: string) => void;
   onImageLoad?: (assetId: string, naturalWidth: number, naturalHeight: number) => void;
+  /** 关掉后不画卡片数和类型色点。全貌始终打开，用来显示成员点数 */
+  showMarkers?: boolean;
 }) {
+  const showMarkers = props.showMarkers !== false;
   return (
     <>
       {props.items.map((item) => {
@@ -45,11 +75,12 @@ export function BoardNodes(props: {
               onBeginLink={props.onBeginLink}
               onBeginResizeImage={props.onBeginResizeImage}
               onImageLoad={props.onImageLoad}
+              showMarkers={showMarkers}
             />
           );
         }
         const selected = props.selectedId === item.id;
-        const types = (item.types ?? []).slice(0, 6);
+        const types = showMarkers ? (item.types ?? []).slice(0, 6) : [];
         const desc = (item.description ?? '').trim();
         const cy = box.y + box.h / 2;
         const nameY = desc !== '' ? box.y + 15 : types.length > 0 ? cy - 4 : cy;
@@ -105,7 +136,7 @@ export function BoardNodes(props: {
                   />
                 ))
               : null}
-            {(item.count ?? 0) > 0
+            {showMarkers && (item.count ?? 0) > 0
               ? (() => {
                   const bw = 12 + String(item.count).length * 6;
                   const cx = box.x + box.w - 4;
@@ -120,13 +151,7 @@ export function BoardNodes(props: {
                 })()
               : null}
             {props.onBeginLink ? (
-              <circle
-                className="bnode-handle"
-                cx={box.x + box.w}
-                cy={cy}
-                r={5}
-                onPointerDown={(event) => props.onBeginLink?.(event, item.id)}
-              />
+              <LinkHandles box={box} id={item.id} onBeginLink={props.onBeginLink} />
             ) : null}
             <title>{item.label}</title>
           </g>
@@ -151,10 +176,10 @@ function ImageNode(props: {
   onBeginLink?: (event: ReactPointerEvent, id: string) => void;
   onBeginResizeImage?: (event: ReactPointerEvent, id: string) => void;
   onImageLoad?: (assetId: string, naturalWidth: number, naturalHeight: number) => void;
+  showMarkers: boolean;
 }) {
   const { item, box, pictureH } = props;
   const types = (item.types ?? []).slice(0, 6);
-  const cy = box.y + box.h / 2;
   const nameY = box.y + pictureH + IMAGE_NAME_LINE / 2;
   const dotsY = box.y + pictureH - 6;
   const assetId = item.assetId ? item.assetId : '';
@@ -221,7 +246,7 @@ function ImageNode(props: {
           {shortLabel(item.label)}
         </text>
       ) : null}
-      {types.length > 0
+      {props.showMarkers && types.length > 0
         ? types.map((type, index) => (
             <circle
               key={type}
@@ -233,7 +258,7 @@ function ImageNode(props: {
             />
           ))
         : null}
-      {(item.count ?? 0) > 0
+      {props.showMarkers && (item.count ?? 0) > 0
         ? (() => {
             const bw = 12 + String(item.count).length * 6;
             const cx = box.x + box.w - 4;
@@ -247,15 +272,7 @@ function ImageNode(props: {
             );
           })()
         : null}
-      {props.onBeginLink ? (
-        <circle
-          className="bnode-handle"
-          cx={box.x + box.w}
-          cy={cy}
-          r={5}
-          onPointerDown={(event) => props.onBeginLink?.(event, item.id)}
-        />
-      ) : null}
+      {props.onBeginLink ? <LinkHandles box={box} id={item.id} onBeginLink={props.onBeginLink} /> : null}
       {props.selected && props.onBeginResizeImage ? (
         <circle
           className="bnode-resize"

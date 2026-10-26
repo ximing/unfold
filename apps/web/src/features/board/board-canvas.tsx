@@ -1,6 +1,8 @@
-import type { CardType } from '@unfold/dto';
+import type { CanvasPrefs, CardType, EdgeAppearance } from '@unfold/dto';
+import { defaultCanvasPrefs, defaultEdgeAppearance } from '@unfold/dto';
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ChangeEvent,
@@ -8,15 +10,20 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
+import type { UMenuEntry } from '../../shared/ui/context-menu/context-menu.js';
 import { BoardEdges } from './board-edges.js';
-import { anchorOnBorder, edgeGeometry, edgeLanes, edgeMidpoint } from './edge-geometry.js';
+import { ARROW_LEN, anchorOnBorder, arrowPath, edgeDraw, edgeLanes } from './edge-geometry.js';
+import { EDGE_DASH, EDGE_STROKE, EDGE_WIDTH } from './edge-style.js';
+import { snapPoint, snapTextOrigin } from './snap.js';
 import { isFiniteNumber, layoutBoard, layoutPlaced, nextPlacementZ, textNodeHeight } from './board-layout.js';
-import { GROW_H, GROW_W, planGrow } from './grow.js';
+import { GROW_CHILD_LABEL, GROW_H, GROW_W, planGrow } from './grow.js';
 import { imageFrame } from './image-frame.js';
 import { BoardNodes } from './board-nodes.js';
+import { boardMenu, type BoardMenuAction } from './board-menu.js';
 import { BoardToolbar, type BoardTool } from './board-toolbar.js';
-import { GraphViewport } from './graph-viewport.js';
+import { GraphViewport, type ViewportMenuHit } from './graph-viewport.js';
 import { InlineInput } from './inline-input.js';
+import { peekPlacement, type PeekPlacement } from './peek-placement.js';
 import './board.css';
 
 export type BoardCanvasItem = {
@@ -44,7 +51,7 @@ type Editing =
   | { kind: 'rename'; id: string }
   | { kind: 'link'; fromId: string; toId: string }
   | { kind: 'relabel'; id: string }
-  | { kind: 'grow'; fromId: string | null; x: number; y: number }
+  | { kind: 'grow'; role: 'child' | 'sibling'; fromId: string | null; x: number; y: number }
   | null;
 
 type DragGesture = {
@@ -142,6 +149,29 @@ function clipboardImageFiles(data: DataTransfer | null): File[] {
   return files;
 }
 
+/** 预览让开右侧检查器和左侧工具栏，避免浮层钻到它们下面。 */
+function visibleCanvas(host: DOMRect): { left: number; top: number; width: number; height: number } {
+  let left = host.left;
+  let right = host.right;
+  const panel = document.querySelector('.board-panel');
+  if (panel instanceof HTMLElement) {
+    const rect = panel.getBoundingClientRect();
+    if (rect.width > 0 && rect.left < right) right = Math.min(right, rect.left - 8);
+  }
+  const bar = document.querySelector('.board-toolbar');
+  if (bar instanceof HTMLElement) {
+    const rect = bar.getBoundingClientRect();
+    if (rect.width > 0 && rect.right > left) left = Math.max(left, rect.right + 8);
+  }
+  return { left, top: host.top, width: Math.max(0, right - left), height: host.height };
+}
+
+function samePeekPlace(a: PeekPlacement | null, b: PeekPlacement | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.flip === b.flip && Math.round(a.left) === Math.round(b.left) && Math.round(a.top) === Math.round(b.top);
+}
+
 function isImageMime(type: string): boolean {
   const mime = type.split(';')[0]?.trim().toLowerCase() ?? '';
   return mime.startsWith('image/');
@@ -177,23 +207,41 @@ export function BoardCanvas(props: {
   onEscape?: () => void;
   /** 合集画布左侧工具。全貌不传 */
   enableTools?: boolean;
+  /** 这个合集的连线外观。全貌用默认细灰实线 */
+  appearance?: EdgeAppearance;
+  /** 账号上的画布看法。不传则用默认 */
+  canvas?: CanvasPrefs;
+  onAppearance?: (next: EdgeAppearance) => void;
+  onCanvas?: (patch: Partial<CanvasPrefs>) => void;
   /** 改边的标签。空字符串或与原来相同由调用方忽略 */
   onRelabel?: (id: string, label: string) => void;
-  /** 选中点后 Tab 建下级、Enter 建同级。名字写完才调用。fromId 为空表示不连边 */
-  onGrowNode?: (draft: { name: string; fromId: string | null; x: number; y: number }) => void;
+  /** 选中点后 Tab 建下级、Enter 建同级。名字写完才调用。label 有值时从 fromId 连出这条边 */
+  onGrowNode?: (draft: { name: string; fromId: string | null; label: string | null; x: number; y: number }) => void;
   /** 同级有多个上级时 */
   onGrowBlocked?: (message: string) => void;
   /** 选文件、粘贴或拖入后交给调用方。不传则只回到选择工具 */
   onInsertImages?: (files: File[], at: Pt, anchor: 'center' | 'corner') => void;
+  /** 右键「移出这个合集」。不删除点 */
+  onRemoveItem?: (id: string) => void;
+  /** 右键删除点或合集。只打开确认 */
+  onAskRemoveItem?: (id: string) => void;
+  /** 右键删除边。只打开确认 */
+  onAskRemoveLink?: (id: string) => void;
 }) {
   const worldRef = useRef<SVGGElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const imageAtRef = useRef<Pt | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
   const [linkDrag, setLinkDrag] = useState<LinkDrag | null>(null);
   const [tool, setTool] = useState<BoardTool>('select');
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [peekId, setPeekId] = useState<string | null>(null);
+  const [peekPlace, setPeekPlace] = useState<PeekPlacement | null>(null);
   const peekTimer = useRef(0);
   const peekCloseTimer = useRef(0);
+  const peekPopRef = useRef<HTMLDivElement>(null);
+  const peekBoxRef = useRef<{ id: string; x: number; y: number; w: number; h: number } | null>(null);
+  const peekPlaceRef = useRef<PeekPlacement | null>(null);
   const dragRef = useRef<DragGesture | null>(null);
   const dragSerial = useRef(0);
   const [dragBox, setDragBox] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -226,6 +274,11 @@ export function BoardCanvas(props: {
 
   const toolsOn = props.enableTools === true;
   const selectTool = !toolsOn || tool === 'select';
+  const appearance = props.appearance ?? defaultEdgeAppearance;
+  const canvas = props.canvas ?? defaultCanvasPrefs;
+  const route = toolsOn ? canvas.route : 'straight';
+  const snapRef = useRef(false);
+  snapRef.current = toolsOn && canvas.snap;
 
   const hasSaved = props.items.some((item) => isFiniteNumber(item.x));
   const missingKey = props.items
@@ -310,21 +363,28 @@ export function BoardCanvas(props: {
     setTool(next);
   }
 
-  function pickImages() {
+  function pickImages(at?: Pt) {
     publishLink(null);
+    imageAtRef.current = at ?? null;
     fileRef.current?.click();
   }
 
   function onFiles(event: ChangeEvent<HTMLInputElement>) {
     const list = event.currentTarget.files;
     const files = list ? Array.from(list) : [];
+    const at = imageAtRef.current;
+    imageAtRef.current = null;
     event.currentTarget.value = '';
     if (files.length === 0) return;
     toolRef.current = 'select';
     setTool('select');
-    const at = readViewportCenter(worldRef.current);
-    if (!at) return;
-    props.onInsertImages?.(files, at, 'center');
+    if (at) {
+      props.onInsertImages?.(files, at, 'corner');
+      return;
+    }
+    const center = readViewportCenter(worldRef.current);
+    if (!center) return;
+    props.onInsertImages?.(files, center, 'center');
   }
 
   function isUploading(id: string): boolean {
@@ -355,8 +415,21 @@ export function BoardCanvas(props: {
   }
 
   /* ---------- 悬停预览 ---------- */
+  function gestureBlocksPeek(): boolean {
+    return dragRef.current !== null || resizeRef.current !== null || linkDragRef.current !== null;
+  }
+
+  function engageDragChrome() {
+    document.documentElement.classList.add('board-dragging');
+    window.getSelection()?.removeAllRanges();
+  }
+
+  function releaseDragChrome() {
+    document.documentElement.classList.remove('board-dragging');
+  }
+
   function armPeek(id: string) {
-    if (!props.renderPeek || isUploading(id)) return;
+    if (!props.renderPeek || isUploading(id) || gestureBlocksPeek()) return;
     window.clearTimeout(peekTimer.current);
     if (peekId === id) {
       window.clearTimeout(peekCloseTimer.current);
@@ -368,6 +441,7 @@ export function BoardCanvas(props: {
       props.onPeekItem?.(null);
     }
     peekTimer.current = window.setTimeout(() => {
+      if (gestureBlocksPeek()) return;
       setPeekId(id);
       props.onPeekItem?.(id);
     }, 450);
@@ -404,6 +478,132 @@ export function BoardCanvas(props: {
     [],
   );
 
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest('.board-settings, .board-settings-btn')) return;
+      setSettingsOpen(false);
+    };
+    window.addEventListener('pointerdown', onPointerDown, true);
+    return () => window.removeEventListener('pointerdown', onPointerDown, true);
+  }, [settingsOpen]);
+
+  function beginGrow(role: 'child' | 'sibling', nodeId: string) {
+    const anchor = boxOf.get(nodeId);
+    if (!anchor || !props.onGrowNode || isUploading(nodeId)) return;
+    disarmPeek();
+    const plan = planGrow(role, nodeId, props.links, anchor, boxes);
+    if (!plan.ok) {
+      props.onGrowBlocked?.(plan.message);
+      return;
+    }
+    const at = snapPoint({ x: plan.x, y: plan.y }, snapRef.current);
+    const next: Editing = { kind: 'grow', role, fromId: plan.fromId, x: at.x, y: at.y };
+    editingRef.current = next;
+    setEditing(next);
+  }
+
+  function beginCreate(at: Pt) {
+    if (!props.onCreate || !props.createPlaceholder) return;
+    disarmPeek();
+    publishLink(null);
+    if (props.enableTools) {
+      toolRef.current = 'select';
+      setTool('select');
+    }
+    const next: Editing = { kind: 'create', at: snapTextOrigin(at, snapRef.current) };
+    editingRef.current = next;
+    setEditing(next);
+  }
+
+  function startRename(id: string) {
+    if (!props.onRenameItem || isUploading(id)) return;
+    disarmPeek();
+    publishLink(null);
+    const next: Editing = { kind: 'rename', id };
+    editingRef.current = next;
+    setEditing(next);
+  }
+
+  function startRelabel(id: string) {
+    if (!props.onRelabel) return;
+    disarmPeek();
+    publishLink(null);
+    const next: Editing = { kind: 'relabel', id };
+    editingRef.current = next;
+    setEditing(next);
+  }
+
+  function startConnect(id: string) {
+    if (!props.onConnect || isUploading(id)) return;
+    const box = boxOf.get(id);
+    if (!box) return;
+    disarmPeek();
+    if (toolsOn) {
+      toolRef.current = 'connect';
+      setTool('connect');
+    }
+    publishLink({
+      fromId: id,
+      lineFromId: id,
+      cursor: { x: box.x + box.w / 2, y: box.y + box.h / 2 },
+      mode: 'armed',
+      moved: false,
+    });
+  }
+
+  function runMenuAction(action: BoardMenuAction, hit: ViewportMenuHit) {
+    if (action === 'create') beginCreate({ x: hit.worldX, y: hit.worldY });
+    else if (action === 'image') pickImages({ x: hit.worldX, y: hit.worldY });
+    else if (action === 'rename') startRename(hit.id);
+    else if (action === 'open') props.onOpenItem?.(hit.id);
+    else if (action === 'grow-child') beginGrow('child', hit.id);
+    else if (action === 'grow-sibling') beginGrow('sibling', hit.id);
+    else if (action === 'connect') startConnect(hit.id);
+    else if (action === 'remove') props.onRemoveItem?.(hit.id);
+    else if (action === 'delete-item') props.onAskRemoveItem?.(hit.id);
+    else if (action === 'relabel') startRelabel(hit.id);
+    else props.onAskRemoveLink?.(hit.id);
+  }
+
+  function contextItems(hit: ViewportMenuHit): UMenuEntry[] {
+    if (hit.kind === 'node' && isUploading(hit.id)) return [];
+    disarmPeek();
+    if (hit.kind === 'node') props.onSelectItem(hit.id);
+    if (hit.kind === 'edge') props.onSelectLink(hit.id);
+    const entries = boardMenu({
+      kind: hit.kind,
+      tools: toolsOn,
+      canCreate: props.onCreate !== undefined && props.createPlaceholder !== undefined,
+      canImage: toolsOn && props.onInsertImages !== undefined,
+      canRename: props.onRenameItem !== undefined,
+      canOpen: props.onOpenItem !== undefined,
+      canGrow: props.onGrowNode !== undefined,
+      canConnect: toolsOn && props.onConnect !== undefined,
+      canRemove: props.onRemoveItem !== undefined,
+      canDeleteItem: props.onAskRemoveItem !== undefined,
+      canRelabel: props.onRelabel !== undefined,
+      canDeleteLink: props.onAskRemoveLink !== undefined,
+    });
+    const items: UMenuEntry[] = [];
+    for (const entry of entries) {
+      if (entry.separator || entry.action === undefined) {
+        items.push({ separator: true });
+        continue;
+      }
+      const action = entry.action;
+      items.push({
+        label: entry.label,
+        hint: entry.hint,
+        danger: entry.danger,
+        onSelect: () => runMenuAction(action, hit),
+      });
+    }
+    return items;
+  }
+
   /* ---------- 键盘：工具快捷键、方向键、Enter、Esc ---------- */
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -412,6 +612,11 @@ export function BoardCanvas(props: {
       if (document.querySelector('.modal-wrap, .overlay, .ctx-menu')) return;
 
       if (event.key === 'Escape') {
+        if (settingsOpen) {
+          event.preventDefault();
+          setSettingsOpen(false);
+          return;
+        }
         const busy =
           dragRef.current !== null ||
           resizeRef.current !== null ||
@@ -420,10 +625,12 @@ export function BoardCanvas(props: {
         if (dragRef.current) {
           dragRef.current = null;
           setDragBox(null);
+          releaseDragChrome();
         }
         if (resizeRef.current) {
           resizeRef.current = null;
           setResizePreview(null);
+          releaseDragChrome();
         }
         if (linkDragRef.current) publishLink(null);
         if (editingRef.current) finishEditing();
@@ -492,23 +699,10 @@ export function BoardCanvas(props: {
         if (best) props.onSelectItem(best.id);
         return;
       }
-      const beginGrow = (role: 'child' | 'sibling', nodeId: string) => {
-        const anchor = boxOf.get(nodeId);
-        if (!anchor) return;
-        event.preventDefault();
-        disarmPeek();
-        const plan = planGrow(role, nodeId, props.links, anchor, boxes);
-        if (!plan.ok) {
-          props.onGrowBlocked?.(plan.message);
-          return;
-        }
-        const next: Editing = { kind: 'grow', fromId: plan.fromId, x: plan.x, y: plan.y };
-        editingRef.current = next;
-        setEditing(next);
-      };
       if (event.key === 'Tab' && !event.shiftKey && props.onGrowNode && !event.repeat) {
         const item = props.items.find((entry) => entry.id === props.selectedId);
         if (!item || item.uploading) return;
+        event.preventDefault();
         beginGrow('child', item.id);
         return;
       }
@@ -518,6 +712,7 @@ export function BoardCanvas(props: {
         if (item?.uploading) return;
         if (item && props.onGrowNode) {
           if (event.repeat) return;
+          event.preventDefault();
           beginGrow('sibling', item.id);
           return;
         }
@@ -563,7 +758,7 @@ export function BoardCanvas(props: {
 
   /* ---------- 拖拽连线（手柄，或连线工具） ---------- */
   function beginLink(event: ReactPointerEvent, fromId: string) {
-    if (!props.onConnect || isUploading(fromId)) return;
+    if (event.button !== 0 || !props.onConnect || isUploading(fromId)) return;
     event.stopPropagation();
     event.preventDefault();
     disarmPeek();
@@ -660,7 +855,7 @@ export function BoardCanvas(props: {
       if (!(target instanceof Element)) return;
       if (toolRef.current === 'text') {
         if (!target.closest('.gvp')) return;
-        if (target.closest('.node, .gvp-tools, .gvp-minimap, .binput, .ctx-menu')) return;
+        if (target.closest('.node, .gvp-tools, .gvp-minimap, .binput, .ctx-menu, .board-settings')) return;
         textClickRef.current = {
           pointerId: event.pointerId,
           x: event.clientX,
@@ -690,7 +885,7 @@ export function BoardCanvas(props: {
         return;
       }
       if (linkDragRef.current?.mode !== 'armed') return;
-      if (target.closest('.board-toolbar, .gvp-tools, .gvp-minimap, .binput, .ctx-menu')) return;
+      if (target.closest('.board-toolbar, .board-settings, .gvp-tools, .gvp-minimap, .binput, .ctx-menu')) return;
       blankRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
     };
     const onUp = (event: PointerEvent) => {
@@ -699,7 +894,7 @@ export function BoardCanvas(props: {
         textClickRef.current = null;
         const moved = Math.hypot(event.clientX - text.x, event.clientY - text.y) > 4;
         if (!moved && !text.blocked && toolRef.current === 'text' && !editingRef.current) {
-          const next: Editing = { kind: 'create', at: toWorld(event.clientX, event.clientY) };
+          const next: Editing = { kind: 'create', at: snapTextOrigin(toWorld(event.clientX, event.clientY), snapRef.current) };
           editingRef.current = next;
           setEditing(next);
         }
@@ -728,6 +923,8 @@ export function BoardCanvas(props: {
     const box = boxOf.get(nodeId);
     if (!box) return;
     event.stopPropagation();
+    disarmPeek();
+    engageDragChrome();
     const start = toWorld(event.clientX, event.clientY);
     dragRef.current = {
       serial: (dragSerial.current += 1),
@@ -754,17 +951,27 @@ export function BoardCanvas(props: {
         const dist = Math.hypot(event.clientX - drag.startClientX, event.clientY - drag.startClientY);
         if (dist <= 4) return;
         drag.moved = true;
+        window.getSelection()?.removeAllRanges();
       }
       const now = toWorld(event.clientX, event.clientY);
-      drag.x = drag.originX + (now.x - drag.startWorldX);
-      drag.y = drag.originY + (now.y - drag.startWorldY);
+      const next = snapPoint(
+        {
+          x: drag.originX + (now.x - drag.startWorldX),
+          y: drag.originY + (now.y - drag.startWorldY),
+        },
+        snapRef.current,
+      );
+      drag.x = next.x;
+      drag.y = next.y;
       setDragBox({ id: drag.id, x: drag.x, y: drag.y });
+      window.getSelection()?.removeAllRanges();
       if (drag.id.startsWith('uploading:')) onMoveRef.current?.(drag.id, drag.x, drag.y, 0);
     };
     const finish = (event: PointerEvent, commit: boolean) => {
       const drag = dragRef.current;
       if (!drag || drag.pointerId !== event.pointerId) return;
       dragRef.current = null;
+      releaseDragChrome();
       const serial = drag.serial;
       if (!commit || !drag.moved) {
         if (dragSerial.current === serial) setDragBox(null);
@@ -795,6 +1002,7 @@ export function BoardCanvas(props: {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerCancel);
+      releaseDragChrome();
     };
   }, [props.onMove !== undefined]);
 
@@ -815,6 +1023,7 @@ export function BoardCanvas(props: {
     event.stopPropagation();
     event.preventDefault();
     disarmPeek();
+    engageDragChrome();
     const start = toWorld(event.clientX, event.clientY);
     resizeRef.current = {
       serial: (resizeSerial.current += 1),
@@ -843,6 +1052,7 @@ export function BoardCanvas(props: {
       const resize = resizeRef.current;
       if (!resize || resize.pointerId !== event.pointerId) return;
       resizeRef.current = null;
+      releaseDragChrome();
       const serial = resize.serial;
       const width = resize.width;
       if (!commit || width === resize.originWidth) {
@@ -874,6 +1084,7 @@ export function BoardCanvas(props: {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerCancel);
+      releaseDragChrome();
     };
   }, [props.onResizeImage !== undefined]);
 
@@ -919,16 +1130,79 @@ export function BoardCanvas(props: {
       { x: spotCenter.x, y: spotCenter.y },
     );
     const missing = new Set(items.filter((item) => !isFiniteNumber(item.x)).map((item) => item.id));
-    const spots = laidNow.filter((box) => missing.has(box.id)).map((box) => ({ id: box.id, x: box.x, y: box.y }));
+    const spots = laidNow
+      .filter((box) => missing.has(box.id))
+      .map((box) => ({ id: box.id, ...snapPoint({ x: box.x, y: box.y }, snapRef.current) }));
     if (spots.length === 0) return;
     onPlaceRef.current?.(spots);
   }, [hasSaved, missingKey, spotCenter]);
 
   const peekBox = peekId ? boxOf.get(peekId) : undefined;
-  const peekGap = 12;
-  const peekCardWidth = 240;
-  const peekOuter = peekCardWidth + peekGap;
-  const peekFlip = peekBox ? peekBox.x + peekBox.w + peekOuter > world.worldX + world.worldWidth : false;
+  peekBoxRef.current = peekBox ? { id: peekBox.id, x: peekBox.x, y: peekBox.y, w: peekBox.w, h: peekBox.h } : null;
+
+  useEffect(() => {
+    const stopSelect = (event: Event) => {
+      if (dragRef.current || resizeRef.current) event.preventDefault();
+    };
+    window.addEventListener('selectstart', stopSelect);
+    return () => window.removeEventListener('selectstart', stopSelect);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!peekId) {
+      peekPlaceRef.current = null;
+      setPeekPlace(null);
+      return;
+    }
+    let raf = 0;
+    let stopped = false;
+    const tick = () => {
+      if (stopped) return;
+      const next = measurePeek();
+      if (!samePeekPlace(peekPlaceRef.current, next)) {
+        peekPlaceRef.current = next;
+        setPeekPlace(next);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => {
+      stopped = true;
+      cancelAnimationFrame(raf);
+    };
+  }, [peekId, peekBox?.x, peekBox?.y, peekBox?.w, peekBox?.h]);
+
+  function measurePeek(): PeekPlacement | null {
+    const g = worldRef.current;
+    const box = peekBoxRef.current;
+    const pop = peekPopRef.current;
+    if (!g || !box || !pop) return null;
+    const host = g.ownerSVGElement?.parentElement;
+    const matrix = g.getScreenCTM();
+    if (!host || !matrix) return null;
+    const hostRect = host.getBoundingClientRect();
+    const visible = visibleCanvas(hostRect);
+    const origin = new DOMPoint(box.x, box.y).matrixTransform(matrix);
+    const corner = new DOMPoint(box.x + box.w, box.y + box.h).matrixTransform(matrix);
+    const card = pop.querySelector('.bpeek-card');
+    const cardHeight = card instanceof HTMLElement ? card.offsetHeight : pop.offsetHeight;
+    const place = peekPlacement({
+      nodeLeft: origin.x - visible.left,
+      nodeTop: origin.y - visible.top,
+      nodeRight: corner.x - visible.left,
+      nodeBottom: corner.y - visible.top,
+      hostWidth: visible.width,
+      hostHeight: visible.height,
+      cardWidth: 240,
+      cardHeight,
+    });
+    return {
+      left: place.left + (visible.left - hostRect.left),
+      top: place.top + (visible.top - hostRect.top),
+      flip: place.flip,
+    };
+  }
+
   const canvasClass = !toolsOn ? undefined : tool === 'text' ? 'tool-text' : tool === 'connect' ? 'tool-connect' : undefined;
 
   return (
@@ -945,54 +1219,62 @@ export function BoardCanvas(props: {
             ? (point) => {
                 if (props.enableTools && tool !== 'select') return;
                 disarmPeek();
-                const next: Editing = { kind: 'create', at: { x: point.worldX, y: point.worldY } };
+                const next: Editing = {
+                  kind: 'create',
+                  at: snapTextOrigin({ x: point.worldX, y: point.worldY }, snapRef.current),
+                };
                 editingRef.current = next;
                 setEditing(next);
               }
             : undefined
         }
+        grid={canvas.grid}
+        contextItems={contextItems}
+        overlay={
+          peekBox && props.renderPeek ? (
+            <div
+              ref={peekPopRef}
+              className={peekPlace?.flip ? 'bpeek bpeek-pop flip' : 'bpeek bpeek-pop'}
+              style={{
+                left: peekPlace ? (peekPlace.flip ? peekPlace.left : peekPlace.left - 12) : 0,
+                top: peekPlace?.top ?? 0,
+                visibility: peekPlace ? 'visible' : 'hidden',
+              }}
+              onPointerEnter={holdPeek}
+              onPointerLeave={scheduleClosePeek}
+            >
+              {props.renderPeek(peekBox.id)}
+            </div>
+          ) : null
+        }
         minimap={
-          <>
-            {boxes.map((box) => (
-              <rect
-                key={box.id}
-                className={props.selectedId === box.id ? 'mm-node focus' : 'mm-node'}
-                x={box.x}
-                y={box.y}
-                width={box.w}
-                height={box.h}
-                rx={6}
-              />
-            ))}
-          </>
+          canvas.minimap ? (
+            <>
+              {boxes.map((box) => (
+                <rect
+                  key={box.id}
+                  className={props.selectedId === box.id ? 'mm-node focus' : 'mm-node'}
+                  x={box.x}
+                  y={box.y}
+                  width={box.w}
+                  height={box.h}
+                  rx={6}
+                />
+              ))}
+            </>
+          ) : undefined
         }
       >
         <g ref={worldRef}>
-          <defs>
-            <pattern id="board-dots" width={26} height={26} patternUnits="userSpaceOnUse">
-              <circle cx={1.2} cy={1.2} r={1.2} fill="rgba(0, 0, 0, 0.09)" />
-            </pattern>
-            <marker id="board-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
-              <path d="M0 0 L8 4 L0 8 z" fill="rgba(0, 0, 0, 0.3)" />
-            </marker>
-            <marker id="board-arrow-on" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
-              <path d="M0 0 L8 4 L0 8 z" fill="var(--accent)" />
-            </marker>
-          </defs>
-          <rect
-            x={world.worldX - 600}
-            y={world.worldY - 600}
-            width={world.worldWidth + 1200}
-            height={world.worldHeight + 1200}
-            fill="url(#board-dots)"
-            pointerEvents="none"
-          />
-
           <BoardEdges
             links={props.links}
             boxOf={boxOf}
             selectedId={props.selectedId}
             editingId={editing?.kind === 'relabel' ? editing.id : null}
+            appearance={appearance}
+            route={route}
+            labels={canvas.labels}
+            showMarkers={!toolsOn || canvas.markers}
             onSelect={(id) => {
               disarmPeek();
               props.onSelectLink(id);
@@ -1036,6 +1318,7 @@ export function BoardCanvas(props: {
             imageHeights={imageHeights}
             onImageLoad={rememberImageRatio}
             onBeginResizeImage={props.onResizeImage ? beginResize : undefined}
+            showMarkers={!toolsOn || canvas.markers}
           />
 
           {linkDrag
@@ -1045,48 +1328,49 @@ export function BoardCanvas(props: {
                 const start = anchorOnBorder(from, linkDrag.cursor);
                 return (
                   <g pointerEvents="none">
-                    <line className="blink-temp" x1={start.x} y1={start.y} x2={linkDrag.cursor.x} y2={linkDrag.cursor.y} />
+                    <line
+                      className="blink-temp"
+                      x1={start.x}
+                      y1={start.y}
+                      x2={linkDrag.cursor.x}
+                      y2={linkDrag.cursor.y}
+                      style={{
+                        stroke: EDGE_STROKE[appearance.color].line,
+                        strokeWidth: EDGE_WIDTH[appearance.width],
+                      }}
+                    />
                     <circle className="blink-temp-dot" cx={linkDrag.cursor.x} cy={linkDrag.cursor.y} r={3.5} />
                   </g>
                 );
               })()
             : null}
 
-          {peekBox && props.renderPeek ? (
-            <foreignObject
-              className="bpeek"
-              x={peekFlip ? peekBox.x - peekOuter : peekBox.x + peekBox.w}
-              y={peekBox.y}
-              width={peekOuter}
-              height={300}
-            >
-              <div
-                className={peekFlip ? 'bpeek-hold flip' : 'bpeek-hold'}
-                onPointerEnter={holdPeek}
-                onPointerLeave={scheduleClosePeek}
-              >
-                {props.renderPeek(peekBox.id)}
-              </div>
-            </foreignObject>
-          ) : null}
-
           {editing?.kind === 'grow'
             ? (() => {
                 const draft = { x: editing.x, y: editing.y, w: GROW_W, h: GROW_H };
-                const from = editing.fromId ? boxOf.get(editing.fromId) : undefined;
-                const seg = from ? edgeGeometry(from, draft, 0, 1, false) : null;
+                const from = editing.role === 'child' && editing.fromId ? boxOf.get(editing.fromId) : undefined;
+                const withArrow = appearance.arrow === 'end';
+                const seg = from ? edgeDraw(from, draft, 0, 1, false, route, withArrow ? ARROW_LEN : 0) : null;
+                const ink = EDGE_STROKE[appearance.color].line;
                 return (
                   <g className="node bnode on">
                     {seg ? (
-                      <line
-                        className="bedge"
-                        x1={seg.x1}
-                        y1={seg.y1}
-                        x2={seg.x2}
-                        y2={seg.y2}
-                        markerEnd="url(#board-arrow)"
-                        pointerEvents="none"
-                      />
+                      <>
+                        <path
+                          className="bedge"
+                          d={seg.d}
+                          style={{
+                            stroke: ink,
+                            strokeWidth: EDGE_WIDTH[appearance.width],
+                            strokeDasharray: EDGE_DASH[appearance.dash],
+                          }}
+                          strokeLinecap={withArrow ? 'butt' : 'round'}
+                          pointerEvents="none"
+                        />
+                        {withArrow ? (
+                          <path d={arrowPath(seg.tip)} fill={ink} stroke="none" pointerEvents="none" />
+                        ) : null}
+                      </>
                     ) : null}
                     <rect className="bnode-rect" x={draft.x} y={draft.y} width={draft.w} height={draft.h} rx={11} />
                     <InlineInput
@@ -1099,9 +1383,19 @@ export function BoardCanvas(props: {
                         if (editingRef.current?.kind !== 'grow') return;
                         const current = editingRef.current;
                         finishEditing();
-                        props.onGrowNode?.({ name, fromId: current.fromId, x: current.x, y: current.y });
+                        const label = current.role === 'child' && current.fromId ? GROW_CHILD_LABEL : null;
+                        props.onGrowNode?.({
+                          name,
+                          fromId: label ? current.fromId : null,
+                          label,
+                          x: current.x,
+                          y: current.y,
+                        });
                       }}
-                      onCancel={stopEditing}
+                      onCancel={() => {
+                        if (editingRef.current?.kind !== 'grow') return;
+                        stopEditing();
+                      }}
                     />
                   </g>
                 );
@@ -1116,11 +1410,15 @@ export function BoardCanvas(props: {
               h={34}
               placeholder={props.createPlaceholder ?? ''}
               onCommit={(name) => {
-                const at = editing.at;
+                if (editingRef.current?.kind !== 'create') return;
+                const at = editingRef.current.at;
                 finishEditing();
                 props.onCreate?.(name, at);
               }}
-              onCancel={stopEditing}
+              onCancel={() => {
+                if (editingRef.current?.kind !== 'create') return;
+                stopEditing();
+              }}
             />
           ) : null}
           {editing?.kind === 'rename'
@@ -1137,10 +1435,14 @@ export function BoardCanvas(props: {
                     initial={item.label}
                     placeholder={item.label}
                     onCommit={(name) => {
+                      if (editingRef.current?.kind !== 'rename' || editingRef.current.id !== item.id) return;
                       finishEditing();
                       if (name !== item.label) props.onRenameItem?.(item.id, name);
                     }}
-                    onCancel={stopEditing}
+                    onCancel={() => {
+                      if (editingRef.current?.kind !== 'rename' || editingRef.current.id !== item.id) return;
+                      stopEditing();
+                    }}
                   />
                 );
               })()
@@ -1150,7 +1452,7 @@ export function BoardCanvas(props: {
                 const from = boxOf.get(editing.fromId);
                 const to = boxOf.get(editing.toId);
                 if (!from || !to) return null;
-                const mid = edgeMidpoint(edgeGeometry(from, to, 0, 1, false));
+                const mid = edgeDraw(from, to, 0, 1, false, route).label;
                 return (
                   <InlineInput
                     x={mid.x - 84}
@@ -1159,11 +1461,15 @@ export function BoardCanvas(props: {
                     h={34}
                     placeholder="关系，例如：前提"
                     onCommit={(label) => {
-                      const draft = editing;
+                      if (editingRef.current?.kind !== 'link') return;
+                      const draft = editingRef.current;
                       finishEditing();
                       props.onConnect?.(draft.fromId, draft.toId, label);
                     }}
-                    onCancel={stopEditing}
+                    onCancel={() => {
+                      if (editingRef.current?.kind !== 'link') return;
+                      stopEditing();
+                    }}
                   />
                 );
               })()
@@ -1176,7 +1482,7 @@ export function BoardCanvas(props: {
                 const to = boxOf.get(link.toId);
                 if (!from || !to) return null;
                 const lane = edgeLanes(props.links).get(link.id) ?? { index: 0, count: 1, paired: false };
-                const mid = edgeMidpoint(edgeGeometry(from, to, lane.index, lane.count, lane.paired));
+                const mid = edgeDraw(from, to, lane.index, lane.count, lane.paired, route).label;
                 return (
                   <InlineInput
                     x={mid.x - 84}
@@ -1186,17 +1492,33 @@ export function BoardCanvas(props: {
                     initial={link.label}
                     placeholder="关系，例如：前提"
                     onCommit={(label) => {
+                      if (editingRef.current?.kind !== 'relabel' || editingRef.current.id !== link.id) return;
                       finishEditing();
                       if (label !== link.label) props.onRelabel?.(link.id, label);
                     }}
-                    onCancel={stopEditing}
+                    onCancel={() => {
+                      if (editingRef.current?.kind !== 'relabel' || editingRef.current.id !== link.id) return;
+                      stopEditing();
+                    }}
                   />
                 );
               })()
             : null}
         </g>
       </GraphViewport>
-      {toolsOn ? <BoardToolbar tool={tool} onTool={chooseTool} onImage={pickImages} /> : null}
+      {toolsOn ? (
+        <BoardToolbar
+          tool={tool}
+          onTool={chooseTool}
+          onImage={pickImages}
+          settingsOpen={settingsOpen}
+          appearance={appearance}
+          canvas={canvas}
+          onToggleSettings={() => setSettingsOpen((open) => !open)}
+          onAppearance={(next) => props.onAppearance?.(next)}
+          onCanvas={(patch) => props.onCanvas?.(patch)}
+        />
+      ) : null}
       {toolsOn ? (
         <input
           ref={fileRef}

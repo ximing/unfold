@@ -99,6 +99,13 @@
       "when": 1793051000000,
       "tag": "0013_edge_label_required",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1793220000000,
+      "tag": "0014_canvas_settings",
+      "breakpoints": true
     }
   ]
 }

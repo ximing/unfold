@@ -12,18 +12,20 @@
   - `src/app.ts`：Fastify 实例组装、Cookie/限流插件注册、登录会话校验与路由模块挂载。
   - `src/web-static.ts`：`UNFOLD_ENV=production` 且 `apps/web/dist/index.html` 存在时托管前端构建结果。开发与测试不注册。
   - `src/http.ts`：路由公共参数 schema、统一错误响应构造器与数据库唯一约束冲突判断。
-  - `src/<domain>/routes.ts`：按领域拆分的 HTTP 路由注册函数（`avatar`、`collections`、`nodes`、`edges`、`cards`、`search`）。
+  - `src/<domain>/routes.ts`：按领域拆分的 HTTP 路由注册函数（`avatar`、`assets`、`collections`、`nodes`、`edges`、`cards`、`search`）。
   - `src/avatar/`：头像 multipart 解析、S3 读写与预签名临时地址（`ATTACHMENT_S3_*`，私有桶每次现签）。
+  - `src/assets/`：图片点上传、资产读取与 `ASSET_DIR` 本地文件管理；与头像的 S3 存储分开。文件写入与数据库事务配合，失败清理新文件，替换成功后再清理旧文件。
+  - `src/cards/plain.ts`：从富文本 `doc` 生成可信的 `plain`；不使用客户端传入的派生文本。
   - `src/graph/db.ts`：跨表图谱查询、卡片位置计算与级联删除事务（合集、点、边、卡片的组合读写）。
   - `src/sync/`：同一账号两处打开时的变更通知。只在当前进程的内存里转发，不落库。
   - `src/db/`：数据库连接池（`client.ts`）与 Drizzle 表定义（`schema.ts`）。
 - **不放什么**：
-  - 前后端共享的请求体/响应体 Zod schema（应放在 `packages/dto/src/graph.ts`）。
+  - 前后端共享的请求体/响应体 Zod schema（图谱放在 `packages/dto/src/graph.ts`，账号放在 `api.ts`，富文本内容放在 `rich-doc.ts`）。
   - 外部检索引擎、向量召回或定时复习任务逻辑（服务端搜索仅使用 `src/search/` 下的 PostgreSQL `ILIKE`）。
 
 ## 开发偏好
 
-- **用户隔离与存在性校验**：所有业务表查询与变更必须同时限定 `eq(table.userId, user.id)` 且 `isNull(table.deletedAt)`。跨用户访问或已软删除资源统一返回 `404`（`not_found`），不泄露资源存在性。
+- **用户隔离与存在性校验**：所有业务查询与变更必须校验当前用户归属；有 `deletedAt` 的表还须限定 `isNull(table.deletedAt)`。`memberships` 等关联表通过所属合集／点校验归属，不能假定每张表都有 `userId` 或软删除字段。跨用户访问或已软删除资源统一返回 `404`（`not_found`），不泄露资源存在性。
 - **删除语义**：
   - `collections`、`nodes`、`edges`、`collection_edges`、`cards` 统一使用软删除（同时更新 `deletedAt` 与 `updatedAt`）。
   - `memberships`（点与合集的多对多关系）使用**物理删除**。
@@ -33,3 +35,9 @@
   - 自环返回 `400`（「不能连到自己」）；重复有效边捕获唯一索引冲突或预检后返回 `409 conflict`（「这条关系已经有了」）。
   - 状态码约定：创建 `201`，读取/更新 `200`，删除/成员变更 `204`（重复加入成员幂等返回 `204`）。
 - **数据库迁移**：新增或修改表结构需保持 `drizzle/meta/_journal.json` 顺序一致，确保 `pnpm --filter @unfold/server migrate` 具备幂等性（可连续执行两次）。
+
+## 指令文件双向同步
+
+- 同目录的 `AGENTS.md` 与 `CLAUDE.md` 是同一份项目规则，内容必须保持完全一致。
+- 后续 Agent 修改任意一方时，必须在同一次变更中同步更新另一方；新增、移动或删除项目级指令文件时也要成对处理。
+- 完成前逐对检查内容一致；若已有差异，先核对实际代码与用户要求再合并，不能直接覆盖另一方独有的有效规则。

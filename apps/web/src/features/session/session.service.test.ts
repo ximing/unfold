@@ -1,5 +1,10 @@
+import { defaultCanvasPrefs } from '@unfold/dto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SessionService } from './session.service.js';
+
+function account(username: string, avatarUrl: string | null = null): string {
+  return JSON.stringify({ username, avatarUrl, canvas: defaultCanvasPrefs });
+}
 
 describe('SessionService', () => {
   afterEach(() => {
@@ -28,7 +33,7 @@ describe('SessionService', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ username: 'ada', avatarUrl: 'https://img.test/a.png' }), { status: 200 }),
+        new Response(account('ada', 'https://img.test/a.png'), { status: 200 }),
       ),
     );
     const session = new SessionService();
@@ -41,7 +46,7 @@ describe('SessionService', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ username: 'ada', avatarUrl: null }), { status: 201 }),
+        new Response(account('ada'), { status: 201 }),
       ),
     );
     const session = new SessionService();
@@ -68,7 +73,7 @@ describe('SessionService', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ username: 'ada2', avatarUrl: null }), { status: 200 }),
+        new Response(account('ada2'), { status: 200 }),
       ),
     );
     const session = new SessionService();
@@ -108,5 +113,42 @@ describe('SessionService', () => {
     await expect(session.uploadAvatar(file)).resolves.toBe(false);
     expect(session.error).toBe('头像不能超过 5 MB');
     expect(session.avatarUrl).toBeNull();
+  });
+
+  it('画布看法失败时回到写入前，并且不写账号错误', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    const session = new SessionService();
+    session.canvas = { ...defaultCanvasPrefs, grid: true };
+    await expect(session.updateCanvas({ grid: false })).resolves.toBe('fail');
+    expect(session.canvas.grid).toBe(true);
+    expect(session.canvasError).toBe('网络没有连上');
+    expect(session.error).toBe('');
+  });
+
+  it('后发出的画布看法不会被先发出的响应盖住', async () => {
+    let releaseFirst: (value: Response) => void = () => {};
+    const first = new Promise<Response>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let calls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => {
+        calls += 1;
+        if (calls === 1) return first;
+        return Promise.resolve(
+          new Response(JSON.stringify({ ...defaultCanvasPrefs, route: 'curve' }), { status: 200 }),
+        );
+      }),
+    );
+    const session = new SessionService();
+    const older = session.updateCanvas({ route: 'orthogonal' });
+    const newer = session.updateCanvas({ route: 'curve' });
+    releaseFirst(new Response(JSON.stringify({ ...defaultCanvasPrefs, route: 'orthogonal' }), { status: 200 }));
+    await older;
+    await expect(newer).resolves.toBe('ok');
+    expect(session.canvas.route).toBe('curve');
+    expect(session.canvasError).toBe('');
+    expect(session.error).toBe('');
   });
 });

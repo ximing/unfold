@@ -8,7 +8,9 @@ export type UMenuItem = {
   onSelect: () => void;
 };
 
-export function UContextMenu(props: { x: number; y: number; items: UMenuItem[]; onClose: () => void }) {
+export type UMenuEntry = UMenuItem | { separator: true };
+
+export function UContextMenu(props: { x: number; y: number; items: UMenuEntry[]; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: props.x, top: props.y });
 
@@ -43,21 +45,25 @@ export function UContextMenu(props: { x: number; y: number; items: UMenuItem[]; 
 
   return (
     <div ref={ref} className="ctx-menu" style={pos} role="menu">
-      {props.items.map((item) => (
-        <button
-          key={item.label}
-          type="button"
-          role="menuitem"
-          className={item.danger ? 'danger' : undefined}
-          onClick={() => {
-            props.onClose();
-            item.onSelect();
-          }}
-        >
-          {item.label}
-          {item.hint ? <span className="hint">{item.hint}</span> : null}
-        </button>
-      ))}
+      {props.items.map((item, index) =>
+        'separator' in item ? (
+          <div key={`sep-${index}`} className="sep" role="separator" />
+        ) : (
+          <button
+            key={item.label}
+            type="button"
+            role="menuitem"
+            className={item.danger ? 'danger' : undefined}
+            onClick={() => {
+              props.onClose();
+              item.onSelect();
+            }}
+          >
+            {item.label}
+            {item.hint ? <span className="hint">{item.hint}</span> : null}
+          </button>
+        ),
+      )}
     </div>
   );
 }

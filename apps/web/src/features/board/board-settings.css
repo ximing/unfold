@@ -1,0 +1,88 @@
+.board-settings {
+  position: absolute;
+  left: calc(100% + 8px);
+  bottom: 0;
+  z-index: 5;
+  width: 292px;
+  max-height: min(70vh, 560px);
+  overflow: auto;
+  padding: 12px 12px 8px;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-l);
+  box-shadow: var(--sh-float);
+}
+
+.board-settings section + section {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.board-settings h2 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--faint);
+}
+
+.board-set-row {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.board-set-row > span {
+  font-size: 12px;
+  color: var(--mute);
+}
+
+.board-set-seg {
+  display: flex;
+  padding: 2px;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 9px;
+}
+
+.board-set-seg button {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  border-radius: 7px;
+  font-size: 12px;
+  color: var(--mute);
+  text-align: center;
+}
+
+.board-set-seg button[aria-pressed='true'] {
+  color: var(--ink);
+  background: var(--card);
+  box-shadow: var(--sh-raise);
+}
+
+.board-set-colors {
+  display: flex;
+  gap: 6px;
+}
+
+.board-set-colors button {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+}
+
+.board-set-colors button[aria-pressed='true'] {
+  box-shadow: 0 0 0 2px var(--card), 0 0 0 3.5px var(--accent);
+}
+
+.board-set-colors i {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+}

@@ -5,6 +5,9 @@ export const GROW_H = NODE_H;
 
 export const GROW_SIBLING_BLOCKED = '这个点有多个上级，无法创建同级';
 
+/** Tab 建下级时先写上的关系说明，之后可以改。 */
+export const GROW_CHILD_LABEL = '下一级';
+
 type Box = { x: number; y: number; w: number; h: number };
 type Link = { fromId: string; toId: string };
 

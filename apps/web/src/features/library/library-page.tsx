@@ -1,8 +1,9 @@
 import { observer, useService } from '@rabjs/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { UConfirm } from '../../shared/ui/modal/modal.js';
 import { BoardCanvas } from '../board/board-canvas.js';
+import { SessionService } from '../session/session.service.js';
 import { CollectionEdgePanel } from './collection-edge-panel.js';
 import { CollectionPanel } from './collection-panel.js';
 import { LibraryService } from './library.service.js';
@@ -11,10 +12,13 @@ type Selection = { kind: 'collection'; id: string } | { kind: 'edge'; id: string
 
 export const LibraryPage = observer(function LibraryPage() {
   const library = useService(LibraryService);
+  const session = useService(SessionService);
   const navigate = useNavigate();
   const [ready, setReady] = useState(false);
   const [selection, setSelection] = useState<Selection>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const removeToken = useRef(0);
+  const [edgeAsk, setEdgeAsk] = useState<{ id: string; token: number } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -53,6 +57,7 @@ export const LibraryPage = observer(function LibraryPage() {
           {!ready ? <p className="muted board-wait">正在读取…</p> : null}
           {ready ? (
             <BoardCanvas
+              canvas={session.canvas}
               items={collections.map((item) => ({ id: item.id, label: item.title, count: item.nodeCount }))}
               links={edges.map((edge) => ({ ...edge, count: edge.cardCount }))}
               selectedId={selection?.id ?? null}
@@ -75,8 +80,23 @@ export const LibraryPage = observer(function LibraryPage() {
                   void library.loadCollectionEdge(created.id);
                 })();
               }}
-              onSelectItem={(id) => setSelection({ kind: 'collection', id })}
-              onSelectLink={(id) => setSelection({ kind: 'edge', id })}
+              onSelectItem={(id) => {
+                setConfirmDelete(false);
+                setSelection({ kind: 'collection', id });
+              }}
+              onSelectLink={(id) => {
+                setEdgeAsk(null);
+                setSelection({ kind: 'edge', id });
+              }}
+              onAskRemoveItem={(id) => {
+                setSelection({ kind: 'collection', id });
+                setConfirmDelete(true);
+              }}
+              onAskRemoveLink={(id) => {
+                removeToken.current += 1;
+                setSelection({ kind: 'edge', id });
+                setEdgeAsk({ id, token: removeToken.current });
+              }}
               onEscape={() => setSelection(null)}
             />
           ) : null}
@@ -106,6 +126,7 @@ export const LibraryPage = observer(function LibraryPage() {
         {selectedEdge ? (
           <CollectionEdgePanel
             id={selectedEdge.id}
+            askRemove={edgeAsk?.id === selectedEdge.id ? edgeAsk.token : 0}
             onLeave={() => setSelection(null)}
             onDeleted={() => {
               setSelection(null);

@@ -1,6 +1,6 @@
 import { observer, useService } from '@rabjs/react';
 import type { CardType } from '@unfold/dto';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PanelShell } from '../../shared/panel/panel-shell.js';
 import { NameField } from '../../shared/name-field/name-field.js';
 import { UButton } from '../../shared/ui/button/button.js';
@@ -13,11 +13,21 @@ import { LibraryService } from '../library/library.service.js';
 
 const EDGE_CARD_TYPES = CARD_TYPES.filter((type) => type !== 'rich');
 
-export const EdgePanel = observer(function EdgePanel(props: { edgeId: string; onLeave: () => void; onTouched: () => void }) {
+export const EdgePanel = observer(function EdgePanel(props: {
+  edgeId: string;
+  onLeave: () => void;
+  onTouched: () => void;
+  /** 非 0 时打开删除确认。右键菜单和检查器共用这一条 */
+  askRemove?: number;
+}) {
   const library = useService(LibraryService);
   const [confirm, setConfirm] = useState(false);
   const detail = library.edgeDetail?.id === props.edgeId ? library.edgeDetail : null;
   useAskDelete(() => setConfirm(true));
+  useEffect(() => {
+    if (!props.askRemove) return;
+    setConfirm(true);
+  }, [props.askRemove]);
 
   return (
     <PanelShell title="关系" onLeave={props.onLeave}>

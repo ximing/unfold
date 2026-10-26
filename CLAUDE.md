@@ -1,44 +1,37 @@
 # Unfold 项目指令
 
-## 项目概览
+## 项目与全局基线
 
-- **仓库类型**：基于 `pnpm` workspace 的全栈 TypeScript Monorepo（Node >= 22，ESM）。
-- **产品定位**：单用户桌面 Web 知识图谱工具（中文界面），用于梳理概念和关系。核心结构严格限定为**四个名词**：**合集（Collection）**、**点（Node）**、**边（Edge / CollectionEdge）**、**卡片（Card，九种：原八种加富文本 `rich`）**。
-- **关键子系统**：
-  - `apps/server`：Fastify 5 + Drizzle ORM + PostgreSQL 服务端，提供会话认证与图谱 CRUD / 搜索 API。
-  - `apps/web`：React 19 + Vite 6 + `@rabjs/react` 前端应用，使用自定义 SVG 渲染全貌图与合集画布。
-  - `packages/dto`：前后端共用的 Zod 4 契约与类型定义。
-  - `apps/desktop`：Tauri 2 桌面壳。开发加载 `http://localhost:5173`，生产加载 `https://unfold.aimo.plus`。不打包前端产物。
-
-## 全局规则
-
-- **语言与模块约束**：全仓开启 TypeScript `strict` 与 `verbatimModuleSyntax`。类型导入必须使用 `import type`，包内相对导入必须显式携带 `.js` 后缀。
-- **代码质量**：遵循 ESLint 9 配置，禁止遗留调试日志（`no-console: warn`）。
-- **概念边界**：不为特定领域新增结构名词，新内容形态只通过扩展或复用九种卡片承接（原八种加富文本 `rich`）。严禁按已废弃历史方案恢复“领域、点类型、扇区、固定关系词表、能力、证据、FSRS 复习、一跳星图”等概念。
-- **文档与实现同步**：
-  - 现行产品与技术基准为 `docs/prd/2026-10-25-graph.md` 与 `docs/tech/2026-10-25-graph.md`。
-  - 待落地目标规格在实现时需先并入现行 PRD 与技术方案，再同步修改代码。
-- **密钥安全**：环境变量仅存放在 `apps/server/.env`，代码、测试与文档中只引用变量名（如 `DATABASE_URL`、`SESSION_SECRET`、`SEED_USERNAME`、`SEED_PASSWORD`），严禁硬编码真实凭据。
+- pnpm workspace；TypeScript 使用 Node >= 22、ESM、`strict` 与 `verbatimModuleSyntax`。类型用 `import type`，TS/TSX 包内相对模块导入带 `.js`；样式等资源保留实际后缀。
+- 中文界面的多用户知识图谱工具，账号数据隔离。结构只有合集、点、边、卡片；点的 `kind: text | image` 是呈现形式，不恢复历史领域分类、扇区、固定关系词表、能力、证据、FSRS 复习或一跳星图。
+- `apps/server` 提供 Fastify / Drizzle / PostgreSQL API；`apps/web` 提供 React 页面；`apps/desktop` 是 Tauri 远程页面壳；`packages/dto` 是共享 Zod 契约。
+- 产品与技术基准分别是 `docs/prd/2026-10-25-graph.md`、`docs/tech/2026-10-25-graph.md`。实现增量需求前先更新对应基准，确保代码与文档同步。
+- 本地真实凭据只写入 `apps/server/.env`，不提交、不写入代码、测试或文档；部署从环境注入。变量说明见 `.env.example` 与 `docs/README.md`。
+- 遵循根 ESLint 配置，不遗留调试日志。
+- 仓库有 `.codegraph/` 时，理解或定位代码先用 `codegraph explore "文件、符号或问题"`；未覆盖的内容再用文件搜索与读取。
 
 ## 开发入口
 
-- **启动开发服务**：`pnpm dev`（并行启动 `@unfold/server` 端口 `3000` 与 `@unfold/web` 端口 `5173`）
-- **桌面壳**：`pnpm --filter @unfold/desktop dev`（本机需有 Rust。先让 `pnpm dev` 把 3000 和 5173 拉起来）
-- **运行全部测试**：`pnpm test`
-- **全仓类型检查**：`pnpm typecheck`
-- **代码规范检查**：`pnpm lint`
-- **数据库迁移与种子**：
-  - `pnpm --filter @unfold/server migrate`
-  - `pnpm --filter @unfold/server seed`
+- 安装与配置：见 `docs/README.md`；`pnpm dev` 启动服务端 3000 与前端 5173。
+- 桌面开发：`pnpm --filter @unfold/desktop dev`，需要 Rust 与已启动的后端。
+- 检查：`pnpm test`、`pnpm typecheck`、`pnpm lint`；单包用 `pnpm --filter <包名> test`。服务端测试需要配置好的 PostgreSQL 与种子账号。
+- 构建：`pnpm --filter @unfold/web build`；桌面安装包用 `pnpm --filter @unfold/desktop build`。
+- 数据库：`pnpm --filter @unfold/server migrate`、`pnpm --filter @unfold/server seed`。
 
-## 局部规则导航
+## 按需规则导航
 
-- **目录级指令（进入对应子树时按需加载）**：
-  - `apps/server/CLAUDE.md`：Fastify 路由分片、Drizzle 事务与软删除规则、多租户隔离与 HTTP 错误契约。
-  - `apps/web/CLAUDE.md`：`foundation / shared / features` 分层边界、`@rabjs/react` 状态管理与自定义 SVG 画布约定。
-  - `packages/dto/CLAUDE.md`：Zod 4 共享契约规范与新旧 schema 边界。
-  - `apps/desktop/CLAUDE.md`：Tauri 2 壳的远程 URL、Cookie 会话与导航约束。
-- **路径级横切规则（按文件模式匹配加载）**：
-  - `.claude/rules/testing.md`：单元与服务端集成测试规范（`**/*.test.ts`、`**/__tests__/**/*.ts`）。
-  - `.claude/rules/react-components.md`：React 组件、响应式状态绑定与同目录样式规范（`apps/web/src/**/*.{tsx,css}`）。
-  - `.claude/rules/docs.md`：PRD 与技术方案演进维护规范（`docs/**/*.md`）。
+- Codex 使用各目录的 `AGENTS.md`，Claude 使用同目录的 `CLAUDE.md`；处理目标文件前，读取从仓库根到目标目录之间尚未加载的局部指令。下列 `CLAUDE.md` 均有同目录的 `AGENTS.md`。
+- 各包入口：`apps/server/CLAUDE.md`、`apps/web/CLAUDE.md`、`apps/desktop/CLAUDE.md`、`packages/dto/CLAUDE.md`。
+- 前端深层边界：`apps/web/src/features/{library,board,cards}/CLAUDE.md`。
+- 路径规则统一维护在 `.claude/rules/`，两类 Agent 共用，不复制出第二套。处理文件前按规则的 `paths` 读取命中的正文；若运行环境未自动加载，必须主动读取：
+  - 测试文件（`.test.ts`、`.test.tsx`、`.test.mjs` 及对应 `__tests__/` 文件）：`.claude/rules/testing.md`。
+  - `apps/web/src/` 下 TSX / CSS：`.claude/rules/react-components.md`。
+  - `docs/` 下 Markdown：`.claude/rules/docs.md`。
+  - 桌面发布 workflow、包版本与 Tauri / Cargo 配置：`.claude/rules/desktop-release.md`。
+- 新增或修改路径规则的适用范围时，同步更新根 `AGENTS.md` 与 `CLAUDE.md` 的导航；不通过 `@` 全量导入局部规则。
+
+## 指令文件双向同步
+
+- 同目录的 `AGENTS.md` 与 `CLAUDE.md` 是同一份项目规则，内容必须保持完全一致。
+- 后续 Agent 修改任意一方时，必须在同一次变更中同步更新另一方；新增、移动或删除项目级指令文件时也要成对处理。
+- 完成前逐对检查内容一致；若已有差异，先核对实际代码与用户要求再合并，不能直接覆盖另一方独有的有效规则。

@@ -1,7 +1,13 @@
+import type { CanvasPrefs } from '@unfold/dto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
-export type SessionUser = { id: string; username: string; avatarKey: string | null };
+export type SessionUser = {
+  id: string;
+  username: string;
+  avatarKey: string | null;
+  canvas: CanvasPrefs;
+};
 
 export type SessionLookup = (
   request: FastifyRequest,

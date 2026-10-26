@@ -27,6 +27,7 @@
 .board-toolbar button:hover { color: var(--ink); background: rgba(0, 0, 0, 0.05); }
 .board-toolbar button.on { color: var(--accent); background: var(--accent-soft); }
 .board-toolbar svg { width: 18px; height: 18px; }
+.board-toolbar-sep { height: 1px; margin: 4px 6px; background: var(--line); }
 
 .gvp-canvas.tool-text { cursor: text; }
 .gvp-canvas.tool-connect { cursor: crosshair; }

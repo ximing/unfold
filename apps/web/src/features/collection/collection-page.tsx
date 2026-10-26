@@ -1,11 +1,14 @@
 import { observer, useService } from '@rabjs/react';
+import { defaultEdgeAppearance } from '@unfold/dto';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { BoardCanvas } from '../board/board-canvas.js';
 import { imageDropSpots, imageFileIssue } from '../board/image-intake.js';
 import { isFiniteNumber, layoutBoard, nextPlacementZ } from '../board/board-layout.js';
+import { snapPoint } from '../board/snap.js';
 import { apiSend, errorMessage } from '../library/api.js';
 import { LibraryService } from '../library/library.service.js';
+import { SessionService } from '../session/session.service.js';
 import { EdgePanel } from './edge-panel.js';
 import { NodePanel } from './node-panel.js';
 import { NodePeek } from './node-peek.js';
@@ -16,6 +19,7 @@ type UploadSpot = { id: string; label: string; x: number; y: number; z: number }
 
 export const CollectionPage = observer(function CollectionPage() {
   const library = useService(LibraryService);
+  const session = useService(SessionService);
   const { id } = useParams();
   const [params] = useSearchParams();
   const nodeQuery = params.get('node') ?? '';
@@ -29,6 +33,8 @@ export const CollectionPage = observer(function CollectionPage() {
   const pageIdRef = useRef(id);
   const intakeQueue = useRef(Promise.resolve());
   const placeTried = useRef(new Set<string>());
+  const removeToken = useRef(0);
+  const [removeAsk, setRemoveAsk] = useState<{ kind: 'node' | 'edge'; id: string; token: number } | null>(null);
   pageIdRef.current = id;
   if (id !== seenId) {
     setSeenId(id);
@@ -142,7 +148,9 @@ export const CollectionPage = observer(function CollectionPage() {
       }
     }
     for (const item of uploadsRef.current) occupied.push({ x: item.x, y: item.y });
-    const spots = imageDropSpots(anchor, at, good.length, occupied);
+    const spots = imageDropSpots(anchor, at, good.length, occupied).map((spot) =>
+      snapPoint(spot, session.canvas.snap),
+    );
     let z = nextPlacementZ([
       ...(library.graphId === collectionId ? library.graph.nodes.map((node) => node.z) : []),
       ...uploadsRef.current.map((item) => item.z),
@@ -242,6 +250,11 @@ export const CollectionPage = observer(function CollectionPage() {
                     { nodeId: created.id, x: draft.x, y: draft.y, z },
                   ]);
                   const placementError = saved ? '' : library.error;
+                  let linkError = '';
+                  if (draft.fromId && draft.label && pageIdRef.current === collectionId) {
+                    const linked = await library.createEdge(draft.fromId, created.id, draft.label);
+                    if (!linked && pageIdRef.current === collectionId) linkError = library.error;
+                  }
                   if (pageIdRef.current !== collectionId) return;
                   await refresh();
                   if (pageIdRef.current !== collectionId) return;
@@ -249,6 +262,7 @@ export const CollectionPage = observer(function CollectionPage() {
                   await library.loadNode(created.id);
                   if (pageIdRef.current !== collectionId) return;
                   if (placementError !== '') library.error = placementError;
+                  else if (linkError !== '') library.error = linkError;
                 })();
               }}
               onCreate={(name, at) => {
@@ -310,6 +324,15 @@ export const CollectionPage = observer(function CollectionPage() {
                 void library.renameNode(nodeId, name);
               }}
               enableTools
+              appearance={current ? library.graph.appearance : defaultEdgeAppearance}
+              canvas={session.canvas}
+              onAppearance={(next) => {
+                if (!id) return;
+                void library.updateAppearance(id, next);
+              }}
+              onCanvas={(patch) => {
+                void session.updateCanvas(patch);
+              }}
               onConnect={(fromId, toId, label) => {
                 if (fromId.startsWith('uploading:') || toId.startsWith('uploading:')) return;
                 void (async () => {
@@ -337,13 +360,36 @@ export const CollectionPage = observer(function CollectionPage() {
                 if (nodeId) void library.loadPeek(nodeId);
                 else library.clearPeek();
               }}
+              onRemoveItem={(nodeId) => {
+                if (!id || nodeId.startsWith('uploading:')) return;
+                void (async () => {
+                  const ok = await library.removeMember(id, nodeId);
+                  if (!ok) return;
+                  leave();
+                })();
+              }}
+              onAskRemoveItem={(nodeId) => {
+                if (nodeId.startsWith('uploading:')) return;
+                removeToken.current += 1;
+                setSelection({ kind: 'node', id: nodeId });
+                void library.loadNode(nodeId);
+                setRemoveAsk({ kind: 'node', id: nodeId, token: removeToken.current });
+              }}
+              onAskRemoveLink={(edgeId) => {
+                removeToken.current += 1;
+                setSelection({ kind: 'edge', id: edgeId });
+                void library.loadEdge(edgeId);
+                setRemoveAsk({ kind: 'edge', id: edgeId, token: removeToken.current });
+              }}
               onEscape={() => setSelection(null)}
               onSelectItem={(nodeId) => {
                 if (nodeId.startsWith('uploading:')) return;
+                setRemoveAsk(null);
                 setSelection({ kind: 'node', id: nodeId });
                 void library.loadNode(nodeId);
               }}
               onSelectLink={(edgeId) => {
+                setRemoveAsk(null);
                 setSelection({ kind: 'edge', id: edgeId });
                 void library.loadEdge(edgeId);
               }}
@@ -355,15 +401,30 @@ export const CollectionPage = observer(function CollectionPage() {
             </div>
           ) : null}
           {ready && nodes.length <= 2 ? (
-            <p className="canvas-hint">双击空白添加文字 · 拖入图片 · 拖动点 · 拖动手柄或按 L 连线 · 选中点后 Tab 建下级、Enter 建同级</p>
+            <p className="canvas-hint">双击空白添加文字 · 拖入图片 · 拖动点 · 从圆点拖线或按 L 连线 · 选中点后 Tab 建下级、Enter 建同级</p>
           ) : null}
-          {library.error !== '' ? <p role="alert" className="canvas-error">{library.error}</p> : null}
+          {session.canvasError !== '' || library.error !== '' ? (
+            <p role="alert" className="canvas-error">
+              {session.canvasError !== '' ? session.canvasError : library.error}
+            </p>
+          ) : null}
         </div>
         {selection?.kind === 'node' ? (
-          <NodePanel collectionId={id} nodeId={selection.id} onLeave={leave} onTouched={() => void refresh()} />
+          <NodePanel
+            collectionId={id}
+            nodeId={selection.id}
+            askRemove={removeAsk?.kind === 'node' && removeAsk.id === selection.id ? removeAsk.token : 0}
+            onLeave={leave}
+            onTouched={() => void refresh()}
+          />
         ) : null}
         {selection?.kind === 'edge' ? (
-          <EdgePanel edgeId={selection.id} onLeave={leave} onTouched={() => void refresh()} />
+          <EdgePanel
+            edgeId={selection.id}
+            askRemove={removeAsk?.kind === 'edge' && removeAsk.id === selection.id ? removeAsk.token : 0}
+            onLeave={leave}
+            onTouched={() => void refresh()}
+          />
         ) : null}
       </div>
     </div>

@@ -1,11 +1,16 @@
 import { Service } from '@rabjs/react';
-import { accountSchema, errorBodySchema } from '@unfold/dto';
+import type { CanvasPrefs } from '@unfold/dto';
+import { accountSchema, canvasPrefsSchema, defaultCanvasPrefs, errorBodySchema } from '@unfold/dto';
 
 export class SessionService extends Service {
   username: string | null = null;
   avatarUrl: string | null = null;
+  canvas: CanvasPrefs = { ...defaultCanvasPrefs };
+  /** 画布看法写入失败。不写到 error，避免出现在账号菜单里。 */
+  canvasError = '';
   error = '';
   ready = false;
+  private canvasTicket = 0;
 
   /** 网络断开时返回 null。不写 error，避免过期请求盖住新请求。 */
   private async send(input: string, init?: RequestInit): Promise<Response | null> {
@@ -16,9 +21,21 @@ export class SessionService extends Service {
     }
   }
 
-  private apply(body: { username: string; avatarUrl: string | null }) {
+  private apply(body: { username: string; avatarUrl: string | null; canvas: CanvasPrefs }) {
     this.username = body.username;
     this.avatarUrl = body.avatarUrl;
+    this.canvas = body.canvas;
+    this.canvasError = '';
+  }
+
+  private async readError(res: Response, fallback: string): Promise<string> {
+    try {
+      const parsed = errorBodySchema.safeParse(await res.json());
+      if (parsed.success && parsed.data.error.message !== '') return parsed.data.error.message;
+    } catch {
+      // 响应不是错误体
+    }
+    return fallback;
   }
 
   private async parseAccount(res: Response): Promise<boolean> {
@@ -31,12 +48,7 @@ export class SessionService extends Service {
 
   /** 失败时取服务端文案，取不到用兜底。 */
   private async fail(res: Response, fallback: string): Promise<false> {
-    try {
-      const parsed = errorBodySchema.safeParse(await res.json());
-      this.error = parsed.success && parsed.data.error.message !== '' ? parsed.data.error.message : fallback;
-    } catch {
-      this.error = fallback;
-    }
+    this.error = await this.readError(res, fallback);
     return false;
   }
 
@@ -45,6 +57,8 @@ export class SessionService extends Service {
     if (!res || !res.ok) {
       this.username = null;
       this.avatarUrl = null;
+      this.canvas = { ...defaultCanvasPrefs };
+      this.canvasError = '';
       this.ready = true;
       return false;
     }
@@ -133,6 +147,52 @@ export class SessionService extends Service {
     return true;
   }
 
+  /**
+   * 立刻改看法，再整份写入。返回 stale 时不改当前值。
+   * 失败只写 canvasError。
+   */
+  async updateCanvas(patch: Partial<CanvasPrefs>): Promise<'ok' | 'fail' | 'stale'> {
+    const previous = this.canvas;
+    const next = { ...this.canvas, ...patch };
+    this.canvas = next;
+    const ticket = ++this.canvasTicket;
+    const res = await this.send('/api/me/canvas', {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(next),
+    });
+    if (ticket !== this.canvasTicket) return 'stale';
+    if (!res) {
+      this.canvas = previous;
+      this.canvasError = '网络没有连上';
+      return 'fail';
+    }
+    if (!res.ok) {
+      this.canvas = previous;
+      this.canvasError = await this.readError(res, '画布设置没有保存');
+      return 'fail';
+    }
+    let data: unknown;
+    try {
+      data = await res.json();
+    } catch {
+      this.canvas = previous;
+      this.canvasError = '响应没法读取';
+      return 'fail';
+    }
+    if (ticket !== this.canvasTicket) return 'stale';
+    const parsed = canvasPrefsSchema.safeParse(data);
+    if (!parsed.success) {
+      this.canvas = previous;
+      this.canvasError = '响应没法读取';
+      return 'fail';
+    }
+    this.canvas = parsed.data;
+    this.canvasError = '';
+    return 'ok';
+  }
+
   async logout(): Promise<boolean> {
     const res = await this.send('/api/logout', { method: 'POST', credentials: 'include' });
     if (!res) {
@@ -141,6 +201,8 @@ export class SessionService extends Service {
     }
     this.username = null;
     this.avatarUrl = null;
+    this.canvas = { ...defaultCanvasPrefs };
+    this.canvasError = '';
     this.error = '';
     return true;
   }

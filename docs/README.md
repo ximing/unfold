@@ -58,8 +58,7 @@ docs/images     根目录 README 用的界面截图
 
 | 文件 | 写什么 |
 | --- | --- |
-| [prd/2026-10-25-graph.md](prd/2026-10-25-graph.md) | 现在的产品行为：合集、点、边、卡片、交互 |
-| [prd/2026-10-26-canvas-settings.md](prd/2026-10-26-canvas-settings.md) | 待确认的画布设置。未落地前，行为仍以上一份为准 |
+| [prd/2026-10-25-graph.md](prd/2026-10-25-graph.md) | 现在的产品行为：合集、点、边、卡片、画布设置、交互 |
 | [tech/2026-10-25-graph.md](tech/2026-10-25-graph.md) | 拓扑、表、HTTP、前端、检查 |
 | [deploy.md](deploy.md) | 主机、镜像、迁移、桌面安装包 |
 

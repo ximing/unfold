@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   check,
   doublePrecision,
   integer,
@@ -17,10 +18,19 @@ export const users = pgTable('users', {
   username: text('username').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   avatarKey: text('avatar_key'),
+  canvasRoute: text('canvas_route').notNull().default('straight'),
+  canvasGrid: boolean('canvas_grid').notNull().default(true),
+  canvasSnap: boolean('canvas_snap').notNull().default(false),
+  canvasLabels: text('canvas_labels').notNull().default('always'),
+  canvasMarkers: boolean('canvas_markers').notNull().default(true),
+  canvasMinimap: boolean('canvas_minimap').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
-});
+}, (table) => [
+  check('users_canvas_route_check', sql`${table.canvasRoute} IN ('straight', 'curve', 'orthogonal')`),
+  check('users_canvas_labels_check', sql`${table.canvasLabels} IN ('always', 'focus')`),
+]);
 
 export const collections = pgTable('collections', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -28,10 +38,19 @@ export const collections = pgTable('collections', {
     .notNull()
     .references(() => users.id),
   title: text('title').notNull(),
+  edgeDash: text('edge_dash').notNull().default('solid'),
+  edgeWidth: text('edge_width').notNull().default('thin'),
+  edgeColor: text('edge_color').notNull().default('gray'),
+  edgeArrow: text('edge_arrow').notNull().default('end'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
-});
+}, (table) => [
+  check('collections_edge_dash_check', sql`${table.edgeDash} IN ('solid', 'dashed', 'dotted')`),
+  check('collections_edge_width_check', sql`${table.edgeWidth} IN ('thin', 'medium', 'thick')`),
+  check('collections_edge_color_check', sql`${table.edgeColor} IN ('gray', 'blue', 'green', 'red')`),
+  check('collections_edge_arrow_check', sql`${table.edgeArrow} IN ('end', 'none')`),
+]);
 
 export const nodes = pgTable(
   'nodes',

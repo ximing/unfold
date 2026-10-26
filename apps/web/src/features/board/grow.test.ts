@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { GAP_X, GAP_Y, NODE_H, NODE_W } from './board-layout.js';
-import { GROW_SIBLING_BLOCKED, planGrow } from './grow.js';
+import { GROW_CHILD_LABEL, GROW_SIBLING_BLOCKED, planGrow } from './grow.js';
 
 const anchor = { x: 32, y: 48, w: NODE_W, h: NODE_H };
 
 describe('planGrow', () => {
+  it('下级的占位标签是下一级', () => {
+    expect(GROW_CHILD_LABEL).toBe('下一级');
+  });
+
   it('下级放在右侧，边从选中点指出', () => {
     const plan = planGrow('child', 'a', [], anchor, [anchor]);
     expect(plan).toEqual({ ok: true, fromId: 'a', x: anchor.x + anchor.w + GAP_X, y: anchor.y });

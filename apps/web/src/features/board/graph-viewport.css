@@ -2,7 +2,13 @@
    图视口（平移/缩放/minimap/右键）
    ============================================================ */
 .gvp { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; touch-action: none; }
-.gvp-canvas { width: 100%; height: 100%; display: block; cursor: grab; }
+.gvp-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(circle at 0 0, rgba(0, 0, 0, 0.2) 0.75px, transparent 0.85px);
+}
+.gvp-canvas { width: 100%; height: 100%; display: block; cursor: grab; user-select: none; -webkit-user-select: none; }
 .gvp-canvas.panning { cursor: grabbing; }
 .gvp-tools {
   position: absolute;

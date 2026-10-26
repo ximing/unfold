@@ -2,8 +2,10 @@ import {
   addMemberBodySchema,
   createCollectionBodySchema,
   createNodeBodySchema,
+  edgeAppearanceSchema,
   placementsBodySchema,
   updateCollectionBodySchema,
+  type EdgeAppearance,
 } from '@unfold/dto';
 import { and, asc, count, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -26,6 +28,37 @@ import {
 } from '../http.js';
 
 type CardStat = { count: number; types: string[] };
+
+const appearanceSelection = {
+  edgeDash: collections.edgeDash,
+  edgeWidth: collections.edgeWidth,
+  edgeColor: collections.edgeColor,
+  edgeArrow: collections.edgeArrow,
+};
+
+function appearanceFromRow(row: {
+  edgeDash: string;
+  edgeWidth: string;
+  edgeColor: string;
+  edgeArrow: string;
+}): EdgeAppearance {
+  return edgeAppearanceSchema.parse({
+    dash: row.edgeDash,
+    width: row.edgeWidth,
+    color: row.edgeColor,
+    arrow: row.edgeArrow,
+  });
+}
+
+async function readAppearance(db: Database, userId: string, id: string): Promise<EdgeAppearance | null> {
+  const rows = await db
+    .select(appearanceSelection)
+    .from(collections)
+    .where(and(eq(collections.id, id), eq(collections.userId, userId), isNull(collections.deletedAt)))
+    .limit(1);
+  const row = rows[0];
+  return row ? appearanceFromRow(row) : null;
+}
 
 class PlacementNotMember extends Error {}
 
@@ -181,6 +214,8 @@ export function registerCollectionRoutes(app: FastifyInstance, db: Database, ses
     if (!params.success) return reply.code(400).send(invalidBody());
     const collection = await activeCollection(db, user.id, params.data.id);
     if (!collection) return reply.code(404).send(collectionNotFound);
+    const appearance = await readAppearance(db, user.id, collection.id);
+    if (!appearance) return reply.code(404).send(collectionNotFound);
 
     const memberRows = await db
       .select({
@@ -204,7 +239,7 @@ export function registerCollectionRoutes(app: FastifyInstance, db: Database, ses
       )
       .orderBy(asc(nodes.createdAt), asc(nodes.id));
 
-    if (memberRows.length === 0) return reply.code(200).send({ nodes: [], edges: [] });
+    if (memberRows.length === 0) return reply.code(200).send({ nodes: [], edges: [], appearance });
 
     const memberIds = memberRows.map((row) => row.id);
     const edgeRows = await db
@@ -246,7 +281,33 @@ export function registerCollectionRoutes(app: FastifyInstance, db: Database, ses
         };
       }),
       edges: edgeRows.map((row) => ({ ...row, cardCount: edgeStats.get(row.id)?.count ?? 0 })),
+      appearance,
     });
+  });
+
+  app.patch('/api/collections/:id/appearance', async (request, reply) => {
+    const user = await session(request, reply);
+    if (!user) return;
+
+    const params = idParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send(invalidBody());
+    const parsed = edgeAppearanceSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send(invalidBody());
+
+    const updated = await db
+      .update(collections)
+      .set({
+        edgeDash: parsed.data.dash,
+        edgeWidth: parsed.data.width,
+        edgeColor: parsed.data.color,
+        edgeArrow: parsed.data.arrow,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(collections.id, params.data.id), eq(collections.userId, user.id), isNull(collections.deletedAt)))
+      .returning(appearanceSelection);
+    const row = updated[0];
+    if (!row) return reply.code(404).send(collectionNotFound);
+    return reply.code(200).send(appearanceFromRow(row));
   });
 
   app.patch('/api/collections/:id/placements', async (request, reply) => {

@@ -1,3 +1,4 @@
+import { defaultEdgeAppearance } from '@unfold/dto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LibraryService } from './library.service.js';
 
@@ -55,7 +56,7 @@ describe('LibraryService', () => {
           cardTypes: [],
         },
       ],
-      edges: [],
+      edges: [], appearance: defaultEdgeAppearance,
     };
     let calls = 0;
     vi.stubGlobal(
@@ -93,7 +94,7 @@ describe('LibraryService', () => {
         { ...placedNode, id, name: '甲' },
         { ...placedNode, id: other, name: '乙', x: 1, y: 2, z: 0 },
       ],
-      edges: [],
+      edges: [], appearance: defaultEdgeAppearance,
     };
     await expect(library.savePlacements('col-1', [{ nodeId: id, x: 12.5, y: -4, z: 3 }])).resolves.toBe(true);
     expect(library.graph.nodes[0]).toMatchObject({ x: 12.5, y: -4, z: 3 });
@@ -113,7 +114,7 @@ describe('LibraryService', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
     const library = new LibraryService();
     library.graphId = 'col-1';
-    library.graph = { nodes: [{ ...placedNode, x: 1, y: 2, z: 0, imageWidth: null }], edges: [] };
+    library.graph = { nodes: [{ ...placedNode, x: 1, y: 2, z: 0, imageWidth: null }], edges: [], appearance: defaultEdgeAppearance };
     await expect(
       library.savePlacements('col-1', [{ nodeId: id, x: 1, y: 2, z: 0, imageWidth: 300 }]),
     ).resolves.toBe(true);
@@ -124,7 +125,7 @@ describe('LibraryService', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
     const library = new LibraryService();
     library.graphId = 'col-1';
-    library.graph = { nodes: [{ ...placedNode, x: 1, y: 2, z: 0, imageWidth: 240 }], edges: [] };
+    library.graph = { nodes: [{ ...placedNode, x: 1, y: 2, z: 0, imageWidth: 240 }], edges: [], appearance: defaultEdgeAppearance };
     await expect(library.savePlacements('col-1', [{ nodeId: id, x: 5, y: 6, z: 1 }])).resolves.toBe(true);
     expect(library.graph.nodes[0]).toMatchObject({ x: 5, y: 6, z: 1, imageWidth: 240 });
   });
@@ -141,7 +142,7 @@ describe('LibraryService', () => {
     );
     const library = new LibraryService();
     library.graphId = 'col-1';
-    library.graph = { nodes: [{ ...placedNode, x: 3, y: 4, z: 1, imageWidth: 240 }], edges: [] };
+    library.graph = { nodes: [{ ...placedNode, x: 3, y: 4, z: 1, imageWidth: 240 }], edges: [], appearance: defaultEdgeAppearance };
     await expect(
       library.savePlacements('col-1', [{ nodeId: id, x: 9, y: 9, z: 2, imageWidth: 300 }]),
     ).resolves.toBe(false);
@@ -153,7 +154,7 @@ describe('LibraryService', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
     const library = new LibraryService();
     library.graphId = 'col-1';
-    library.graph = { nodes: [{ ...placedNode, imageWidth: 240 }], edges: [] };
+    library.graph = { nodes: [{ ...placedNode, imageWidth: 240 }], edges: [], appearance: defaultEdgeAppearance };
     await expect(
       library.savePlacements('col-1', [{ nodeId: id, x: 1, y: 1, z: 1, imageWidth: 300 }]),
     ).resolves.toBe(false);
@@ -176,13 +177,51 @@ describe('LibraryService', () => {
     );
     const library = new LibraryService();
     library.graphId = 'col-1';
-    library.graph = { nodes: [{ ...placedNode, x: 0, y: 0, z: 0 }], edges: [] };
+    library.graph = { nodes: [{ ...placedNode, x: 0, y: 0, z: 0 }], edges: [], appearance: defaultEdgeAppearance };
     const older = library.savePlacements('col-1', [{ nodeId: id, x: 1, y: 1, z: 1 }]);
     const newer = library.savePlacements('col-1', [{ nodeId: id, x: 9, y: 8, z: 4 }]);
     releaseFirst(new Response(null, { status: 204 }));
     await older;
     await newer;
     expect(library.graph.nodes[0]).toMatchObject({ x: 9, y: 8, z: 4 });
+  });
+
+  it('连线外观失败时回到写入前', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    const library = new LibraryService();
+    library.graphId = 'col-1';
+    library.graph = { nodes: [], edges: [], appearance: { ...defaultEdgeAppearance } };
+    await expect(
+      library.updateAppearance('col-1', { ...defaultEdgeAppearance, color: 'red' }),
+    ).resolves.toBe(false);
+    expect(library.graph.appearance.color).toBe('gray');
+    expect(library.error).toBe('网络没有连上');
+  });
+
+  it('后发出的连线外观不会被先发出的失败盖住', async () => {
+    let rejectFirst: (reason: unknown) => void = () => {};
+    const first = new Promise<Response>((_resolve, reject) => {
+      rejectFirst = reject;
+    });
+    let calls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => {
+        calls += 1;
+        if (calls === 1) return first;
+        return Promise.resolve(json({ ...defaultEdgeAppearance, color: 'blue' }));
+      }),
+    );
+    const library = new LibraryService();
+    library.graphId = 'col-1';
+    library.graph = { nodes: [], edges: [], appearance: { ...defaultEdgeAppearance } };
+    const older = library.updateAppearance('col-1', { ...defaultEdgeAppearance, color: 'red' });
+    const newer = library.updateAppearance('col-1', { ...defaultEdgeAppearance, color: 'blue' });
+    rejectFirst(new TypeError('Failed to fetch'));
+    await older;
+    await expect(newer).resolves.toBe(true);
+    expect(library.graph.appearance.color).toBe('blue');
+    expect(library.error).toBe('');
   });
 });
 

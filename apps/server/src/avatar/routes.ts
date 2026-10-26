@@ -16,7 +16,11 @@ import { readAvatarUpload } from './upload.js';
 
 /** 登录、注册、/api/me 与改名共用的账号响应：头像地址每次现签。 */
 export async function accountBody(user: SessionUser, store: AvatarStore) {
-  return { username: user.username, avatarUrl: user.avatarKey ? await store.url(user.avatarKey) : null };
+  return {
+    username: user.username,
+    avatarUrl: user.avatarKey ? await store.url(user.avatarKey) : null,
+    canvas: user.canvas,
+  };
 }
 
 export function registerAvatarRoutes(

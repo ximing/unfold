@@ -1,6 +1,6 @@
 import { observer, useService } from '@rabjs/react';
 import type { CardType } from '@unfold/dto';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PanelShell } from '../../shared/panel/panel-shell.js';
 import { NameField } from '../../shared/name-field/name-field.js';
 import { UButton } from '../../shared/ui/button/button.js';
@@ -17,11 +17,17 @@ export const CollectionEdgePanel = observer(function CollectionEdgePanel(props: 
   id: string;
   onLeave: () => void;
   onDeleted: () => void;
+  /** 非 0 时打开删除确认。右键菜单和检查器共用这一条 */
+  askRemove?: number;
 }) {
   const library = useService(LibraryService);
   const [confirm, setConfirm] = useState(false);
   const detail = library.collectionEdgeDetail?.id === props.id ? library.collectionEdgeDetail : null;
   useAskDelete(() => setConfirm(true));
+  useEffect(() => {
+    if (!props.askRemove) return;
+    setConfirm(true);
+  }, [props.askRemove]);
 
   async function reload() {
     await library.loadCollectionEdge(props.id);

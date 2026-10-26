@@ -23,3 +23,4 @@
 .ctx-menu button:hover { background: var(--accent-soft); color: var(--accent); }
 .ctx-menu button.danger:hover { background: var(--warn-soft); color: var(--warn); }
 .ctx-menu button .hint { margin-left: auto; font-size: 11px; color: var(--faint); }
+.ctx-menu .sep { height: 1px; margin: 4px 6px; background: var(--line-soft); }

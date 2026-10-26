@@ -99,6 +99,46 @@ export const edgeSchema = z.object({
   label: z.string(),
 });
 
+export const edgeDashSchema = z.enum(['solid', 'dashed', 'dotted']);
+export const edgeWidthSchema = z.enum(['thin', 'medium', 'thick']);
+export const edgeColorSchema = z.enum(['gray', 'blue', 'green', 'red']);
+export const edgeArrowSchema = z.enum(['end', 'none']);
+
+export const edgeAppearanceSchema = z.strictObject({
+  dash: edgeDashSchema,
+  width: edgeWidthSchema,
+  color: edgeColorSchema,
+  arrow: edgeArrowSchema,
+});
+
+export const defaultEdgeAppearance = {
+  dash: 'solid',
+  width: 'thin',
+  color: 'gray',
+  arrow: 'end',
+} as const satisfies z.infer<typeof edgeAppearanceSchema>;
+
+export const canvasRouteSchema = z.enum(['straight', 'curve', 'orthogonal']);
+export const canvasLabelsSchema = z.enum(['always', 'focus']);
+
+export const canvasPrefsSchema = z.strictObject({
+  route: canvasRouteSchema,
+  grid: z.boolean(),
+  snap: z.boolean(),
+  labels: canvasLabelsSchema,
+  markers: z.boolean(),
+  minimap: z.boolean(),
+});
+
+export const defaultCanvasPrefs = {
+  route: 'straight',
+  grid: true,
+  snap: false,
+  labels: 'always',
+  markers: true,
+  minimap: true,
+} as const satisfies z.infer<typeof canvasPrefsSchema>;
+
 const labelText = trimmed('关系说明不能是空的', 40);
 
 export const graphNodeSchema = nodeSchema.extend({
@@ -147,6 +187,7 @@ export const librarySchema = z.object({
 export const collectionGraphSchema = z.object({
   nodes: z.array(graphNodeSchema),
   edges: z.array(graphEdgeSchema),
+  appearance: edgeAppearanceSchema,
 });
 
 const cardRecord = {
@@ -274,6 +315,14 @@ export type CreateNodeBody = z.infer<typeof createNodeBodySchema>;
 export type UpdateNodeBody = z.infer<typeof updateNodeBodySchema>;
 export type AddMemberBody = z.infer<typeof addMemberBodySchema>;
 export type PlacementsBody = z.infer<typeof placementsBodySchema>;
+export type EdgeDash = z.infer<typeof edgeDashSchema>;
+export type EdgeWidth = z.infer<typeof edgeWidthSchema>;
+export type EdgeColor = z.infer<typeof edgeColorSchema>;
+export type EdgeArrow = z.infer<typeof edgeArrowSchema>;
+export type EdgeAppearance = z.infer<typeof edgeAppearanceSchema>;
+export type CanvasRoute = z.infer<typeof canvasRouteSchema>;
+export type CanvasLabels = z.infer<typeof canvasLabelsSchema>;
+export type CanvasPrefs = z.infer<typeof canvasPrefsSchema>;
 export type Edge = z.infer<typeof edgeSchema>;
 export type CreateEdgeBody = z.infer<typeof createEdgeBodySchema>;
 export type UpdateEdgeBody = z.infer<typeof updateEdgeBodySchema>;

@@ -1,6 +1,6 @@
 import { Expand, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
-import { UContextMenu } from '../../shared/ui/context-menu/context-menu.js';
+import { UContextMenu, type UMenuEntry } from '../../shared/ui/context-menu/context-menu.js';
 import './graph-viewport.css';
 
 type Transform = { k: number; tx: number; ty: number };
@@ -19,6 +19,13 @@ function zoomAt(t: Transform, px: number, py: number, factor: number): Transform
   return { k, tx: px - (px - t.tx) * ratio, ty: py - (py - t.ty) * ratio };
 }
 
+export type ViewportMenuHit = {
+  kind: 'canvas' | 'node' | 'edge';
+  id: string;
+  worldX: number;
+  worldY: number;
+};
+
 export type GraphViewportProps = {
   /** 世界坐标范围（内容坐标系） */
   worldX: number;
@@ -29,10 +36,16 @@ export type GraphViewportProps = {
   resetKey?: string;
   className?: string;
   children: ReactNode;
-  /** minimap 里画的内容（世界坐标系） */
+  /** minimap 里画的内容（世界坐标系）。不传则不画小地图 */
   minimap?: ReactNode;
+  /** 世界坐标 16 的点阵。点的大小不随缩放变 */
+  grid?: boolean;
   /** 双击空白处（世界坐标）。给了它，双击空白就不再缩放 */
   onBackgroundDoubleClick?: (point: { worldX: number; worldY: number }) => void;
+  /** 视口上的浮层，例如悬停预览。不进世界坐标 */
+  overlay?: ReactNode;
+  /** 点、边、空白各自的菜单。视口再给空白补上缩放 */
+  contextItems?: (hit: ViewportMenuHit) => UMenuEntry[];
 };
 
 export function GraphViewport(props: GraphViewportProps) {
@@ -41,7 +54,7 @@ export function GraphViewport(props: GraphViewportProps) {
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [t, setT] = useState<Transform>({ k: 1, tx: 0, ty: 0 });
   const [panning, setPanning] = useState(false);
-  const [bgMenu, setBgMenu] = useState<{ x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; items: UMenuEntry[] } | null>(null);
   const dragRef = useRef<{ pointerId: number; lastX: number; lastY: number } | null>(null);
   const initRef = useRef('');
 
@@ -171,11 +184,45 @@ export function GraphViewport(props: GraphViewportProps) {
         zoomButton(1.35);
       }}
       onContextMenu={(event) => {
-        if (event.target instanceof Element && event.target.closest('.node, .bpeek')) return;
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        if (target.closest('input, textarea, .binput')) return;
         event.preventDefault();
-        setBgMenu({ x: event.clientX, y: event.clientY });
+        if (target.closest('.bpeek, .gvp-tools, .gvp-minimap')) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        const worldX = (event.clientX - rect.left - t.tx) / t.k;
+        const worldY = (event.clientY - rect.top - t.ty) / t.k;
+        const edgeId = target.closest('[data-edge-id]')?.getAttribute('data-edge-id') ?? '';
+        const nodeId = target.closest('[data-node-id]')?.getAttribute('data-node-id') ?? '';
+        const hit: ViewportMenuHit = nodeId
+          ? { kind: 'node', id: nodeId, worldX, worldY }
+          : edgeId
+            ? { kind: 'edge', id: edgeId, worldX, worldY }
+            : { kind: 'canvas', id: '', worldX, worldY };
+        const extra = props.contextItems?.(hit) ?? [];
+        const zoom: UMenuEntry[] =
+          hit.kind === 'canvas'
+            ? [
+                ...(extra.length > 0 ? [{ separator: true } as const] : []),
+                { label: '放大', onSelect: () => zoomButton(1.3) },
+                { label: '缩小', onSelect: () => zoomButton(1 / 1.3) },
+                { label: '适应屏幕', onSelect: fit },
+              ]
+            : [];
+        const items = [...extra, ...zoom];
+        if (items.length === 0) return;
+        setMenu({ x: event.clientX, y: event.clientY, items });
       }}
     >
+      {props.grid ? (
+        <div
+          className="gvp-grid"
+          style={{
+            backgroundSize: `${16 * t.k}px ${16 * t.k}px`,
+            backgroundPosition: `${t.tx}px ${t.ty}px`,
+          }}
+        />
+      ) : null}
       <svg
         className={`gvp-canvas ${props.className ?? ''} ${panning ? 'panning' : ''}`.trim()}
         role="img"
@@ -183,6 +230,7 @@ export function GraphViewport(props: GraphViewportProps) {
       >
         <g transform={`translate(${t.tx} ${t.ty}) scale(${t.k})`}>{props.children}</g>
       </svg>
+      {props.overlay}
       <div className="gvp-tools">
         <button type="button" aria-label="缩小" title="缩小" onClick={() => zoomButton(1 / 1.3)}>
           <ZoomOut size={15} strokeWidth={1.75} aria-hidden />
@@ -212,17 +260,8 @@ export function GraphViewport(props: GraphViewportProps) {
           </svg>
         </div>
       ) : null}
-      {bgMenu ? (
-        <UContextMenu
-          x={bgMenu.x}
-          y={bgMenu.y}
-          onClose={() => setBgMenu(null)}
-          items={[
-            { label: '放大', hint: '双击', onSelect: () => zoomButton(1.3) },
-            { label: '缩小', onSelect: () => zoomButton(1 / 1.3) },
-            { label: '适应屏幕', onSelect: fit },
-          ]}
-        />
+      {menu ? (
+        <UContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />
       ) : null}
     </div>
   );
