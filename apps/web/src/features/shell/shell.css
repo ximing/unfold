@@ -58,7 +58,7 @@
   left: 46px;
   bottom: 0;
   z-index: 40;
-  width: 160px;
+  width: 200px;
   background: var(--glass);
   -webkit-backdrop-filter: blur(24px);
   backdrop-filter: blur(24px);
@@ -78,6 +78,60 @@
 }
 .rail-pop button:hover { background: var(--accent-soft); color: var(--accent); }
 .rail-pop .danger:hover { background: var(--warn-soft); color: var(--warn); }
+
+/* 账号区 */
+.rail-pop .account-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  margin-bottom: 4px;
+}
+.rail-pop .account-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: none;
+}
+.rail-pop .account-avatar-text {
+  display: grid;
+  place-items: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+.rail-pop .account-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rail-pop .account-rename {
+  display: flex;
+  gap: 4px;
+  padding: 4px 6px;
+}
+.rail-pop .account-rename input {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  padding: 4px 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+}
+.rail-pop .account-rename button { width: auto; padding: 4px 8px; }
+.rail-pop .account-error {
+  font-size: 12px;
+  color: var(--warn);
+  padding: 2px 10px 6px;
+}
 
 /* ---------- 目录侧栏 ---------- */
 .side {

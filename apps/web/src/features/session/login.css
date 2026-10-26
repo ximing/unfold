@@ -34,3 +34,5 @@
 }
 .login-card h1 { font-size: 21px; font-weight: 700; letter-spacing: 0.01em; }
 .login-card .lede { color: var(--mute); font-size: 13px; margin: 4px 0 22px; }
+.login-card .login-alt { color: var(--mute); font-size: 13px; margin: 14px 0 0; text-align: center; }
+.login-card .login-alt a { color: var(--accent); }

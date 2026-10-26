@@ -1,7 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
-export type SessionUser = { id: string; username: string };
+export type SessionUser = { id: string; username: string; avatarKey: string | null };
 
 export type SessionLookup = (
   request: FastifyRequest,
@@ -15,7 +15,16 @@ export const memberParamsSchema = z.object({
   nodeId: z.uuid(),
 });
 
-const knownMessages = new Set(['标题不能是空的', '名字不能是空的', '关系说明不能是空的']);
+const knownMessages = new Set([
+  '标题不能是空的',
+  '名字不能是空的',
+  '关系说明不能是空的',
+  '用户名至少 2 个字',
+  '用户名最多 32 个字',
+  '用户名里不能有空格',
+  '密码至少 8 位',
+  '密码最多 72 位',
+]);
 
 export function invalidBody(message = '请求不正确') {
   return { error: { code: 'invalid_body' as const, message } };
@@ -31,6 +40,7 @@ export const nodeNotFound = { error: { code: 'not_found' as const, message: '点
 export const edgeNotFound = { error: { code: 'not_found' as const, message: '关系没有找到' } };
 export const cardNotFound = { error: { code: 'not_found' as const, message: '卡片没有找到' } };
 export const edgeConflict = { error: { code: 'conflict' as const, message: '这条关系已经有了' } };
+export const usernameTaken = { error: { code: 'conflict' as const, message: '这个用户名已经被用了' } };
 
 export function isUniqueViolation(error: unknown): boolean {
   let current: unknown = error;

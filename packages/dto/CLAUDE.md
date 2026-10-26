@@ -3,12 +3,12 @@
 ## 这个目录负责什么
 
 - 承载 `@unfold/server` 与 `@unfold/web` 共用的 Zod 4 数据校验 schema 与 TypeScript 推导类型。
-- 作为前后端 HTTP 请求体、响应体及图谱核心模型（合集、点、边、8 种卡片、搜索命中）的唯一契约真相源。
+- 作为前后端 HTTP 请求体、响应体及图谱核心模型（合集、点、边、九种卡片（原八种加富文本 `rich`）、搜索命中）的唯一契约真相源。
 
 ## 放置约束
 
 - **放什么**：
-  - `src/graph.ts`：**现行主契约**，包含合集、点、点边、合集边、8 种卡片（`cardContentSchemas`）及搜索接口的全部 Zod schema 与导出类型。
+  - `src/graph.ts`：**现行主契约**，包含合集、点、点边、合集边、九种卡片（原八种加富文本 `rich`，`cardContentSchemas`）及搜索接口的全部 Zod schema 与导出类型。
   - `src/api.ts` 与 `src/normalize-name.ts`：登录接口契约（`loginBodySchema`）及历史遗留名称归一化工具函数。
   - 与 schema 同目录的 `.test.ts` 契约单元测试。
 - **不放什么**：

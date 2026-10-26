@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   check,
+  doublePrecision,
   integer,
   jsonb,
   pgTable,
@@ -15,6 +16,7 @@ export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   username: text('username').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
+  avatarKey: text('avatar_key'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -31,17 +33,22 @@ export const collections = pgTable('collections', {
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
 });
 
-export const nodes = pgTable('nodes', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id')
-    .notNull()
-    .references(() => users.id),
-  name: text('name').notNull(),
-  description: text('description').notNull().default(''),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  deletedAt: timestamp('deleted_at', { withTimezone: true }),
-});
+export const nodes = pgTable(
+  'nodes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    name: text('name').notNull(),
+    description: text('description').notNull().default(''),
+    kind: text('kind').notNull().default('text'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [check('nodes_kind_check', sql`${table.kind} IN ('text', 'image')`)],
+);
 
 export const memberships = pgTable(
   'memberships',
@@ -53,8 +60,18 @@ export const memberships = pgTable(
       .notNull()
       .references(() => nodes.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    x: doublePrecision('x'),
+    y: doublePrecision('y'),
+    z: integer('z'),
+    imageWidth: integer('image_width'),
   },
-  (table) => [primaryKey({ columns: [table.collectionId, table.nodeId] })],
+  (table) => [
+    primaryKey({ columns: [table.collectionId, table.nodeId] }),
+    check(
+      'memberships_image_width_check',
+      sql`${table.imageWidth} IS NULL OR (${table.imageWidth} >= 120 AND ${table.imageWidth} <= 480)`,
+    ),
+  ],
 );
 
 export const edges = pgTable(
@@ -134,7 +151,28 @@ export const cards = pgTable(
     ),
     check(
       'cards_card_type_check',
-      sql`${table.cardType} IN ('note', 'code', 'formula', 'person', 'event', 'place', 'period', 'group')`,
+      sql`${table.cardType} IN ('note', 'code', 'formula', 'person', 'event', 'place', 'period', 'group', 'rich')`,
     ),
+  ],
+);
+
+export const assets = pgTable(
+  'assets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    ownerKind: text('owner_kind').notNull(),
+    ownerId: uuid('owner_id').notNull(),
+    mime: text('mime').notNull(),
+    byteSize: integer('byte_size').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check('assets_owner_kind_check', sql`${table.ownerKind} IN ('node', 'card')`),
+    uniqueIndex('assets_node_owner_unique')
+      .on(table.ownerId)
+      .where(sql`${table.ownerKind} = 'node'`),
   ],
 );

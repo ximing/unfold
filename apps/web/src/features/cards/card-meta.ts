@@ -22,6 +22,7 @@ export const CARD_META: Record<CardType, CardMeta> = {
   place: { type: 'place', label: '地点', hue: '#059669', glyph: '地' },
   period: { type: 'period', label: '时段', hue: '#B45309', glyph: '时' },
   group: { type: 'group', label: '群体', hue: '#DC5F02', glyph: '群' },
+  rich: { type: 'rich', label: '富文本', hue: '#1D4E89', glyph: '稿' },
 };
 
 export const CARD_TYPES = Object.keys(CARD_META) as CardType[];

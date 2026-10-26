@@ -1,6 +1,6 @@
 import { observer, useService } from '@rabjs/react';
 import { type FormEvent } from 'react';
-import { Navigate, useNavigate } from 'react-router';
+import { Link, Navigate, useNavigate } from 'react-router';
 import { UButton } from '../../shared/ui/button/button.js';
 import { UField, UTextInput } from '../../shared/ui/field/field.js';
 import { SessionService } from './session.service.js';
@@ -40,6 +40,9 @@ export const LoginPage = observer(function LoginPage() {
         <UButton variant="primary" size="big" type="submit" style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}>
           进入
         </UButton>
+        <p className="login-alt">
+          没有账号？<Link to="/register">注册一个</Link>
+        </p>
       </form>
     </main>
   );

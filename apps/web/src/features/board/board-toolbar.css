@@ -1,0 +1,34 @@
+/* 合集画布左侧工具，不进壳层图标栏 */
+.board-toolbar {
+  position: absolute;
+  z-index: 4;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-l);
+  box-shadow: var(--sh-raise);
+}
+.board-toolbar button {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: var(--mute);
+}
+.board-toolbar button:hover { color: var(--ink); background: rgba(0, 0, 0, 0.05); }
+.board-toolbar button.on { color: var(--accent); background: var(--accent-soft); }
+.board-toolbar svg { width: 18px; height: 18px; }
+
+.gvp-canvas.tool-text { cursor: text; }
+.gvp-canvas.tool-connect { cursor: crosshair; }
+.gvp-canvas.tool-text.panning,
+.gvp-canvas.tool-connect.panning { cursor: grabbing; }

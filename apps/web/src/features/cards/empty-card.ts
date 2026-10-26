@@ -18,5 +18,12 @@ export function emptyCard(ownerKind: OwnerKind, ownerId: string, type: CardType)
       return { ownerKind, ownerId, type, content: { start: '', end: '', note: '' } };
     case 'group':
       return { ownerKind, ownerId, type, content: { note: '' } };
+    case 'rich':
+      return {
+        ownerKind,
+        ownerId,
+        type,
+        content: { doc: { type: 'doc', content: [{ type: 'paragraph' }] } },
+      };
   }
 }

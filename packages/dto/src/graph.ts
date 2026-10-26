@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { richPatchContentSchema, richStoredContentSchema, richWriteContentSchema } from './rich-doc.js';
 
 function trimmed(emptyMessage: string, max: number) {
   return z
@@ -18,6 +19,7 @@ export const cardTypeSchema = z.enum([
   'place',
   'period',
   'group',
+  'rich',
 ]);
 
 const noteContentSchema = z.strictObject({ body: z.string() });
@@ -46,6 +48,7 @@ export const cardContentSchemas = {
   place: placeContentSchema,
   period: periodContentSchema,
   group: groupContentSchema,
+  rich: richPatchContentSchema,
 } as const;
 
 export const collectionSchema = z.object({
@@ -100,8 +103,26 @@ const labelText = trimmed('关系说明不能是空的', 40);
 
 export const graphNodeSchema = nodeSchema.extend({
   description: z.string(),
+  kind: z.enum(['text', 'image']),
+  x: z.number().nullable(),
+  y: z.number().nullable(),
+  z: z.int().nullable(),
+  imageWidth: z.int().nullable(),
+  assetId: z.uuid().nullable(),
   cardCount: z.int().nonnegative(),
   cardTypes: z.array(cardTypeSchema),
+});
+
+export const placementsBodySchema = z.strictObject({
+  placements: z.array(
+    z.strictObject({
+      nodeId: z.uuid(),
+      x: z.number(),
+      y: z.number(),
+      z: z.int(),
+      imageWidth: z.int().optional(),
+    }),
+  ),
 });
 
 export const graphEdgeSchema = edgeSchema.extend({
@@ -128,14 +149,24 @@ export const collectionGraphSchema = z.object({
   edges: z.array(graphEdgeSchema),
 });
 
-export const cardSchema = z.object({
+const cardRecord = {
   id: z.uuid(),
   ownerKind: ownerKindSchema,
   ownerId: z.uuid(),
-  type: cardTypeSchema,
   position: z.int().nonnegative(),
-  content: z.record(z.string(), z.string()),
-});
+};
+
+export const cardSchema = z.discriminatedUnion('type', [
+  z.object({ ...cardRecord, type: z.literal('note'), content: noteContentSchema }),
+  z.object({ ...cardRecord, type: z.literal('code'), content: codeContentSchema }),
+  z.object({ ...cardRecord, type: z.literal('formula'), content: formulaContentSchema }),
+  z.object({ ...cardRecord, type: z.literal('person'), content: personContentSchema }),
+  z.object({ ...cardRecord, type: z.literal('event'), content: eventContentSchema }),
+  z.object({ ...cardRecord, type: z.literal('place'), content: placeContentSchema }),
+  z.object({ ...cardRecord, type: z.literal('period'), content: periodContentSchema }),
+  z.object({ ...cardRecord, type: z.literal('group'), content: groupContentSchema }),
+  z.object({ ...cardRecord, type: z.literal('rich'), content: richStoredContentSchema }),
+]);
 
 export const nodeDetailSchema = nodeSchema.extend({
   description: z.string(),
@@ -204,6 +235,12 @@ export const createCardBodySchema = z.discriminatedUnion('type', [
     type: z.literal('group'),
     content: groupContentSchema,
   }),
+  z.strictObject({
+    ownerKind: ownerKindSchema,
+    ownerId: z.uuid(),
+    type: z.literal('rich'),
+    content: richWriteContentSchema,
+  }),
 ]);
 
 export const updateCardBodySchema = z.strictObject({
@@ -232,6 +269,7 @@ export type Node = z.infer<typeof nodeSchema>;
 export type CreateNodeBody = z.infer<typeof createNodeBodySchema>;
 export type UpdateNodeBody = z.infer<typeof updateNodeBodySchema>;
 export type AddMemberBody = z.infer<typeof addMemberBodySchema>;
+export type PlacementsBody = z.infer<typeof placementsBodySchema>;
 export type Edge = z.infer<typeof edgeSchema>;
 export type CreateEdgeBody = z.infer<typeof createEdgeBodySchema>;
 export type UpdateEdgeBody = z.infer<typeof updateEdgeBodySchema>;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { layoutBoard } from './board-layout.js';
+import { layoutBoard, layoutPlaced, placeNewCorners } from './board-layout.js';
 
 describe('layoutBoard', () => {
   it('没有节点时是空的', () => {
@@ -34,5 +34,47 @@ describe('layoutBoard', () => {
     expect(boxes.map((box) => box.id)).toEqual(['a', 'b']);
     expect(boxes[0]?.y).toBe(boxes[1]?.y);
     expect(boxes[0]?.x).toBeLessThan(boxes[1]?.x ?? 0);
+  });
+});
+
+describe('layoutPlaced', () => {
+  it('全部未放置时结果与 layoutBoard 一致', () => {
+    const items = [
+      { id: 'b', x: null, y: null },
+      { id: 'a', x: null, y: null },
+    ];
+    const links = [{ fromId: 'a', toId: 'b' }];
+    expect(layoutPlaced(items, links, { x: 800, y: 800 })).toEqual(layoutBoard(items, links));
+  });
+
+  it('已有 x 的点坐标不被自动布局改掉', () => {
+    const items = [
+      { id: 'a', x: 480, y: 12 },
+      { id: 'b', x: null, y: null },
+    ];
+    const links = [{ fromId: 'a', toId: 'b' }];
+    const laid = layoutBoard(items, links);
+    const boxes = layoutPlaced(items, links, { x: 900, y: 40 });
+    const saved = boxes.find((box) => box.id === 'a');
+    const fresh = boxes.find((box) => box.id === 'b');
+    const laidSaved = laid.find((box) => box.id === 'a');
+    expect(laidSaved?.x).not.toBe(480);
+    expect(saved).toMatchObject({ x: 480, y: 12, w: laidSaved?.w, h: laidSaved?.h });
+    expect(fresh).toMatchObject({ x: 900, y: 40, w: laidSaved?.w, h: laidSaved?.h });
+  });
+
+  it('未放置的点从给定中心向右下按 24 让开左上角', () => {
+    expect(placeNewCorners(1, { x: 10, y: 20 }, [])).toEqual([{ x: 10, y: 20 }]);
+    expect(placeNewCorners(1, { x: 0, y: 0 }, [{ x: 0.9, y: 0 }])).toEqual([{ x: 24, y: 24 }]);
+    expect(placeNewCorners(1, { x: 0, y: 0 }, [{ x: 1, y: 0 }])).toEqual([{ x: 0, y: 0 }]);
+    const items = [
+      { id: 'a', x: 10, y: 20 },
+      { id: 'b', x: null, y: null },
+      { id: 'c', x: null, y: null },
+    ];
+    const boxes = layoutPlaced(items, [], { x: 10, y: 20 });
+    expect(boxes.find((box) => box.id === 'a')).toMatchObject({ x: 10, y: 20 });
+    expect(boxes.find((box) => box.id === 'b')).toMatchObject({ x: 34, y: 44 });
+    expect(boxes.find((box) => box.id === 'c')).toMatchObject({ x: 58, y: 68 });
   });
 });

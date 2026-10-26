@@ -3,7 +3,7 @@
 ## 这个目录负责什么
 
 - 承载 `@unfold/server` 单进程后端服务（Fastify 5 + Drizzle ORM + PostgreSQL）。
-- 提供 Cookie 会话认证（`/api/login`、`/api/logout`、`/api/me`）以及合集、点、边、卡片、搜索（PostgreSQL `ILIKE`）的 HTTP API。
+- 提供 Cookie 会话认证（`/api/register`、`/api/login`、`/api/logout`、`/api/me`）、账号管理（改名、头像）以及合集、点、边、卡片、搜索（PostgreSQL `ILIKE`）的 HTTP API。
 - 管理 PostgreSQL 表结构（`src/db/schema.ts`）、SQL 迁移（`drizzle/`）与种子用户脚本（`src/seed.ts`）。
 
 ## 放置约束
@@ -11,7 +11,8 @@
 - **放什么**：
   - `src/app.ts`：Fastify 实例组装、Cookie/限流插件注册、登录会话校验与路由模块挂载。
   - `src/http.ts`：路由公共参数 schema、统一错误响应构造器与数据库唯一约束冲突判断。
-  - `src/<domain>/routes.ts`：按领域拆分的 HTTP 路由注册函数（`collections`、`nodes`、`edges`、`cards`、`search`）。
+  - `src/<domain>/routes.ts`：按领域拆分的 HTTP 路由注册函数（`avatar`、`collections`、`nodes`、`edges`、`cards`、`search`）。
+  - `src/avatar/`：头像 multipart 解析、S3 读写与预签名临时地址（`ATTACHMENT_S3_*`，私有桶每次现签）。
   - `src/graph/db.ts`：跨表图谱查询、卡片位置计算与级联删除事务（合集、点、边、卡片的组合读写）。
   - `src/db/`：数据库连接池（`client.ts`）与 Drizzle 表定义（`schema.ts`）。
 - **不放什么**：

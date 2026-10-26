@@ -1,10 +1,32 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode, Ref } from 'react';
 import { IconClose } from '../ui/icons/icons.js';
 import './panel.css';
 
-export function PanelShell(props: { title: string; onLeave: () => void; children: ReactNode }) {
+export function PanelShell(props: {
+  title: string;
+  onLeave: () => void;
+  children: ReactNode;
+  className?: string;
+  style?: CSSProperties;
+  rootRef?: Ref<HTMLElement>;
+  onResizePointerDown?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+}) {
+  const className = props.className ? `board-panel ${props.className}` : 'board-panel';
   return (
-    <aside className="board-panel">
+    <aside ref={props.rootRef} className={className} style={props.style}>
+      {props.onResizePointerDown ? (
+        <div
+          className="panel-resize"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="调整检查器宽度"
+          onPointerDown={(event) => {
+            event.stopPropagation();
+            event.preventDefault();
+            props.onResizePointerDown?.(event);
+          }}
+        />
+      ) : null}
       <div className="panel-head">
         <span className="panel-title">{props.title}</span>
         <button type="button" className="ibtn" aria-label="关闭" onClick={props.onLeave}>

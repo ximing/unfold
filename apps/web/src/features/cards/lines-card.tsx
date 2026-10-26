@@ -25,7 +25,9 @@ export function LinesCard(props: {
   function save(next: Record<string, string>) {
     const changed = props.fields.some((field) => next[field.key] !== text(props.card.content, field.key));
     if (!changed) return;
-    props.onUpdate(Object.fromEntries(props.fields.map((field) => [field.key, next[field.key] ?? ''])));
+    props.onUpdate(
+      Object.fromEntries(props.fields.map((field) => [field.key, next[field.key] ?? ''])) as Card['content'],
+    );
   }
 
   return (

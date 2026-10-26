@@ -1,23 +1,26 @@
 import type { BoardCanvasLink } from './board-canvas.js';
 import type { BoardBox } from './board-layout.js';
+import { edgeGeometry, edgeLanes, edgeMidpoint } from './edge-geometry.js';
 import { shortLabel } from './label.js';
 
 export function BoardEdges(props: {
   links: BoardCanvasLink[];
   boxOf: Map<string, BoardBox>;
   selectedId: string | null;
+  editingId?: string | null;
   onSelect: (id: string) => void;
+  onActivate?: (id: string) => void;
 }) {
+  const lanes = edgeLanes(props.links);
   return (
     <>
       {props.links.map((link) => {
         const from = props.boxOf.get(link.fromId);
         const to = props.boxOf.get(link.toId);
         if (!from || !to) return null;
-        const x1 = from.x + from.w;
-        const y1 = from.y + from.h / 2;
-        const x2 = to.x;
-        const y2 = to.y + to.h / 2;
+        const lane = lanes.get(link.id) ?? { index: 0, count: 1, paired: false };
+        const seg = edgeGeometry(from, to, lane.index, lane.count, lane.paired);
+        const mid = edgeMidpoint(seg);
         const selected = props.selectedId === link.id;
         return (
           <g
@@ -26,20 +29,27 @@ export function BoardEdges(props: {
             role="button"
             aria-label={link.label}
             onClick={() => props.onSelect(link.id)}
+            onDoubleClick={(event) => {
+              event.stopPropagation();
+              event.preventDefault();
+              props.onActivate?.(link.id);
+            }}
           >
-            <line className="bedge-hit" x1={x1} y1={y1} x2={x2} y2={y2} />
+            <line className="bedge-hit" x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2} />
             <line
               className="bedge"
-              x1={x1}
-              y1={y1}
-              x2={x2}
-              y2={y2}
+              x1={seg.x1}
+              y1={seg.y1}
+              x2={seg.x2}
+              y2={seg.y2}
               markerEnd={selected ? 'url(#board-arrow-on)' : 'url(#board-arrow)'}
             />
-            <text className="bedge-label" x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 9} textAnchor="middle">
-              {shortLabel(link.label)}
-              {(link.count ?? 0) > 0 ? <tspan className="cnt" dx={5}>·{link.count}</tspan> : null}
-            </text>
+            {props.editingId === link.id ? null : (
+              <text className="bedge-label" x={mid.x} y={mid.y - 9} textAnchor="middle">
+                {shortLabel(link.label)}
+                {(link.count ?? 0) > 0 ? <tspan className="cnt" dx={5}>·{link.count}</tspan> : null}
+              </text>
+            )}
           </g>
         );
       })}

@@ -3,7 +3,7 @@
 ## 项目概览
 
 - **仓库类型**：基于 `pnpm` workspace 的全栈 TypeScript Monorepo（Node >= 22，ESM）。
-- **产品定位**：单用户桌面 Web 知识图谱工具（中文界面），用于梳理概念和关系。核心结构严格限定为**四个名词**：**合集（Collection）**、**点（Node）**、**边（Edge / CollectionEdge）**、**卡片（Card，固定 8 种类型）**。
+- **产品定位**：单用户桌面 Web 知识图谱工具（中文界面），用于梳理概念和关系。核心结构严格限定为**四个名词**：**合集（Collection）**、**点（Node）**、**边（Edge / CollectionEdge）**、**卡片（Card，九种：原八种加富文本 `rich`）**。
 - **关键子系统**：
   - `apps/server`：Fastify 5 + Drizzle ORM + PostgreSQL 服务端，提供会话认证与图谱 CRUD / 搜索 API。
   - `apps/web`：React 19 + Vite 6 + `@rabjs/react` 前端应用，使用自定义 SVG 渲染全貌图与合集画布。
@@ -14,7 +14,7 @@
 
 - **语言与模块约束**：全仓开启 TypeScript `strict` 与 `verbatimModuleSyntax`。类型导入必须使用 `import type`，包内相对导入必须显式携带 `.js` 后缀。
 - **代码质量**：遵循 ESLint 9 配置，禁止遗留调试日志（`no-console: warn`）。
-- **概念边界**：不为特定领域新增结构名词，新内容形态只通过扩展或复用 8 种卡片承接。严禁按已废弃历史方案恢复“领域、点类型、扇区、固定关系词表、能力、证据、FSRS 复习、一跳星图”等概念。
+- **概念边界**：不为特定领域新增结构名词，新内容形态只通过扩展或复用九种卡片承接（原八种加富文本 `rich`）。严禁按已废弃历史方案恢复“领域、点类型、扇区、固定关系词表、能力、证据、FSRS 复习、一跳星图”等概念。
 - **文档与实现同步**：
   - 现行产品与技术基准为 `docs/prd/2026-10-25-graph.md` 与 `docs/tech/2026-10-25-graph.md`。
   - 待落地目标规格（如 `docs/prd/2026-10-25-canvas.md`）在实现时需先并入现行 PRD 与技术方案，再同步修改代码。

@@ -12,6 +12,7 @@ import {
   PLACE_FIELDS,
 } from './lines-card.js';
 import { NoteCard } from './note-card.js';
+import { RichCard } from './rich/rich-editor.js';
 import './card-stack.css';
 
 function OneCard(props: { card: Card; onUpdate: (content: Card['content']) => void; onDelete: () => void }) {
@@ -77,6 +78,15 @@ function OneCard(props: { card: Card; onUpdate: (content: Card['content']) => vo
           onDelete={props.onDelete}
         />
       );
+    case 'rich':
+      return (
+        <RichCard
+          cardId={props.card.id}
+          doc={props.card.content.doc}
+          onUpdate={props.onUpdate}
+          onDelete={props.onDelete}
+        />
+      );
     default:
       return null;
   }
@@ -84,14 +94,16 @@ function OneCard(props: { card: Card; onUpdate: (content: Card['content']) => vo
 
 export function CardStack(props: {
   cards: Card[];
+  types?: CardType[];
   onCreate: (type: CardType) => void;
   onUpdate: (id: string, content: Card['content']) => void;
   onDelete: (id: string) => void;
 }) {
+  const types = props.types ?? CARD_TYPES;
   return (
     <div className="card-stack">
       <div className="card-add">
-        {CARD_TYPES.map((type) => {
+        {types.map((type) => {
           const meta = cardMeta(type);
           return (
             <button key={type} type="button" className="card-add-btn" onClick={() => props.onCreate(type)}>

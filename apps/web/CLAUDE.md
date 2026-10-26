@@ -3,7 +3,7 @@
 ## 这个目录负责什么
 
 - 承载 `@unfold/web` 桌面端单页应用（React 19 + Vite 6 + React Router 7 + `@rabjs/react`）。
-- 实现应用壳层（`/library` 全貌页与 `/c/:id` 合集页）、自定义 SVG 交互画布、右侧玻璃检查器面板、8 种卡片编辑器与 `⌘K` 搜索面板。
+- 实现应用壳层（`/library` 全貌页与 `/c/:id` 合集页）、自定义 SVG 交互画布、右侧玻璃检查器面板、九种卡片编辑器（原八种加富文本 `rich`）与 `⌘K` 搜索面板。
 
 ## 放置约束
 
@@ -12,12 +12,12 @@
   - `src/shared/ui/<name>/`：与业务解耦的基础 UI 组件（`UButton`、`UField`、`USelect`、`UModal`、`UDateField`、`Toast` 等）及其同名样式 `<name>.css`。
   - `src/shared/panel/` 与 `src/shared/name-field/`：跨页面复用的检查器外壳（`PanelShell`）与内联名称编辑组件。
   - `src/features/<feature>/`：按业务功能划分的模块：
-    - `session/`：登录页、首页路由分流与 `SessionService`。
-    - `shell/`：左侧图标栏、合集目录侧栏、全局快捷键（`⌘K` 搜索、`⌘N` 新建合集）。
+    - `session/`：登录页、注册页、首页路由分流与 `SessionService`（含改名与头像上传）。
+    - `shell/`：左侧图标栏、合集目录侧栏、全局快捷键（`⌘K` 搜索、`⌘N` 新建合集）与「更多」账号弹层。
     - `library/`：全貌页及 `LibraryService`（状态壳层在 `library.service.ts`，领域操作按 `api`、`collections`、`graph`、`nodes`、`edges`、`collection-edges`、`cards`、`search` 拆分）。
     - `collection/`：合集详情页及点/边的右侧检查器面板與悬停预览（`NodePeek`）。
     - `board/`：自定义 SVG 视口（`GraphViewport`）、画布渲染（`BoardCanvas`、`BoardNodes`、`BoardEdges`）与图布局算法（`board-layout.ts`）。
-    - `cards/`：8 种卡片组件、Tiptap 笔记编辑器、highlight.js 代码卡、KaTeX 公式卡及卡片元数据注册表（`card-meta.ts`）。
+    - `cards/`：九种卡片组件（原八种加富文本 `rich`）、Tiptap 笔记编辑器、highlight.js 代码卡、KaTeX 公式卡及卡片元数据注册表（`card-meta.ts`）。
     - `paste-bench/`：独立于产品壳层之外的粘贴调测夹具页（`/paste-bench`）。
 - **不放什么**：
   - 不要在 `src/shared/ui/` 中引入 `LibraryService`、`SessionService` 或具体图谱业务类型。
@@ -34,5 +34,5 @@
   - 画布世界坐标与屏幕坐标换算统一通过 `GraphViewport` 内层 `<g>` 的 `getScreenCTM()` 完成。
   - 自动排布逻辑集中在 `features/board/board-layout.ts`（`layoutBoard` 纯函数），保持可独立单测。
 - **卡片扩展与渲染**：
-  - 8 种卡片的颜色与标签统一以 `features/cards/card-meta.ts` 为准，点本身不设类型色标。
+  - 九种卡片（原八种加富文本 `rich`）的颜色与标签统一以 `features/cards/card-meta.ts` 为准，点本身不设类型色标。
   - 卡片内容采用失焦自动保存（blur save），创建后不可更改卡片 `type`。

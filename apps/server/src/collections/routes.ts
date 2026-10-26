@@ -2,12 +2,13 @@ import {
   addMemberBodySchema,
   createCollectionBodySchema,
   createNodeBodySchema,
+  placementsBodySchema,
   updateCollectionBodySchema,
 } from '@unfold/dto';
 import { and, asc, count, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { FastifyInstance } from 'fastify';
-import { cards, collectionEdges, collections, edges, memberships, nodes } from '../db/schema.js';
+import { assets, cards, collectionEdges, collections, edges, memberships, nodes } from '../db/schema.js';
 import {
   activeCollection,
   activeNode,
@@ -25,6 +26,15 @@ import {
 } from '../http.js';
 
 type CardStat = { count: number; types: string[] };
+
+class PlacementNotMember extends Error {}
+
+/** 图片点的宽度只写入 120 到 480 */
+function clampImageWidth(width: number): number {
+  if (width < 120) return 120;
+  if (width > 480) return 480;
+  return width;
+}
 
 /** 图上的徽标数据：每个 owner 的活跃卡片数和出现过的卡片类型 */
 async function cardStats(db: Database, userId: string, ownerKind: 'node' | 'edge' | 'collection_edge', ownerIds: string[]) {
@@ -173,7 +183,16 @@ export function registerCollectionRoutes(app: FastifyInstance, db: Database, ses
     if (!collection) return reply.code(404).send(collectionNotFound);
 
     const memberRows = await db
-      .select({ id: nodes.id, name: nodes.name, description: nodes.description })
+      .select({
+        id: nodes.id,
+        name: nodes.name,
+        description: nodes.description,
+        kind: nodes.kind,
+        x: memberships.x,
+        y: memberships.y,
+        z: memberships.z,
+        imageWidth: memberships.imageWidth,
+      })
       .from(memberships)
       .innerJoin(nodes, eq(nodes.id, memberships.nodeId))
       .where(
@@ -202,13 +221,94 @@ export function registerCollectionRoutes(app: FastifyInstance, db: Database, ses
       .orderBy(asc(edges.createdAt), asc(edges.id));
     const nodeStats = await cardStats(db, user.id, 'node', memberIds);
     const edgeStats = await cardStats(db, user.id, 'edge', edgeRows.map((row) => row.id));
+    const assetRows = await db
+      .select({ id: assets.id, ownerId: assets.ownerId })
+      .from(assets)
+      .where(
+        and(eq(assets.userId, user.id), eq(assets.ownerKind, 'node'), inArray(assets.ownerId, memberIds)),
+      );
+    const assetByNode = new Map(assetRows.map((row) => [row.ownerId, row.id]));
     return reply.code(200).send({
       nodes: memberRows.map((row) => {
         const stat = nodeStats.get(row.id);
-        return { ...row, cardCount: stat?.count ?? 0, cardTypes: stat?.types ?? [] };
+        return {
+          id: row.id,
+          name: row.name,
+          description: row.description,
+          kind: row.kind,
+          x: row.x,
+          y: row.y,
+          z: row.z,
+          imageWidth: row.imageWidth,
+          assetId: assetByNode.get(row.id) ?? null,
+          cardCount: stat?.count ?? 0,
+          cardTypes: stat?.types ?? [],
+        };
       }),
       edges: edgeRows.map((row) => ({ ...row, cardCount: edgeStats.get(row.id)?.count ?? 0 })),
     });
+  });
+
+  app.patch('/api/collections/:id/placements', async (request, reply) => {
+    const user = await session(request, reply);
+    if (!user) return;
+
+    const params = idParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send(invalidBody());
+    const parsed = placementsBodySchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send(invalidBody(bodyMessage(parsed.error)));
+
+    let outcome: 'ok' | 'missing' | 'invalid';
+    try {
+      outcome = await db.transaction(async (tx) => {
+        const collection = await activeCollection(tx, user.id, params.data.id);
+        if (!collection) return 'missing';
+        const items = parsed.data.placements;
+        if (items.length === 0) return 'ok';
+
+        const ids = [...new Set(items.map((item) => item.nodeId))];
+        const rows = await tx
+          .select({ id: nodes.id, kind: nodes.kind })
+          .from(memberships)
+          .innerJoin(nodes, eq(nodes.id, memberships.nodeId))
+          .where(
+            and(
+              eq(memberships.collectionId, collection.id),
+              eq(nodes.userId, user.id),
+              isNull(nodes.deletedAt),
+              inArray(nodes.id, ids),
+            ),
+          );
+        const kinds = new Map(rows.map((row) => [row.id, row.kind]));
+        if (kinds.size !== ids.length) return 'invalid';
+
+        for (const item of items) {
+          const kind = kinds.get(item.nodeId);
+          if (kind === undefined) throw new PlacementNotMember();
+          const values: { x: number; y: number; z: number; imageWidth?: number } = {
+            x: item.x,
+            y: item.y,
+            z: item.z,
+          };
+          if (kind === 'image' && item.imageWidth !== undefined) {
+            values.imageWidth = clampImageWidth(item.imageWidth);
+          }
+          const updated = await tx
+            .update(memberships)
+            .set(values)
+            .where(and(eq(memberships.collectionId, collection.id), eq(memberships.nodeId, item.nodeId)))
+            .returning({ nodeId: memberships.nodeId });
+          if (updated.length !== 1) throw new PlacementNotMember();
+        }
+        return 'ok';
+      });
+    } catch (error) {
+      if (error instanceof PlacementNotMember) return reply.code(400).send(invalidBody());
+      throw error;
+    }
+    if (outcome === 'missing') return reply.code(404).send(collectionNotFound);
+    if (outcome === 'invalid') return reply.code(400).send(invalidBody());
+    return reply.code(204).send();
   });
 
   app.post('/api/collections/:id/nodes', async (request, reply) => {

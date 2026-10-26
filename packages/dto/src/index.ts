@@ -1,5 +1,17 @@
 export { normalizeName } from './normalize-name.js';
-export { errorBodySchema, loginBodySchema, type ErrorBody, type LoginBody } from './api.js';
+export {
+  accountSchema,
+  errorBodySchema,
+  loginBodySchema,
+  registerBodySchema,
+  usernameBodySchema,
+  usernameSchema,
+  type Account,
+  type ErrorBody,
+  type LoginBody,
+  type RegisterBody,
+  type UsernameBody,
+} from './api.js';
 export {
   addMemberBodySchema,
   cardContentSchemas,
@@ -22,6 +34,7 @@ export {
   nodeDetailSchema,
   nodeSchema,
   ownerKindSchema,
+  placementsBodySchema,
   searchHitSchema,
   searchResponseSchema,
   updateCardBodySchema,
@@ -48,6 +61,7 @@ export {
   type Node,
   type NodeDetail,
   type OwnerKind,
+  type PlacementsBody,
   type SearchHit,
   type SearchResponse,
   type UpdateCardBody,
@@ -55,3 +69,11 @@ export {
   type UpdateEdgeBody,
   type UpdateNodeBody,
 } from './graph.js';
+export {
+  richDocSchema,
+  richPatchContentSchema,
+  richStoredContentSchema,
+  richWriteContentSchema,
+  type RichDoc,
+  type RichNode,
+} from './rich-doc.js';

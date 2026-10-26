@@ -5,9 +5,12 @@ import { PanelShell } from '../../shared/panel/panel-shell.js';
 import { NameField } from '../../shared/name-field/name-field.js';
 import { UButton } from '../../shared/ui/button/button.js';
 import { UConfirm } from '../../shared/ui/modal/modal.js';
+import { CARD_TYPES } from '../cards/card-meta.js';
 import { CardStack } from '../cards/card-stack.js';
 import { emptyCard } from '../cards/empty-card.js';
 import { LibraryService } from '../library/library.service.js';
+
+const EDGE_CARD_TYPES = CARD_TYPES.filter((type) => type !== 'rich');
 
 export const EdgePanel = observer(function EdgePanel(props: { edgeId: string; onLeave: () => void; onTouched: () => void }) {
   const library = useService(LibraryService);
@@ -34,6 +37,7 @@ export const EdgePanel = observer(function EdgePanel(props: { edgeId: string; on
             }}
           />
           <CardStack
+            types={EDGE_CARD_TYPES}
             cards={detail.cards}
             onCreate={(type: CardType) => {
               void (async () => {

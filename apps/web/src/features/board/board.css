@@ -103,6 +103,81 @@
   transition: opacity 0.12s;
 }
 .bnode:hover .bnode-handle { opacity: 1; }
+.bnode.bnode-image .bnode-rect,
+.bnode.bnode-image:hover .bnode-rect {
+  stroke: none;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.05));
+}
+.bnode.bnode-image.on .bnode-rect {
+  stroke: none;
+  stroke-width: 1;
+  filter: none;
+}
+.bnode-image-frame {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 1;
+  pointer-events: none;
+  transition: stroke 0.12s;
+}
+.bnode-image:hover .bnode-image-frame { stroke: rgba(10, 102, 255, 0.55); }
+.bnode-image.on .bnode-image-frame {
+  stroke: var(--accent);
+  stroke-width: 1.8;
+  filter: drop-shadow(0 2px 8px rgba(10, 102, 255, 0.25));
+}
+.bnode-photo {
+  overflow: hidden;
+  pointer-events: none;
+}
+.bnode-photo-html {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+.bnode-photo-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+.bnode-upload {
+  fill: var(--faint);
+  font-size: 12px;
+  font-family: var(--sans);
+  dominant-baseline: middle;
+  pointer-events: none;
+}
+.board-intake {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  display: flex;
+}
+.node-face-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.node-face {
+  display: block;
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.03);
+}
+.bnode-resize {
+  fill: var(--card);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  cursor: ew-resize;
+}
 
 /* 边 */
 .bedge-hit { stroke: transparent; stroke-width: 18; fill: none; cursor: pointer; }

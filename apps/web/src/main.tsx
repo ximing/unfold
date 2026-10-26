@@ -8,6 +8,7 @@ import { CollectionPage } from './features/collection/collection-page.js';
 import { HomePage } from './features/session/home-page.js';
 import { LibraryPage } from './features/library/library-page.js';
 import { LoginPage } from './features/session/login-page.js';
+import { RegisterPage } from './features/session/register-page.js';
 import { Shell } from './features/shell/shell.js';
 import './foundation/base.css';
 import './foundation/utilities.css';
@@ -25,6 +26,7 @@ createRoot(root).render(
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
         <Route path="/paste-bench" element={<PasteBench />} />
         <Route element={<Shell />}>
           <Route path="/library" element={<LibraryPage />} />

@@ -40,7 +40,21 @@ describe('LibraryService', () => {
       rejectFirst = reject;
     });
     const graph = {
-      nodes: [{ id, name: '后来的点', description: '', cardCount: 0, cardTypes: [] }],
+      nodes: [
+        {
+          id,
+          name: '后来的点',
+          description: '',
+          kind: 'text',
+          x: null,
+          y: null,
+          z: null,
+          imageWidth: null,
+          assetId: null,
+          cardCount: 0,
+          cardTypes: [],
+        },
+      ],
       edges: [],
     };
     let calls = 0;
@@ -68,4 +82,120 @@ describe('LibraryService', () => {
     expect(library.error).toBe('');
     expect(library.peek).toBeNull();
   });
+
+  it('保存位置成功后写回当前图', async () => {
+    const other = '550e8400-e29b-41d4-a716-446655440001';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
+    const library = new LibraryService();
+    library.graphId = 'col-1';
+    library.graph = {
+      nodes: [
+        { ...placedNode, id, name: '甲' },
+        { ...placedNode, id: other, name: '乙', x: 1, y: 2, z: 0 },
+      ],
+      edges: [],
+    };
+    await expect(library.savePlacements('col-1', [{ nodeId: id, x: 12.5, y: -4, z: 3 }])).resolves.toBe(true);
+    expect(library.graph.nodes[0]).toMatchObject({ x: 12.5, y: -4, z: 3 });
+    expect(library.graph.nodes[1]).toMatchObject({ x: 1, y: 2, z: 0 });
+    expect(library.error).toBe('');
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      '/api/collections/col-1/placements',
+      expect.objectContaining({
+        method: 'PATCH',
+        credentials: 'include',
+        body: JSON.stringify({ placements: [{ nodeId: id, x: 12.5, y: -4, z: 3 }] }),
+      }),
+    );
+  });
+
+  it('保存图片宽度成功后写回 imageWidth', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
+    const library = new LibraryService();
+    library.graphId = 'col-1';
+    library.graph = { nodes: [{ ...placedNode, x: 1, y: 2, z: 0, imageWidth: null }], edges: [] };
+    await expect(
+      library.savePlacements('col-1', [{ nodeId: id, x: 1, y: 2, z: 0, imageWidth: 300 }]),
+    ).resolves.toBe(true);
+    expect(library.graph.nodes[0]).toMatchObject({ x: 1, y: 2, z: 0, imageWidth: 300 });
+  });
+
+  it('只保存坐标时保留原来的 imageWidth', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
+    const library = new LibraryService();
+    library.graphId = 'col-1';
+    library.graph = { nodes: [{ ...placedNode, x: 1, y: 2, z: 0, imageWidth: 240 }], edges: [] };
+    await expect(library.savePlacements('col-1', [{ nodeId: id, x: 5, y: 6, z: 1 }])).resolves.toBe(true);
+    expect(library.graph.nodes[0]).toMatchObject({ x: 5, y: 6, z: 1, imageWidth: 240 });
+  });
+
+  it('保存位置失败时保留坐标并显示服务端说明', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: { code: 'invalid_body', message: '位置不对' } }), {
+          status: 400,
+          headers: { 'content-type': 'application/json' },
+        }),
+      ),
+    );
+    const library = new LibraryService();
+    library.graphId = 'col-1';
+    library.graph = { nodes: [{ ...placedNode, x: 3, y: 4, z: 1, imageWidth: 240 }], edges: [] };
+    await expect(
+      library.savePlacements('col-1', [{ nodeId: id, x: 9, y: 9, z: 2, imageWidth: 300 }]),
+    ).resolves.toBe(false);
+    expect(library.graph.nodes[0]).toMatchObject({ x: 3, y: 4, z: 1, imageWidth: 240 });
+    expect(library.error).toBe('位置不对');
+  });
+
+  it('保存位置断开时返回 false', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    const library = new LibraryService();
+    library.graphId = 'col-1';
+    library.graph = { nodes: [{ ...placedNode, imageWidth: 240 }], edges: [] };
+    await expect(
+      library.savePlacements('col-1', [{ nodeId: id, x: 1, y: 1, z: 1, imageWidth: 300 }]),
+    ).resolves.toBe(false);
+    expect(library.error).toBe('网络没有连上');
+    expect(library.graph.nodes[0]).toMatchObject({ x: null, y: null, z: null, imageWidth: 240 });
+  });
+
+  it('先发出的位置请求后完成时不会盖住后一次保存', async () => {
+    let releaseFirst: (value: Response) => void = () => {};
+    const first = new Promise<Response>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let calls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => {
+        calls += 1;
+        return calls === 1 ? first : Promise.resolve(new Response(null, { status: 204 }));
+      }),
+    );
+    const library = new LibraryService();
+    library.graphId = 'col-1';
+    library.graph = { nodes: [{ ...placedNode, x: 0, y: 0, z: 0 }], edges: [] };
+    const older = library.savePlacements('col-1', [{ nodeId: id, x: 1, y: 1, z: 1 }]);
+    const newer = library.savePlacements('col-1', [{ nodeId: id, x: 9, y: 8, z: 4 }]);
+    releaseFirst(new Response(null, { status: 204 }));
+    await older;
+    await newer;
+    expect(library.graph.nodes[0]).toMatchObject({ x: 9, y: 8, z: 4 });
+  });
 });
+
+const placedNode = {
+  id,
+  name: '甲',
+  description: '',
+  kind: 'text' as const,
+  x: null,
+  y: null,
+  z: null,
+  imageWidth: null,
+  assetId: null,
+  cardCount: 0,
+  cardTypes: [],
+};

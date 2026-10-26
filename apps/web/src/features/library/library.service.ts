@@ -24,6 +24,7 @@ import {
 import { createEdge, deleteEdge, loadEdge, renameEdge } from './edges.js';
 import { loadGraph, loadLibrary } from './graph.js';
 import { clearPeek, deleteNode, describeNode, loadNode, loadPeek, renameNode } from './nodes.js';
+import { savePlacements, type PlacementWrite } from './placements.js';
 import { clearSearch, search } from './search.js';
 
 export type LibraryJobs = {
@@ -100,6 +101,10 @@ export class LibraryService extends Service implements LibraryState {
 
   async loadGraph(collectionId: string): Promise<boolean> {
     return loadGraph(this, collectionId);
+  }
+
+  async savePlacements(collectionId: string, placements: PlacementWrite[]): Promise<boolean> {
+    return savePlacements(this, collectionId, placements);
   }
 
   async loadNode(id: string): Promise<NodeDetail | null> {

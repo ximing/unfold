@@ -1,7 +1,8 @@
 import type { Card, CardType, OwnerKind } from '@unfold/dto';
 import { and, asc, eq, inArray, isNull, max, or } from 'drizzle-orm';
+import { removeAssetFiles } from '../assets/files.js';
 import type { createDb } from '../db/client.js';
-import { cards, collectionEdges, collections, edges, memberships, nodes } from '../db/schema.js';
+import { assets, cards, collectionEdges, collections, edges, memberships, nodes } from '../db/schema.js';
 
 export type Database = ReturnType<typeof createDb>;
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -27,7 +28,7 @@ export function presentCard(row: {
     type: row.cardType as CardType,
     position: row.position,
     content: row.content as Card['content'],
-  };
+  } as Card;
 }
 
 export async function activeCollection(db: Query, userId: string, id: string) {
@@ -161,13 +162,13 @@ export async function removeCollection(db: Database, userId: string, id: string)
 }
 
 export async function removeNode(db: Database, userId: string, id: string) {
-  return db.transaction(async (tx) => {
+  const assetIds = await db.transaction(async (tx) => {
     const updated = await tx
       .update(nodes)
       .set(stamp())
       .where(and(eq(nodes.id, id), eq(nodes.userId, userId), isNull(nodes.deletedAt)))
       .returning({ id: nodes.id });
-    if (!updated[0]) return false;
+    if (!updated[0]) return null;
 
     const linked = await tx
       .select({ id: edges.id })
@@ -187,8 +188,60 @@ export async function removeNode(db: Database, userId: string, id: string) {
         and(eq(cards.userId, userId), eq(cards.ownerKind, 'node'), eq(cards.ownerId, id), isNull(cards.deletedAt)),
       );
     await tx.delete(memberships).where(eq(memberships.nodeId, id));
-    return true;
+    return removedNodeAssetIds(tx, userId, id);
   });
+  if (assetIds === null) return false;
+  await removeAssetFiles(assetIds);
+  return true;
+}
+
+/** 软删这张卡，并在提交后删掉它名下的文件。 */
+export async function removeCard(db: Database, userId: string, id: string) {
+  const assetIds = await db.transaction(async (tx) => {
+    const updated = await tx
+      .update(cards)
+      .set(stamp())
+      .where(and(eq(cards.id, id), eq(cards.userId, userId), isNull(cards.deletedAt)))
+      .returning({ id: cards.id });
+    if (!updated[0]) return null;
+    const rows = await tx
+      .select({ id: assets.id })
+      .from(assets)
+      .where(and(eq(assets.userId, userId), eq(assets.ownerKind, 'card'), eq(assets.ownerId, id)));
+    const ids = rows.map((row) => row.id);
+    if (ids.length > 0) {
+      await tx.delete(assets).where(and(eq(assets.userId, userId), inArray(assets.id, ids)));
+    }
+    return ids;
+  });
+  if (assetIds === null) return false;
+  await removeAssetFiles(assetIds);
+  return true;
+}
+
+/** 点上的卡片刚被软删，名下资产仍要清掉，所以不按 deleted_at 过滤。 */
+async function removedNodeAssetIds(tx: Tx, userId: string, nodeId: string): Promise<string[]> {
+  const nodeCards = await tx
+    .select({ id: cards.id })
+    .from(cards)
+    .where(and(eq(cards.userId, userId), eq(cards.ownerKind, 'node'), eq(cards.ownerId, nodeId)));
+  const cardIds = nodeCards.map((row) => row.id);
+  const nodeAssets = await tx
+    .select({ id: assets.id })
+    .from(assets)
+    .where(and(eq(assets.userId, userId), eq(assets.ownerKind, 'node'), eq(assets.ownerId, nodeId)));
+  const cardAssets =
+    cardIds.length === 0
+      ? []
+      : await tx
+          .select({ id: assets.id })
+          .from(assets)
+          .where(and(eq(assets.userId, userId), eq(assets.ownerKind, 'card'), inArray(assets.ownerId, cardIds)));
+  const assetIds = [...nodeAssets, ...cardAssets].map((row) => row.id);
+  if (assetIds.length > 0) {
+    await tx.delete(assets).where(and(eq(assets.userId, userId), inArray(assets.id, assetIds)));
+  }
+  return assetIds;
 }
 
 export async function removeEdge(db: Database, userId: string, id: string) {

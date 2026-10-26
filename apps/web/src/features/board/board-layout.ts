@@ -69,3 +69,75 @@ export function layoutBoard(items: readonly BoardItem[], links: readonly BoardLi
     })),
   );
 }
+
+export type SavedBoardItem = BoardItem & { x: number | null; y: number | null };
+
+const NUDGE = 24;
+const CLEARANCE = 1;
+
+export function isFiniteNumber(value: number | null | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+/** 左上角从 center 开始；与任一已占用左上角距离小于 1 时，x、y 各加 24，直到让开。 */
+export function placeNewCorners(
+  count: number,
+  center: { x: number; y: number },
+  occupied: readonly { x: number; y: number }[],
+): { x: number; y: number }[] {
+  const taken = occupied.map((point) => ({ x: point.x, y: point.y }));
+  const placed: { x: number; y: number }[] = [];
+  for (let index = 0; index < count; index += 1) {
+    let x = center.x;
+    let y = center.y;
+    while (taken.some((point) => Math.hypot(point.x - x, point.y - y) < CLEARANCE)) {
+      x += NUDGE;
+      y += NUDGE;
+    }
+    const point = { x, y };
+    taken.push(point);
+    placed.push(point);
+  }
+  return placed;
+}
+
+/**
+ * 全部 x 都不是有限数时，结果与 layoutBoard 相同。
+ * 否则保留已有坐标，未放置的点用 placeNewCorners，宽高仍取 layoutBoard。
+ */
+export function layoutPlaced(
+  items: readonly SavedBoardItem[],
+  links: readonly BoardLink[],
+  center: { x: number; y: number },
+): BoardBox[] {
+  const laid = layoutBoard(items, links);
+  if (items.every((item) => !isFiniteNumber(item.x))) return laid;
+
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const occupied: { x: number; y: number }[] = [];
+  const missing: string[] = [];
+  for (const box of laid) {
+    const item = byId.get(box.id);
+    if (item && isFiniteNumber(item.x)) occupied.push({ x: item.x, y: isFiniteNumber(item.y) ? item.y : 0 });
+    else missing.push(box.id);
+  }
+  const corners = placeNewCorners(missing.length, center, occupied);
+  const cornerOf = new Map(missing.map((id, index) => [id, corners[index]]));
+  return laid.map((box) => {
+    const item = byId.get(box.id);
+    if (item && isFiniteNumber(item.x)) {
+      return { ...box, x: item.x, y: isFiniteNumber(item.y) ? item.y : 0 };
+    }
+    const corner = cornerOf.get(box.id);
+    return corner ? { ...box, x: corner.x, y: corner.y } : box;
+  });
+}
+
+/** null 当 0，再加 1。没有数时结果是 1。 */
+export function nextPlacementZ(values: readonly (number | null | undefined)[]): number {
+  let max = 0;
+  for (const value of values) {
+    if (isFiniteNumber(value) && value > max) max = value;
+  }
+  return max + 1;
+}
