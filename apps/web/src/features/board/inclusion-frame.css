@@ -1,0 +1,29 @@
+.inclusion-frame {
+  fill: rgba(10, 102, 255, 0.045);
+  stroke: rgba(10, 102, 255, 0.45);
+  stroke-width: 1.25;
+  stroke-dasharray: 5 4;
+}
+
+.inclusion-title { cursor: grab; }
+.inclusion-title rect {
+  fill: var(--card);
+  stroke: rgba(10, 102, 255, 0.45);
+  stroke-width: 1;
+}
+.inclusion-title.on rect {
+  stroke: var(--accent);
+  stroke-width: 1.6;
+}
+.inclusion-title text {
+  fill: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--sans);
+  dominant-baseline: middle;
+  pointer-events: none;
+}
+.inclusion-title text.rel {
+  fill: var(--mute);
+  font-weight: 500;
+}

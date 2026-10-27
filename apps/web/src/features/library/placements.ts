@@ -51,19 +51,28 @@ async function writePlacements(
     state.error = await errorMessage(res, '位置没有保存');
     return false;
   }
-  if (state.graphId !== collectionId) return true;
   const byId = new Map(placements.map((item) => [item.nodeId, item]));
+  const apply = <T extends { id: string; x: number | null; y: number | null; z: number | null; imageWidth: number | null }>(
+    node: T,
+  ): T => {
+    const next = byId.get(node.id);
+    if (!next) return node;
+    const imageWidth =
+      typeof next.imageWidth === 'number' && Number.isFinite(next.imageWidth)
+        ? placedImageWidth(next.imageWidth)
+        : node.imageWidth;
+    return { ...node, x: next.x, y: next.y, z: next.z, imageWidth };
+  };
+  if (state.graphId === collectionId) {
+    state.graph = { ...state.graph, nodes: state.graph.nodes.map(apply) };
+    return true;
+  }
+  if (!state.graph.inclusions.some((item) => item.childId === collectionId)) return true;
   state.graph = {
     ...state.graph,
-    nodes: state.graph.nodes.map((node) => {
-      const next = byId.get(node.id);
-      if (!next) return node;
-      const imageWidth =
-        typeof next.imageWidth === 'number' && Number.isFinite(next.imageWidth)
-          ? placedImageWidth(next.imageWidth)
-          : node.imageWidth;
-      return { ...node, x: next.x, y: next.y, z: next.z, imageWidth };
-    }),
+    inclusions: state.graph.inclusions.map((item) =>
+      item.childId === collectionId ? { ...item, nodes: item.nodes.map(apply) } : item,
+    ),
   };
   return true;
 }

@@ -23,7 +23,7 @@ export function isTextEditing(target: EventTarget | null): boolean {
   ) {
     return true;
   }
-  return target.closest('.tiptap, input, textarea, [contenteditable="true"]') !== null;
+  return target.closest('.tiptap, input, textarea, [contenteditable="true"], .usel') !== null;
 }
 
 /** 检查器打开时，Delete / Backspace 只请求确认，不直接删除。 */

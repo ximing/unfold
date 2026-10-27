@@ -9,6 +9,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  index,
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
@@ -24,12 +25,14 @@ export const users = pgTable('users', {
   canvasLabels: text('canvas_labels').notNull().default('always'),
   canvasMarkers: boolean('canvas_markers').notNull().default(true),
   canvasMinimap: boolean('canvas_minimap').notNull().default(true),
+  canvasGrow: text('canvas_grow').notNull().default('down'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
 }, (table) => [
   check('users_canvas_route_check', sql`${table.canvasRoute} IN ('straight', 'curve', 'orthogonal')`),
   check('users_canvas_labels_check', sql`${table.canvasLabels} IN ('always', 'focus')`),
+  check('users_canvas_grow_check', sql`${table.canvasGrow} IN ('up', 'down', 'left', 'right')`),
 ]);
 
 export const collections = pgTable('collections', {
@@ -144,6 +147,27 @@ export const collectionEdges = pgTable(
     uniqueIndex('collection_edges_user_from_to_label_active')
       .on(table.userId, table.fromId, table.toId, table.label)
       .where(sql`${table.deletedAt} IS NULL`),
+  ],
+);
+
+export const collectionInclusions = pgTable(
+  'collection_inclusions',
+  {
+    parentId: uuid('parent_id')
+      .notNull()
+      .references(() => collections.id),
+    childId: uuid('child_id')
+      .notNull()
+      .references(() => collections.id),
+    x: doublePrecision('x').notNull(),
+    y: doublePrecision('y').notNull(),
+    collapsed: boolean('collapsed').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.parentId, table.childId] }),
+    check('collection_inclusions_no_self', sql`${table.parentId} <> ${table.childId}`),
+    index('collection_inclusions_child_idx').on(table.childId),
   ],
 );
 

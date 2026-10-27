@@ -6,6 +6,7 @@ export function CardFrame(props: {
   type: CardType;
   className: string;
   onDelete: () => void;
+  headerExtra?: ReactNode;
   children: ReactNode;
 }) {
   const meta = cardMeta(props.type);
@@ -16,7 +17,8 @@ export function CardFrame(props: {
           {meta.glyph}
         </i>
         <span className="kind-name">{meta.label}</span>
-        <button type="button" onClick={props.onDelete}>
+        {props.headerExtra}
+        <button type="button" className="kind-delete" onClick={props.onDelete}>
           删除
         </button>
       </header>

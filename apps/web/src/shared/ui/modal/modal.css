@@ -25,7 +25,13 @@
 }
 .modal.wide { width: 520px; }
 .modal.xl { width: 760px; }
-.modal .modal-body { max-height: 70vh; overflow-y: auto; }
+.modal .modal-body {
+  max-height: 70vh;
+  overflow-y: auto;
+  /* 焦点环在边框外 4px。纵向滚动会把横向也裁成 auto，贴边时左右高亮被切掉。 */
+  margin-inline: -6px;
+  padding-inline: 6px;
+}
 .modal h4 { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
 .modal > p, .modal .modal-body > p { font-size: 13px; color: var(--mute); margin-bottom: 18px; }
 .modal .ft { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 18px; }

@@ -79,6 +79,7 @@ describe('canvas settings', () => {
       labels: 'focus',
       markers: false,
       minimap: false,
+      grow: 'up',
     };
     const patched = await call('PATCH', '/api/me/canvas', next);
     expect(patched.statusCode).toBe(200);
@@ -88,6 +89,10 @@ describe('canvas settings', () => {
     const bad = await call('PATCH', '/api/me/canvas', { ...next, route: 'arc' });
     expect(bad.statusCode).toBe(400);
     expect(errorOf(bad.json())).toEqual({ code: 'invalid_body', message: '请求不正确' });
+
+    const badGrow = await call('PATCH', '/api/me/canvas', { ...next, grow: 'sideways' });
+    expect(badGrow.statusCode).toBe(400);
+    expect(errorOf(badGrow.json()).code).toBe('invalid_body');
 
     const anon = await call('PATCH', '/api/me/canvas', next, false);
     expect(anon.statusCode).toBe(401);

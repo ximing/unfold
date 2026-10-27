@@ -53,7 +53,7 @@ host unfold_prod unfold_prod_user 0.0.0.0/0 scram-sha-256
 
 口令只在应用机 `.env` 和两台机器的 `/root/.unfold-prod-password`（600）。迁移用上一节的命令。
 
-业务表：`users`、`collections`、`nodes`、`memberships`、`edges`、`collection_edges`、`cards`、`assets`。
+业务表：`users`、`collections`、`nodes`、`memberships`、`edges`、`collection_edges`、`collection_inclusions`、`cards`、`assets`。
 
 ## 对象存储
 

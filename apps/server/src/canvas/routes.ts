@@ -23,6 +23,7 @@ export function registerCanvasRoutes(app: FastifyInstance, db: Database, session
         canvasLabels: parsed.data.labels,
         canvasMarkers: parsed.data.markers,
         canvasMinimap: parsed.data.minimap,
+        canvasGrow: parsed.data.grow,
         updatedAt: new Date(),
       })
       .where(and(eq(users.id, user.id), isNull(users.deletedAt)))
@@ -33,6 +34,7 @@ export function registerCanvasRoutes(app: FastifyInstance, db: Database, session
         canvasLabels: users.canvasLabels,
         canvasMarkers: users.canvasMarkers,
         canvasMinimap: users.canvasMinimap,
+        canvasGrow: users.canvasGrow,
       });
     const row = updated[0];
     if (!row) return reply.code(401).send({ error: { code: 'unauthenticated', message: '未登录' } });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { boardMenu, type BoardMenuTarget } from './board-menu.js';
+import { boardMenu, inclusionMenu, type BoardMenuTarget } from './board-menu.js';
 
 function target(patch: Partial<BoardMenuTarget> & Pick<BoardMenuTarget, 'kind'>): BoardMenuTarget {
   return {
@@ -14,6 +14,7 @@ function target(patch: Partial<BoardMenuTarget> & Pick<BoardMenuTarget, 'kind'>)
     canDeleteItem: false,
     canRelabel: false,
     canDeleteLink: false,
+    canInsert: false,
     ...patch,
   };
 }
@@ -34,6 +35,22 @@ describe('boardMenu', () => {
 
   it('全貌空白只新建合集', () => {
     expect(labels({ kind: 'canvas', canCreate: true, canImage: true })).toEqual(['新建合集']);
+  });
+
+  it('合集空白可以插入子集合', () => {
+    expect(
+      labels({ kind: 'canvas', tools: true, canCreate: true, canImage: true, canInsert: true }),
+    ).toEqual(['添加文字点', '添加图片', '插入子集合']);
+  });
+
+  it('收起的子集合可以展开或移出', () => {
+    const items = inclusionMenu(true);
+    expect(items.map((item) => (item.separator ? '|' : item.label))).toEqual(['展开', '|', '移出这个合集']);
+    expect(items.find((item) => item.action === 'remove-inclusion')).toMatchObject({ danger: true });
+  });
+
+  it('展开的子集合可以收起或移出', () => {
+    expect(inclusionMenu(false).map((item) => item.label)).toEqual(['收起', '', '移出这个合集']);
   });
 
   it('合集的点有改名、生长、连线和删除', () => {

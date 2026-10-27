@@ -5,14 +5,17 @@ import type {
   CollectionEdgeDetail,
   CollectionGraph,
   CreateCardBody,
+  CreateInclusionBody,
   Edge,
   EdgeAppearance,
   EdgeDetail,
+  InclusionCandidates,
   Library,
   LibraryCollection,
   Node,
   NodeDetail,
   SearchHit,
+  UpdateInclusionBody,
 } from '@unfold/dto';
 import { defaultEdgeAppearance } from '@unfold/dto';
 import { watchWrite } from '../../shared/save/save-bus.js';
@@ -27,6 +30,7 @@ import {
 } from './collection-edges.js';
 import { createEdge, deleteEdge, loadEdge, renameEdge } from './edges.js';
 import { loadGraph, loadLibrary } from './graph.js';
+import { createInclusion, loadInclusionCandidates, removeInclusion, updateInclusion } from './inclusions.js';
 import { clearPeek, deleteNode, describeNode, loadNode, loadPeek, renameNode } from './nodes.js';
 import { savePlacements, type PlacementWrite } from './placements.js';
 import { pullView, setSyncView, type SyncView } from './pull.js';
@@ -58,7 +62,13 @@ export type LibraryState = {
 export class LibraryService extends Service implements LibraryState {
   collections: LibraryCollection[] = [];
   libraryGraph: Library | null = null;
-  graph: CollectionGraph = { nodes: [], edges: [], appearance: defaultEdgeAppearance };
+  graph: CollectionGraph = {
+    nodes: [],
+    edges: [],
+    bridges: [],
+    inclusions: [],
+    appearance: defaultEdgeAppearance,
+  };
   graphId = '';
   nodeDetail: NodeDetail | null = null;
   edgeDetail: EdgeDetail | null = null;
@@ -119,6 +129,22 @@ export class LibraryService extends Service implements LibraryState {
 
   async savePlacements(collectionId: string, placements: PlacementWrite[]): Promise<boolean> {
     return this.write(() => savePlacements(this, collectionId, placements), (ok) => ok);
+  }
+
+  loadInclusionCandidates(collectionId: string): Promise<InclusionCandidates | null> {
+    return loadInclusionCandidates(this, collectionId);
+  }
+
+  createInclusion(collectionId: string, body: CreateInclusionBody): Promise<boolean> {
+    return this.write(() => createInclusion(this, collectionId, body), (ok) => ok);
+  }
+
+  updateInclusion(collectionId: string, childId: string, body: UpdateInclusionBody): Promise<boolean> {
+    return this.write(() => updateInclusion(this, collectionId, childId, body), (ok) => ok);
+  }
+
+  removeInclusion(collectionId: string, childId: string): Promise<boolean> {
+    return this.write(() => removeInclusion(this, collectionId, childId), (ok) => ok);
   }
 
   async loadNode(id: string): Promise<NodeDetail | null> {

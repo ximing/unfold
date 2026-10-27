@@ -1,26 +1,37 @@
 import {
   addMemberBodySchema,
   createCollectionBodySchema,
+  createInclusionBodySchema,
   createNodeBodySchema,
   edgeAppearanceSchema,
   placementsBodySchema,
   updateCollectionBodySchema,
+  updateInclusionBodySchema,
   type EdgeAppearance,
 } from '@unfold/dto';
 import { and, asc, count, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import type { FastifyInstance } from 'fastify';
-import { assets, cards, collectionEdges, collections, edges, memberships, nodes } from '../db/schema.js';
+import type { FastifyInstance, FastifyReply } from 'fastify';
+import { cards, collectionEdges, collections, memberships, nodes } from '../db/schema.js';
 import {
   activeCollection,
   activeNode,
   type Database,
   removeCollection,
 } from '../graph/db.js';
+import { assembleCollectionGraph } from './graph-view.js';
+import { createInclusion, listInclusionCandidates, removeInclusion, updateInclusion, type InclusionFailure } from './inclusions.js';
 import {
   bodyMessage,
   collectionNotFound,
+  edgeConflict,
   idParamsSchema,
+  inclusionCycle,
+  inclusionExists,
+  inclusionNeedsLabel,
+  inclusionNotFound,
+  inclusionParamsSchema,
+  inclusionSelf,
   invalidBody,
   memberParamsSchema,
   nodeNotFound,
@@ -61,6 +72,16 @@ async function readAppearance(db: Database, userId: string, id: string): Promise
 }
 
 class PlacementNotMember extends Error {}
+
+function sendInclusionFailure(reply: FastifyReply, failure: InclusionFailure) {
+  if (failure === 'missing') return reply.code(404).send(collectionNotFound);
+  if (failure === 'self') return reply.code(400).send(inclusionSelf);
+  if (failure === 'cycle') return reply.code(400).send(inclusionCycle);
+  if (failure === 'exists') return reply.code(409).send(inclusionExists);
+  if (failure === 'needs-label') return reply.code(400).send(inclusionNeedsLabel);
+  if (failure === 'conflict') return reply.code(409).send(edgeConflict);
+  return reply.code(404).send(inclusionNotFound);
+}
 
 /** 图片点的宽度只写入 120 到 480 */
 function clampImageWidth(width: number): number {
@@ -216,73 +237,55 @@ export function registerCollectionRoutes(app: FastifyInstance, db: Database, ses
     if (!collection) return reply.code(404).send(collectionNotFound);
     const appearance = await readAppearance(db, user.id, collection.id);
     if (!appearance) return reply.code(404).send(collectionNotFound);
+    const body = await assembleCollectionGraph(db, user.id, collection.id, appearance);
+    return reply.code(200).send(body);
+  });
 
-    const memberRows = await db
-      .select({
-        id: nodes.id,
-        name: nodes.name,
-        description: nodes.description,
-        kind: nodes.kind,
-        x: memberships.x,
-        y: memberships.y,
-        z: memberships.z,
-        imageWidth: memberships.imageWidth,
-      })
-      .from(memberships)
-      .innerJoin(nodes, eq(nodes.id, memberships.nodeId))
-      .where(
-        and(
-          eq(memberships.collectionId, collection.id),
-          eq(nodes.userId, user.id),
-          isNull(nodes.deletedAt),
-        ),
-      )
-      .orderBy(asc(nodes.createdAt), asc(nodes.id));
+  app.get('/api/collections/:id/inclusion-candidates', async (request, reply) => {
+    const user = await session(request, reply);
+    if (!user) return;
+    const params = idParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send(invalidBody());
+    const body = await listInclusionCandidates(db, user.id, params.data.id);
+    if (!body) return reply.code(404).send(collectionNotFound);
+    return reply.code(200).send(body);
+  });
 
-    if (memberRows.length === 0) return reply.code(200).send({ nodes: [], edges: [], appearance });
+  app.post('/api/collections/:id/inclusions', async (request, reply) => {
+    const user = await session(request, reply);
+    if (!user) return;
+    const params = idParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send(invalidBody());
+    const parsed = createInclusionBodySchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send(invalidBody(bodyMessage(parsed.error)));
+    const outcome = await createInclusion(db, user.id, params.data.id, parsed.data);
+    if (outcome !== 'ok') return sendInclusionFailure(reply, outcome);
+    return reply.code(201).send({ childId: parsed.data.childId });
+  });
 
-    const memberIds = memberRows.map((row) => row.id);
-    const edgeRows = await db
-      .select({ id: edges.id, fromId: edges.fromId, toId: edges.toId, label: edges.label })
-      .from(edges)
-      .where(
-        and(
-          eq(edges.userId, user.id),
-          isNull(edges.deletedAt),
-          inArray(edges.fromId, memberIds),
-          inArray(edges.toId, memberIds),
-        ),
-      )
-      .orderBy(asc(edges.createdAt), asc(edges.id));
-    const nodeStats = await cardStats(db, user.id, 'node', memberIds);
-    const edgeStats = await cardStats(db, user.id, 'edge', edgeRows.map((row) => row.id));
-    const assetRows = await db
-      .select({ id: assets.id, ownerId: assets.ownerId })
-      .from(assets)
-      .where(
-        and(eq(assets.userId, user.id), eq(assets.ownerKind, 'node'), inArray(assets.ownerId, memberIds)),
-      );
-    const assetByNode = new Map(assetRows.map((row) => [row.ownerId, row.id]));
-    return reply.code(200).send({
-      nodes: memberRows.map((row) => {
-        const stat = nodeStats.get(row.id);
-        return {
-          id: row.id,
-          name: row.name,
-          description: row.description,
-          kind: row.kind,
-          x: row.x,
-          y: row.y,
-          z: row.z,
-          imageWidth: row.imageWidth,
-          assetId: assetByNode.get(row.id) ?? null,
-          cardCount: stat?.count ?? 0,
-          cardTypes: stat?.types ?? [],
-        };
-      }),
-      edges: edgeRows.map((row) => ({ ...row, cardCount: edgeStats.get(row.id)?.count ?? 0 })),
-      appearance,
-    });
+  app.patch('/api/collections/:id/inclusions/:childId', async (request, reply) => {
+    const user = await session(request, reply);
+    if (!user) return;
+    const params = inclusionParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send(invalidBody());
+    const parsed = updateInclusionBodySchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send(invalidBody(bodyMessage(parsed.error)));
+    if (parsed.data.x === undefined && parsed.data.y === undefined && parsed.data.collapsed === undefined) {
+      return reply.code(400).send(invalidBody());
+    }
+    const outcome = await updateInclusion(db, user.id, params.data.id, params.data.childId, parsed.data);
+    if (outcome !== 'ok') return sendInclusionFailure(reply, outcome);
+    return reply.code(204).send();
+  });
+
+  app.delete('/api/collections/:id/inclusions/:childId', async (request, reply) => {
+    const user = await session(request, reply);
+    if (!user) return;
+    const params = inclusionParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send(invalidBody());
+    const outcome = await removeInclusion(db, user.id, params.data.id, params.data.childId);
+    if (outcome !== 'ok') return sendInclusionFailure(reply, outcome);
+    return reply.code(204).send();
   });
 
   app.patch('/api/collections/:id/appearance', async (request, reply) => {

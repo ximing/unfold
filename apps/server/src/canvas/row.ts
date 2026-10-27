@@ -8,6 +8,7 @@ export const canvasSelection = {
   canvasLabels: users.canvasLabels,
   canvasMarkers: users.canvasMarkers,
   canvasMinimap: users.canvasMinimap,
+  canvasGrow: users.canvasGrow,
 };
 
 export function canvasFromRow(row: {
@@ -17,6 +18,7 @@ export function canvasFromRow(row: {
   canvasLabels: string;
   canvasMarkers: boolean;
   canvasMinimap: boolean;
+  canvasGrow: string;
 }): CanvasPrefs {
   return canvasPrefsSchema.parse({
     route: row.canvasRoute,
@@ -25,5 +27,6 @@ export function canvasFromRow(row: {
     labels: row.canvasLabels,
     markers: row.canvasMarkers,
     minimap: row.canvasMinimap,
+    grow: row.canvasGrow,
   });
 }

@@ -9,19 +9,54 @@ describe('planGrow', () => {
     expect(GROW_CHILD_LABEL).toBe('下一级');
   });
 
-  it('下级放在右侧，边从选中点指出', () => {
+  it('下级默认放在下方，边从选中点指出', () => {
     const plan = planGrow('child', 'a', [], anchor, [anchor]);
-    expect(plan).toEqual({ ok: true, fromId: 'a', x: anchor.x + anchor.w + GAP_X, y: anchor.y });
+    expect(plan).toEqual({ ok: true, fromId: 'a', x: anchor.x, y: anchor.y + anchor.h + GAP_Y });
   });
 
-  it('右侧被挡住时向下让', () => {
-    const blocked = { x: anchor.x + anchor.w + GAP_X, y: anchor.y, w: NODE_W, h: NODE_H };
-    const plan = planGrow('child', 'a', [], anchor, [anchor, blocked]);
-    expect(plan).toEqual({
+  it('下级方向可以改成上、左、右', () => {
+    expect(planGrow('child', 'a', [], anchor, [anchor], 'up')).toEqual({
       ok: true,
       fromId: 'a',
-      x: blocked.x,
+      x: anchor.x,
+      y: anchor.y - NODE_H - GAP_Y,
+    });
+    expect(planGrow('child', 'a', [], anchor, [anchor], 'left')).toEqual({
+      ok: true,
+      fromId: 'a',
+      x: anchor.x - NODE_W - GAP_X,
+      y: anchor.y,
+    });
+    expect(planGrow('child', 'a', [], anchor, [anchor], 'right')).toEqual({
+      ok: true,
+      fromId: 'a',
+      x: anchor.x + anchor.w + GAP_X,
+      y: anchor.y,
+    });
+  });
+
+  it('左右被挡住时向下让，上下被挡住时向右让', () => {
+    const rightSlot = { x: anchor.x + anchor.w + GAP_X, y: anchor.y, w: NODE_W, h: NODE_H };
+    expect(planGrow('child', 'a', [], anchor, [anchor, rightSlot], 'right')).toEqual({
+      ok: true,
+      fromId: 'a',
+      x: rightSlot.x,
       y: anchor.y + NODE_H + GAP_Y,
+    });
+    const leftX = anchor.x - NODE_W - GAP_X;
+    expect(planGrow('child', 'a', [], anchor, [anchor, { x: leftX, y: anchor.y, w: NODE_W, h: NODE_H }], 'left')).toMatchObject({
+      x: leftX,
+      y: anchor.y + NODE_H + GAP_Y,
+    });
+    const downY = anchor.y + anchor.h + GAP_Y;
+    expect(planGrow('child', 'a', [], anchor, [anchor, { x: anchor.x, y: downY, w: NODE_W, h: NODE_H }], 'down')).toMatchObject({
+      x: anchor.x + NODE_W + GAP_X,
+      y: downY,
+    });
+    const upY = anchor.y - NODE_H - GAP_Y;
+    expect(planGrow('child', 'a', [], anchor, [anchor, { x: anchor.x, y: upY, w: NODE_W, h: NODE_H }], 'up')).toMatchObject({
+      x: anchor.x + NODE_W + GAP_X,
+      y: upY,
     });
   });
 
@@ -29,7 +64,7 @@ describe('planGrow', () => {
     const image = { x: 10, y: 20, w: 220, h: 180 };
     const child = planGrow('child', 'img', [], image, [image]);
     const sibling = planGrow('sibling', 'img', [], image, [image]);
-    expect(child).toMatchObject({ x: image.x + image.w + GAP_X, y: image.y });
+    expect(child).toMatchObject({ x: image.x, y: image.y + image.h + GAP_Y });
     expect(sibling).toMatchObject({ fromId: null, x: image.x, y: image.y + image.h + GAP_Y });
   });
 

@@ -56,6 +56,44 @@ export function BoardNodes(props: {
       {props.items.map((item) => {
         const box = props.boxOf.get(item.id);
         if (!box) return null;
+        if (item.face === 'inclusion') {
+          const selected = props.selectedId === item.id;
+          const desc = (item.description ?? '').trim();
+          const nameY = desc !== '' ? box.y + 15 : box.y + box.h / 2;
+          return (
+            <g
+              key={item.id}
+              className={selected ? 'node bnode bnode-inclusion on' : 'node bnode bnode-inclusion'}
+              data-node-id={item.id}
+              role="button"
+              aria-label={item.label}
+              onClick={() => props.onSelect(item.id)}
+              onDoubleClick={(event) => {
+                event.stopPropagation();
+                props.onActivate(item.id);
+              }}
+              onPointerEnter={() => props.onPointerEnter(item.id)}
+              onPointerLeave={props.onPointerLeave}
+              onPointerDown={(event) => {
+                props.onPointerDown();
+                props.onDragPointerDown?.(event, item.id);
+              }}
+            >
+              <rect className="bnode-rect" x={box.x} y={box.y} width={box.w} height={box.h} rx={11} />
+              <text className="bnode-name" x={box.x + box.w / 2} y={nameY} textAnchor="middle">
+                {shortLabel(item.label)}
+              </text>
+              {desc !== '' ? (
+                <foreignObject className="bnode-desc-fo" x={box.x + 10} y={box.y + 28} width={Math.max(0, box.w - 20)} height={28}>
+                  <div className="bnode-desc" style={{ width: Math.max(0, box.w - 20) }}>
+                    {desc}
+                  </div>
+                </foreignObject>
+              ) : null}
+              <title>{item.label}</title>
+            </g>
+          );
+        }
         if (item.kind === 'image') {
           const pictureH = props.imageHeights.get(item.id) ?? Math.max(1, box.h - IMAGE_NAME_LINE);
           return (

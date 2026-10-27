@@ -1,5 +1,5 @@
 import type { CanvasPrefs, EdgeAppearance } from '@unfold/dto';
-import { Image, MousePointer2, SlidersHorizontal, Spline, Type } from 'lucide-react';
+import { Group, Image, MousePointer2, SlidersHorizontal, Spline, Type } from 'lucide-react';
 import { BoardSettings } from './board-settings.js';
 import './board-toolbar.css';
 
@@ -9,6 +9,7 @@ export function BoardToolbar(props: {
   tool: BoardTool;
   onTool: (tool: BoardTool) => void;
   onImage: () => void;
+  onInsertInclusion?: () => void;
   settingsOpen: boolean;
   appearance: EdgeAppearance;
   canvas: CanvasPrefs;
@@ -51,6 +52,11 @@ export function BoardToolbar(props: {
       >
         <Spline size={18} strokeWidth={1.75} aria-hidden />
       </button>
+      {props.onInsertInclusion ? (
+        <button type="button" aria-label="子集合" title="子集合" onClick={props.onInsertInclusion}>
+          <Group size={18} strokeWidth={1.75} aria-hidden />
+        </button>
+      ) : null}
       <span className="board-toolbar-sep" />
       <button
         type="button"

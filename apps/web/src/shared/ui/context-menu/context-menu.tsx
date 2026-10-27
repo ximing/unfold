@@ -44,7 +44,13 @@ export function UContextMenu(props: { x: number; y: number; items: UMenuEntry[];
   }, [props]);
 
   return (
-    <div ref={ref} className="ctx-menu" style={pos} role="menu">
+    <div
+      ref={ref}
+      className="ctx-menu"
+      style={pos}
+      role="menu"
+      onPointerDown={(event) => event.stopPropagation()}
+    >
       {props.items.map((item, index) =>
         'separator' in item ? (
           <div key={`sep-${index}`} className="sep" role="separator" />

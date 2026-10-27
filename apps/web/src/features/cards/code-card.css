@@ -1,0 +1,31 @@
+.kind-code header .usel { width: auto; flex: none; }
+.kind-code header .usel-btn {
+  width: auto;
+  min-width: 96px;
+  max-width: 168px;
+  height: 26px;
+  padding: 0 8px;
+  gap: 6px;
+  font-size: 12px;
+  font-family: var(--mono);
+  border-radius: 6px;
+  box-shadow: none;
+}
+.kind-code header .usel-pop {
+  left: auto;
+  right: 0;
+  width: max-content;
+  min-width: 168px;
+  z-index: 8;
+}
+
+.kind-code .code-editor {
+  border-radius: 8px;
+  border: 1px solid var(--line-soft);
+  background: var(--card);
+  overflow: hidden;
+}
+.kind-code .code-editor:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}

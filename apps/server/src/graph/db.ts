@@ -2,11 +2,11 @@ import type { Card, CardType, OwnerKind } from '@unfold/dto';
 import { and, asc, eq, inArray, isNull, max, or } from 'drizzle-orm';
 import { removeAssetFiles } from '../assets/files.js';
 import type { createDb } from '../db/client.js';
-import { assets, cards, collectionEdges, collections, edges, memberships, nodes } from '../db/schema.js';
+import { assets, cards, collectionEdges, collectionInclusions, collections, edges, memberships, nodes } from '../db/schema.js';
 
 export type Database = ReturnType<typeof createDb>;
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
-type Query = Database | Tx;
+export type Query = Database | Tx;
 
 function stamp() {
   const now = new Date();
@@ -157,6 +157,9 @@ export async function removeCollection(db: Database, userId: string, id: string)
         .where(and(eq(collectionEdges.userId, userId), inArray(collectionEdges.id, edgeIds)));
     }
     await tx.delete(memberships).where(eq(memberships.collectionId, id));
+    await tx
+      .delete(collectionInclusions)
+      .where(or(eq(collectionInclusions.parentId, id), eq(collectionInclusions.childId, id)));
     return true;
   });
 }

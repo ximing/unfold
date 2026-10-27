@@ -1,3 +1,4 @@
+import type { CanvasGrow } from '@unfold/dto';
 import { GAP_X, GAP_Y, NODE_H, NODE_W } from './board-layout.js';
 
 export const GROW_W = NODE_W;
@@ -32,13 +33,24 @@ function overlaps(left: Box, right: Box): boolean {
   return left.x < right.x + right.w && left.x + left.w > right.x && left.y < right.y + right.h && left.y + left.h > right.y;
 }
 
-/** 下级在右侧，同级在下方。挡住就按一格文字点的高度继续向下。 */
-function placeGrow(anchor: Box, boxes: readonly Box[], side: 'right' | 'below'): { x: number; y: number } {
-  const x = side === 'right' ? anchor.x + anchor.w + GAP_X : anchor.x;
-  let y = side === 'right' ? anchor.y : anchor.y + anchor.h + GAP_Y;
+/**
+ * 下级按方向贴在旁边。左右被挡住就向下让，上下被挡住就向右让。
+ * 同级用 below：始终在下方，挡住继续向下。
+ */
+function placeGrow(anchor: Box, boxes: readonly Box[], direction: CanvasGrow | 'below'): { x: number; y: number } {
+  const dir = direction === 'below' ? 'down' : direction;
+  let x = anchor.x;
+  let y = anchor.y;
+  if (dir === 'right') x = anchor.x + anchor.w + GAP_X;
+  else if (dir === 'left') x = anchor.x - GROW_W - GAP_X;
+  else if (dir === 'down') y = anchor.y + anchor.h + GAP_Y;
+  else y = anchor.y - GROW_H - GAP_Y;
   const draft = { x, y, w: GROW_W, h: GROW_H };
+  const stepDown = direction === 'below' || dir === 'left' || dir === 'right';
   for (let guard = 0; guard < 64 && boxes.some((box) => overlaps(draft, box)); guard += 1) {
-    y += GROW_H + GAP_Y;
+    if (stepDown) y += GROW_H + GAP_Y;
+    else x += GROW_W + GAP_X;
+    draft.x = x;
     draft.y = y;
   }
   return { x, y };
@@ -50,9 +62,10 @@ export function planGrow(
   links: readonly Link[],
   anchor: Box,
   boxes: readonly Box[],
+  direction: CanvasGrow = 'down',
 ): GrowPlan {
   if (role === 'child') {
-    const at = placeGrow(anchor, boxes, 'right');
+    const at = placeGrow(anchor, boxes, direction);
     return { ok: true, fromId: nodeId, x: at.x, y: at.y };
   }
   const parents = parentIds(nodeId, links);

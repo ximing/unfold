@@ -9,7 +9,10 @@ export type BoardMenuAction =
   | 'remove'
   | 'delete-item'
   | 'relabel'
-  | 'delete-link';
+  | 'delete-link'
+  | 'insert-inclusion'
+  | 'toggle-inclusion'
+  | 'remove-inclusion';
 
 export type BoardMenuEntry = {
   action?: BoardMenuAction;
@@ -33,6 +36,8 @@ export type BoardMenuTarget = {
   canDeleteItem: boolean;
   canRelabel: boolean;
   canDeleteLink: boolean;
+  /** 合集画布可以插入子集合 */
+  canInsert: boolean;
 };
 
 /** 右键菜单里和这个对象有关的项。缩放由视口另加。 */
@@ -43,6 +48,7 @@ export function boardMenu(target: BoardMenuTarget): BoardMenuEntry[] {
       items.push({ action: 'create', label: target.tools ? '添加文字点' : '新建合集', hint: '双击' });
     }
     if (target.tools && target.canImage) items.push({ action: 'image', label: '添加图片', hint: 'I' });
+    if (target.tools && target.canInsert) items.push({ action: 'insert-inclusion', label: '插入子集合' });
     return items;
   }
 
@@ -76,4 +82,13 @@ export function boardMenu(target: BoardMenuTarget): BoardMenuEntry[] {
     items.push({ action: 'delete-link', label: '删除关系', hint: 'Delete', danger: true });
   }
   return items;
+}
+
+/** 子集合的菜单。收起时是「展开」，展开的边框是「收起」。 */
+export function inclusionMenu(collapsed: boolean): BoardMenuEntry[] {
+  return [
+    { action: 'toggle-inclusion', label: collapsed ? '展开' : '收起' },
+    { separator: true, label: '' },
+    { action: 'remove-inclusion', label: '移出这个合集', danger: true },
+  ];
 }

@@ -1,13 +1,15 @@
 import type { Card } from '@unfold/dto';
-import hljs from 'highlight.js/lib/common';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createHandoff } from '../../shared/save/handoff.js';
 import { noteDraft } from '../../shared/save/save-bus.js';
 import { takeServerText } from '../../shared/save/server-text.js';
 import { useSaveDraft } from '../../shared/save/use-save-draft.js';
-import { UTextArea, UTextInput } from '../../shared/ui/field/field.js';
+import { USelect } from '../../shared/ui/select/select.js';
 import { CardFrame } from './card-frame.js';
+import { codeLanguageOptions, codeLanguageValue } from './code-language.js';
+import { CodeEditor } from './code-editor.js';
 import { text } from './content.js';
+import './code-card.css';
 
 function snap(language: string, source: string): string {
   return JSON.stringify([language, source]);
@@ -22,7 +24,6 @@ export function CodeCard(props: {
   const initialSource = text(props.card.content, 'source');
   const [language, setLanguage] = useState(initialLanguage);
   const [source, setSource] = useState(initialSource);
-  const [editing, setEditing] = useState(initialSource.trim() === '');
   const languageRef = useRef(initialLanguage);
   const sourceRef = useRef(initialSource);
   const savedRef = useRef(snap(initialLanguage, initialSource));
@@ -52,7 +53,6 @@ export function CodeCard(props: {
     sourceRef.current = nextSource;
     setLanguage(nextLanguage);
     setSource(nextSource);
-    if (switched) setEditing(nextSource.trim() === '');
     noteDraft();
   }, [props.card.id, props.card.content]);
 
@@ -71,56 +71,43 @@ export function CodeCard(props: {
     },
   );
 
-  const highlighted = useMemo(() => {
-    if (source.trim() === '') return null;
-    try {
-      const lang = language.trim().toLowerCase();
-      if (lang !== '' && hljs.getLanguage(lang)) return hljs.highlight(source, { language: lang }).value;
-      return hljs.highlightAuto(source).value;
-    } catch {
-      return null;
-    }
-  }, [language, source]);
+  function chooseLanguage(next: string) {
+    if (next === languageRef.current) return;
+    languageRef.current = next;
+    setLanguage(next);
+    hand.edit();
+    void commit();
+  }
+
+  const selected = codeLanguageValue(language);
 
   return (
-    <CardFrame type="code" className="kind-code" onDelete={props.onDelete}>
-      <UTextInput
-        aria-label="语言"
-        placeholder="语言"
-        value={language}
-        onChange={(event) => {
-          languageRef.current = event.target.value;
-          setLanguage(event.target.value);
+    <CardFrame
+      type="code"
+      className="kind-code"
+      onDelete={props.onDelete}
+      headerExtra={
+        <USelect
+          ariaLabel="语言"
+          value={selected}
+          options={codeLanguageOptions(language)}
+          onChange={chooseLanguage}
+        />
+      }
+    >
+      <CodeEditor
+        source={source}
+        language={language}
+        autoFocus={initialSource.trim() === ''}
+        onChange={(next) => {
+          sourceRef.current = next;
+          setSource(next);
           hand.edit();
         }}
         onBlur={() => {
           void commit();
         }}
       />
-      {editing ? (
-        <UTextArea
-          aria-label="代码"
-          autoFocus
-          value={source}
-          onChange={(event) => {
-            sourceRef.current = event.target.value;
-            setSource(event.target.value);
-            hand.edit();
-          }}
-          onBlur={() => {
-            void commit();
-            if (sourceRef.current.trim() !== '') setEditing(false);
-          }}
-        />
-      ) : highlighted ? (
-        <pre className="code-view" onClick={() => setEditing(true)}>
-          <code className="hljs" dangerouslySetInnerHTML={{ __html: highlighted }} />
-        </pre>
-      ) : (
-        <pre className="code-view plain" onClick={() => setEditing(true)}>
-          <code>{source}</code>
-        </pre>
-      )}
     </CardFrame>
   );
 }

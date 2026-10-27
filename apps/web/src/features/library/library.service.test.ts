@@ -56,7 +56,7 @@ describe('LibraryService', () => {
           cardTypes: [],
         },
       ],
-      edges: [], appearance: defaultEdgeAppearance,
+      edges: [], bridges: [], inclusions: [], appearance: defaultEdgeAppearance,
     };
     let calls = 0;
     vi.stubGlobal(
@@ -94,7 +94,7 @@ describe('LibraryService', () => {
         { ...placedNode, id, name: '甲' },
         { ...placedNode, id: other, name: '乙', x: 1, y: 2, z: 0 },
       ],
-      edges: [], appearance: defaultEdgeAppearance,
+      edges: [], bridges: [], inclusions: [], appearance: defaultEdgeAppearance,
     };
     await expect(library.savePlacements('col-1', [{ nodeId: id, x: 12.5, y: -4, z: 3 }])).resolves.toBe(true);
     expect(library.graph.nodes[0]).toMatchObject({ x: 12.5, y: -4, z: 3 });
@@ -114,7 +114,7 @@ describe('LibraryService', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
     const library = new LibraryService();
     library.graphId = 'col-1';
-    library.graph = { nodes: [{ ...placedNode, x: 1, y: 2, z: 0, imageWidth: null }], edges: [], appearance: defaultEdgeAppearance };
+    library.graph = { nodes: [{ ...placedNode, x: 1, y: 2, z: 0, imageWidth: null }], edges: [], bridges: [], inclusions: [], appearance: defaultEdgeAppearance };
     await expect(
       library.savePlacements('col-1', [{ nodeId: id, x: 1, y: 2, z: 0, imageWidth: 300 }]),
     ).resolves.toBe(true);
@@ -125,7 +125,7 @@ describe('LibraryService', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
     const library = new LibraryService();
     library.graphId = 'col-1';
-    library.graph = { nodes: [{ ...placedNode, x: 1, y: 2, z: 0, imageWidth: 240 }], edges: [], appearance: defaultEdgeAppearance };
+    library.graph = { nodes: [{ ...placedNode, x: 1, y: 2, z: 0, imageWidth: 240 }], edges: [], bridges: [], inclusions: [], appearance: defaultEdgeAppearance };
     await expect(library.savePlacements('col-1', [{ nodeId: id, x: 5, y: 6, z: 1 }])).resolves.toBe(true);
     expect(library.graph.nodes[0]).toMatchObject({ x: 5, y: 6, z: 1, imageWidth: 240 });
   });
@@ -142,7 +142,7 @@ describe('LibraryService', () => {
     );
     const library = new LibraryService();
     library.graphId = 'col-1';
-    library.graph = { nodes: [{ ...placedNode, x: 3, y: 4, z: 1, imageWidth: 240 }], edges: [], appearance: defaultEdgeAppearance };
+    library.graph = { nodes: [{ ...placedNode, x: 3, y: 4, z: 1, imageWidth: 240 }], edges: [], bridges: [], inclusions: [], appearance: defaultEdgeAppearance };
     await expect(
       library.savePlacements('col-1', [{ nodeId: id, x: 9, y: 9, z: 2, imageWidth: 300 }]),
     ).resolves.toBe(false);
@@ -154,7 +154,7 @@ describe('LibraryService', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
     const library = new LibraryService();
     library.graphId = 'col-1';
-    library.graph = { nodes: [{ ...placedNode, imageWidth: 240 }], edges: [], appearance: defaultEdgeAppearance };
+    library.graph = { nodes: [{ ...placedNode, imageWidth: 240 }], edges: [], bridges: [], inclusions: [], appearance: defaultEdgeAppearance };
     await expect(
       library.savePlacements('col-1', [{ nodeId: id, x: 1, y: 1, z: 1, imageWidth: 300 }]),
     ).resolves.toBe(false);
@@ -177,7 +177,7 @@ describe('LibraryService', () => {
     );
     const library = new LibraryService();
     library.graphId = 'col-1';
-    library.graph = { nodes: [{ ...placedNode, x: 0, y: 0, z: 0 }], edges: [], appearance: defaultEdgeAppearance };
+    library.graph = { nodes: [{ ...placedNode, x: 0, y: 0, z: 0 }], edges: [], bridges: [], inclusions: [], appearance: defaultEdgeAppearance };
     const older = library.savePlacements('col-1', [{ nodeId: id, x: 1, y: 1, z: 1 }]);
     const newer = library.savePlacements('col-1', [{ nodeId: id, x: 9, y: 8, z: 4 }]);
     releaseFirst(new Response(null, { status: 204 }));
@@ -190,7 +190,7 @@ describe('LibraryService', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
     const library = new LibraryService();
     library.graphId = 'col-1';
-    library.graph = { nodes: [], edges: [], appearance: { ...defaultEdgeAppearance } };
+    library.graph = { nodes: [], edges: [], bridges: [], inclusions: [], appearance: { ...defaultEdgeAppearance } };
     await expect(
       library.updateAppearance('col-1', { ...defaultEdgeAppearance, color: 'red' }),
     ).resolves.toBe(false);
@@ -214,7 +214,7 @@ describe('LibraryService', () => {
     );
     const library = new LibraryService();
     library.graphId = 'col-1';
-    library.graph = { nodes: [], edges: [], appearance: { ...defaultEdgeAppearance } };
+    library.graph = { nodes: [], edges: [], bridges: [], inclusions: [], appearance: { ...defaultEdgeAppearance } };
     const older = library.updateAppearance('col-1', { ...defaultEdgeAppearance, color: 'red' });
     const newer = library.updateAppearance('col-1', { ...defaultEdgeAppearance, color: 'blue' });
     rejectFirst(new TypeError('Failed to fetch'));
@@ -222,6 +222,34 @@ describe('LibraryService', () => {
     await expect(newer).resolves.toBe(true);
     expect(library.graph.appearance.color).toBe('blue');
     expect(library.error).toBe('');
+  });
+
+  it('保存子集合里的点时写回那一层的坐标', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
+    const childId = '550e8400-e29b-41d4-a716-446655440001';
+    const library = new LibraryService();
+    library.graphId = 'col-1';
+    library.graph = {
+      nodes: [],
+      edges: [],
+      bridges: [],
+      inclusions: [
+        {
+          childId,
+          title: '子',
+          x: 10,
+          y: 20,
+          collapsed: false,
+          labels: [],
+          nodes: [{ ...placedNode, x: 1, y: 2, z: 0 }],
+          edges: [],
+        },
+      ],
+      appearance: defaultEdgeAppearance,
+    };
+    await expect(library.savePlacements(childId, [{ nodeId: id, x: 8, y: 9, z: 3 }])).resolves.toBe(true);
+    expect(library.graph.inclusions[0]?.nodes[0]).toMatchObject({ x: 8, y: 9, z: 3 });
+    expect(library.graph.nodes).toEqual([]);
   });
 });
 

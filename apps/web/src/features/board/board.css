@@ -44,6 +44,7 @@
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.05));
   transition: stroke 0.12s;
 }
+.bnode.bnode-inclusion .bnode-rect { stroke-dasharray: 5 4; }
 .bnode:hover .bnode-rect { stroke: rgba(10, 102, 255, 0.55); }
 .bnode.on .bnode-rect {
   stroke: var(--accent);

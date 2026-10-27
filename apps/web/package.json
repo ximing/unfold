@@ -11,6 +11,11 @@
     "preview": "vite preview --port 5191 --strictPort"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/language-data": "^6.5.2",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
     "@rabjs/react": "^9.4.1",
     "@tiptap/core": "^3.31.3",
     "@tiptap/extension-code-block": "3.31.3",

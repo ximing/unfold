@@ -1,4 +1,4 @@
-import type { CanvasPrefs, EdgeAppearance, EdgeColor } from '@unfold/dto';
+import type { CanvasGrow, CanvasPrefs, EdgeAppearance, EdgeColor } from '@unfold/dto';
 import { EDGE_STROKE } from './edge-style.js';
 import './board-settings.css';
 
@@ -31,6 +31,13 @@ const LABEL_MODES = [
   { id: 'always', label: '始终' },
   { id: 'focus', label: '悬停或选中' },
 ] as const;
+
+const GROW_DIRECTIONS: readonly { id: CanvasGrow; label: string }[] = [
+  { id: 'up', label: '上' },
+  { id: 'down', label: '下' },
+  { id: 'left', label: '左' },
+  { id: 'right', label: '右' },
+];
 
 export function BoardSettings(props: {
   appearance: EdgeAppearance;
@@ -91,6 +98,12 @@ export function BoardSettings(props: {
         />
         <Toggle label="点阵" on={props.canvas.grid} onChange={(grid) => props.onCanvas({ grid })} />
         <Toggle label="吸附" on={props.canvas.snap} onChange={(snap) => props.onCanvas({ snap })} />
+        <Choice
+          label="下级方向"
+          value={props.canvas.grow}
+          options={GROW_DIRECTIONS}
+          onChange={(grow) => props.onCanvas({ grow })}
+        />
         <Choice
           label="标签"
           value={props.canvas.labels}

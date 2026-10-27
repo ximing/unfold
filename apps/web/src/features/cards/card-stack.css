@@ -52,35 +52,18 @@
   color: #fff;
   flex: none;
 }
-.kind-card header .kind-name { font-size: 12px; font-weight: 600; color: var(--mute); flex: 1; }
-.kind-card header button {
+.kind-card header .kind-name { font-size: 12px; font-weight: 600; color: var(--mute); flex: 1; min-width: 0; }
+.kind-card header .kind-delete {
   color: var(--faint);
   font-size: 12px;
   padding: 2px 6px;
   border-radius: 5px;
+  flex: none;
 }
-.kind-card header button:hover { color: var(--warn); background: var(--warn-soft); }
+.kind-card header .kind-delete:hover { color: var(--warn); background: var(--warn-soft); }
 .kind-card .tf { font-size: 13px; padding: 6px 9px; }
 .kind-note textarea { font-family: var(--serif); font-size: 15px; line-height: 1.7; min-height: 110px; }
 .kind-code { background: #f7f7f9; }
-.kind-code textarea { font-family: var(--mono); font-size: 12.5px; line-height: 1.55; background: transparent; min-height: 90px; }
-.kind-code input { font-family: var(--mono); margin-bottom: 6px; }
-.code-view {
-  margin: 0;
-  border-radius: 8px;
-  border: 1px solid var(--line-soft);
-  background: var(--card);
-  overflow-x: auto;
-  cursor: text;
-  min-height: 40px;
-}
-.code-view code {
-  display: block;
-  padding: 10px 12px;
-  font: 12.5px/1.55 var(--mono);
-  background: transparent;
-  white-space: pre;
-}
 
 .kind-formula .preview { margin-top: 10px; overflow-x: auto; font-size: 17px; }
 .kind-formula .preview-error { margin-top: 8px; color: var(--warn); font-size: 12px; }

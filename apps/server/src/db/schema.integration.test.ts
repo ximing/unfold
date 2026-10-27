@@ -15,6 +15,7 @@ const currentTables = [
   'memberships',
   'edges',
   'collection_edges',
+  'collection_inclusions',
   'cards',
   'assets',
 ] as const;
@@ -56,7 +57,7 @@ describe('live schema', () => {
     await app.close();
   });
 
-  it('keeps the eight product tables and has none of the retired tables', async () => {
+  it('keeps the live product tables and has none of the retired tables', async () => {
     const pool = createPool();
     try {
       const result = await pool.query<{ table_name: string }>(

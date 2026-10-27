@@ -81,7 +81,13 @@ describe('graph', () => {
 
     const emptyGraph = await call('GET', `/api/collections/${collectionA.id}/graph`);
     expect(emptyGraph.statusCode).toBe(200);
-    expect(emptyGraph.json()).toEqual({ nodes: [], edges: [], appearance: defaultEdgeAppearance });
+    expect(emptyGraph.json()).toEqual({
+      nodes: [],
+      edges: [],
+      bridges: [],
+      inclusions: [],
+      appearance: defaultEdgeAppearance,
+    });
 
     const missing = await call('GET', `/api/nodes/${randomUUID()}`);
     expect(missing.statusCode).toBe(404);

@@ -111,7 +111,8 @@ export function GraphViewport(props: GraphViewportProps) {
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return;
-    if (event.target instanceof Element && event.target.closest('.node, .bpeek')) return;
+    // 这些都在视口里面。这里若开始平移，指针捕获会吃掉它们自己的点击。
+    if (event.target instanceof Element && event.target.closest('.node, .bpeek, .ctx-menu, .gvp-tools, .gvp-minimap')) return;
     dragRef.current = { pointerId: event.pointerId, lastX: event.clientX, lastY: event.clientY };
     event.currentTarget.setPointerCapture(event.pointerId);
     setPanning(true);

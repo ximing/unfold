@@ -120,6 +120,7 @@ export const defaultEdgeAppearance = {
 
 export const canvasRouteSchema = z.enum(['straight', 'curve', 'orthogonal']);
 export const canvasLabelsSchema = z.enum(['always', 'focus']);
+export const canvasGrowSchema = z.enum(['up', 'down', 'left', 'right']);
 
 export const canvasPrefsSchema = z.strictObject({
   route: canvasRouteSchema,
@@ -128,6 +129,7 @@ export const canvasPrefsSchema = z.strictObject({
   labels: canvasLabelsSchema,
   markers: z.boolean(),
   minimap: z.boolean(),
+  grow: canvasGrowSchema,
 });
 
 export const defaultCanvasPrefs = {
@@ -137,6 +139,7 @@ export const defaultCanvasPrefs = {
   labels: 'always',
   markers: true,
   minimap: true,
+  grow: 'down',
 } as const satisfies z.infer<typeof canvasPrefsSchema>;
 
 const labelText = trimmed('关系说明不能是空的', 40);
@@ -184,10 +187,48 @@ export const librarySchema = z.object({
   edges: z.array(graphEdgeSchema),
 });
 
+export const graphInclusionSchema = z.object({
+  childId: z.uuid(),
+  title: z.string(),
+  x: z.number(),
+  y: z.number(),
+  collapsed: z.boolean(),
+  labels: z.array(z.string()),
+  nodes: z.array(graphNodeSchema),
+  edges: z.array(graphEdgeSchema),
+});
+
 export const collectionGraphSchema = z.object({
   nodes: z.array(graphNodeSchema),
   edges: z.array(graphEdgeSchema),
+  bridges: z.array(graphEdgeSchema),
+  inclusions: z.array(graphInclusionSchema),
   appearance: edgeAppearanceSchema,
+});
+
+export const createInclusionBodySchema = z.strictObject({
+  childId: z.uuid(),
+  originX: z.number().finite(),
+  originY: z.number().finite(),
+  label: labelText.optional(),
+});
+
+export const updateInclusionBodySchema = z.strictObject({
+  x: z.number().finite().optional(),
+  y: z.number().finite().optional(),
+  collapsed: z.boolean().optional(),
+});
+
+export const inclusionCandidateSchema = z.object({
+  id: z.uuid(),
+  title: z.string(),
+  nodeCount: z.int().nonnegative(),
+  linked: z.boolean(),
+  labels: z.array(z.string()),
+});
+
+export const inclusionCandidatesSchema = z.object({
+  collections: z.array(inclusionCandidateSchema),
 });
 
 const cardRecord = {
@@ -322,12 +363,18 @@ export type EdgeArrow = z.infer<typeof edgeArrowSchema>;
 export type EdgeAppearance = z.infer<typeof edgeAppearanceSchema>;
 export type CanvasRoute = z.infer<typeof canvasRouteSchema>;
 export type CanvasLabels = z.infer<typeof canvasLabelsSchema>;
+export type CanvasGrow = z.infer<typeof canvasGrowSchema>;
 export type CanvasPrefs = z.infer<typeof canvasPrefsSchema>;
 export type Edge = z.infer<typeof edgeSchema>;
 export type CreateEdgeBody = z.infer<typeof createEdgeBodySchema>;
 export type UpdateEdgeBody = z.infer<typeof updateEdgeBodySchema>;
 export type Library = z.infer<typeof librarySchema>;
 export type CollectionGraph = z.infer<typeof collectionGraphSchema>;
+export type GraphInclusion = z.infer<typeof graphInclusionSchema>;
+export type CreateInclusionBody = z.infer<typeof createInclusionBodySchema>;
+export type UpdateInclusionBody = z.infer<typeof updateInclusionBodySchema>;
+export type InclusionCandidate = z.infer<typeof inclusionCandidateSchema>;
+export type InclusionCandidates = z.infer<typeof inclusionCandidatesSchema>;
 export type GraphNode = z.infer<typeof graphNodeSchema>;
 export type GraphEdge = z.infer<typeof graphEdgeSchema>;
 export type LibraryCollection = z.infer<typeof libraryCollectionSchema>;
