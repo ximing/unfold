@@ -29,11 +29,17 @@ export function codeLanguageOptions(
 ): { value: string; label: string }[] {
   const langs = ordered(list);
   const selected = codeLanguageValue(current, langs);
-  const options = [{ value: '', label: '纯文本' }];
+  const options: { value: string; label: string; keywords?: string }[] = [{ value: '', label: '纯文本' }];
   if (selected !== '' && !langs.some((lang) => lang.name === selected)) {
     options.push({ value: selected, label: selected });
   }
-  for (const lang of langs) options.push({ value: lang.name, label: lang.name });
+  for (const lang of langs) {
+    options.push({
+      value: lang.name,
+      label: lang.name,
+      keywords: [...lang.alias, ...lang.extensions].join(' '),
+    });
+  }
   return options;
 }
 

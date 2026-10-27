@@ -26,6 +26,7 @@ describe('codeLanguageValue', () => {
   it('常见别名能对上 CodeMirror 自带的语言', () => {
     expect(codeLanguageValue('ts')).toBe('TypeScript');
     expect(codeLanguageValue('py')).toBe('Python');
+    expect(codeLanguageValue('js')).toBe('JavaScript');
     expect(codeLanguageValue('')).toBe('');
   });
 });
@@ -35,8 +36,8 @@ describe('codeLanguageOptions', () => {
     expect(codeLanguageOptions('nope', sample)).toEqual([
       { value: '', label: '纯文本' },
       { value: 'nope', label: 'nope' },
-      { value: 'Python', label: 'Python' },
-      { value: 'TypeScript', label: 'TypeScript' },
+      { value: 'Python', label: 'Python', keywords: 'python py' },
+      { value: 'TypeScript', label: 'TypeScript', keywords: 'ts typescript' },
     ]);
   });
 

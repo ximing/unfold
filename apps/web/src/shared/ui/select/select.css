@@ -31,8 +31,32 @@
   box-shadow: var(--sh-float);
   padding: 4px;
   z-index: 30;
+}
+.usel-search {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+.usel-search:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.usel-list {
   max-height: 240px;
   overflow-y: auto;
+}
+.usel-empty {
+  padding: 6px 9px;
+  color: var(--faint);
+  font-size: 12px;
 }
 .usel-pop .opt {
   display: flex;

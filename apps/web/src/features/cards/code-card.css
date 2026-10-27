@@ -14,9 +14,12 @@
 .kind-code header .usel-pop {
   left: auto;
   right: 0;
-  width: max-content;
-  min-width: 168px;
+  width: 240px;
   z-index: 8;
+}
+.kind-code header .usel-search {
+  font-family: var(--mono);
+  font-size: 12px;
 }
 
 .kind-code .code-editor {

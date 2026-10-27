@@ -5,7 +5,7 @@ export function emptyCard(ownerKind: OwnerKind, ownerId: string, type: CardType)
     case 'note':
       return { ownerKind, ownerId, type, content: { body: '' } };
     case 'code':
-      return { ownerKind, ownerId, type, content: { language: '', source: '' } };
+      return { ownerKind, ownerId, type, content: { language: 'JavaScript', source: '' } };
     case 'formula':
       return { ownerKind, ownerId, type, content: { latex: '' } };
     case 'person':

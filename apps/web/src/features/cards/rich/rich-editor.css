@@ -322,9 +322,12 @@
 .rich-code .usel-pop {
   left: auto;
   right: 0;
-  width: max-content;
-  min-width: 160px;
+  width: 240px;
   z-index: 8;
+}
+.rich-code .usel-search {
+  font-family: var(--mono);
+  font-size: 12px;
 }
 
 .rich-prose pre code,

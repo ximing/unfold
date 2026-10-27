@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { IconChevron } from '../icons/icons.js';
+import { filterSelectOptions } from './select-filter.js';
 import './select.css';
 
-export type USelectOption = { value: string; label: string; icon?: ReactNode };
+export type USelectOption = { value: string; label: string; icon?: ReactNode; keywords?: string };
 
 export function USelect(props: {
   value: string;
@@ -14,11 +15,18 @@ export function USelect(props: {
   tabIndex?: number;
   /** 按下时不把焦点带走，编辑器里的选区才留得住。 */
   holdFocus?: boolean;
+  /** 打开后可以输入，按名称、值和 keywords 过滤。 */
+  searchable?: boolean;
+  searchLabel?: string;
   onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
+  const [query, setQuery] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const visible = props.searchable ? filterSelectOptions(props.options, query) : props.options;
+  const activeIndex = visible.length === 0 ? 0 : Math.min(highlight, visible.length - 1);
 
   useEffect(() => {
     if (!open) return;
@@ -31,9 +39,16 @@ export function USelect(props: {
     return () => document.removeEventListener('mousedown', onMouseDown);
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const item = listRef.current?.querySelectorAll<HTMLButtonElement>('[role="option"]')[activeIndex];
+    item?.scrollIntoView({ block: 'nearest' });
+  }, [open, activeIndex, query]);
+
   const current = props.options.find((option) => option.value === props.value);
 
   function openList() {
+    setQuery('');
     setHighlight(Math.max(0, props.options.findIndex((option) => option.value === props.value)));
     setOpen(true);
   }
@@ -41,6 +56,14 @@ export function USelect(props: {
   function choose(value: string) {
     props.onChange(value);
     setOpen(false);
+  }
+
+  function moveHighlight(delta: number) {
+    if (visible.length === 0) return;
+    setHighlight((currentIndex) => {
+      const base = Math.min(currentIndex, visible.length - 1);
+      return (base + delta + visible.length) % visible.length;
+    });
   }
 
   function onKeyDown(event: React.KeyboardEvent) {
@@ -58,15 +81,21 @@ export function USelect(props: {
     }
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
-      const delta = event.key === 'ArrowDown' ? 1 : -1;
-      setHighlight((current) => (current + delta + props.options.length) % props.options.length);
+      moveHighlight(event.key === 'ArrowDown' ? 1 : -1);
       return;
     }
-    if (event.key === 'Enter' || event.key === ' ') {
+    if (event.key === 'Enter' || (event.key === ' ' && !props.searchable)) {
       event.preventDefault();
-      const option = props.options[highlight];
+      const option = visible[activeIndex];
       if (option) choose(option.value);
     }
+  }
+
+  function optionClass(icon: boolean, on: boolean): string {
+    const names = ['opt'];
+    if (icon) names.push('has-icon');
+    if (on) names.push('hl');
+    return names.join(' ');
   }
 
   return (
@@ -102,30 +131,57 @@ export function USelect(props: {
         <IconChevron />
       </button>
       {open ? (
-        <div className="usel-pop" role="listbox">
-          {props.options.map((option, index) => (
-            <button
-              key={option.value}
-              type="button"
-              role="option"
-              aria-label={option.label}
-              aria-selected={option.value === props.value}
-              className={option.icon ? (index === highlight ? 'opt has-icon hl' : 'opt has-icon') : index === highlight ? 'opt hl' : 'opt'}
-              onMouseDown={(event) => {
-                if (!props.holdFocus) return;
-                event.preventDefault();
-                choose(option.value);
+        <div className="usel-pop">
+          {props.searchable ? (
+            <input
+              className="usel-search"
+              type="text"
+              autoFocus
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+              placeholder={props.searchLabel ?? '搜索'}
+              aria-label={props.searchLabel ?? '搜索'}
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setHighlight(0);
               }}
-              onMouseEnter={() => setHighlight(index)}
-              onClick={() => {
-                if (props.holdFocus) return;
-                choose(option.value);
+              onKeyDown={(event) => {
+                event.stopPropagation();
+                onKeyDown(event);
               }}
-            >
-              {option.icon ? <span className="usel-icon">{option.icon}</span> : option.label}
-              {option.value === props.value ? <span className="tick">✓</span> : null}
-            </button>
-          ))}
+            />
+          ) : null}
+          <div className="usel-list" role="listbox" ref={listRef}>
+            {visible.length === 0 ? (
+              <div className="usel-empty">没有匹配</div>
+            ) : (
+              visible.map((option, index) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="option"
+                  aria-label={option.label}
+                  aria-selected={option.value === props.value}
+                  className={optionClass(Boolean(option.icon), index === activeIndex)}
+                  onMouseDown={(event) => {
+                    if (!props.holdFocus) return;
+                    event.preventDefault();
+                    choose(option.value);
+                  }}
+                  onMouseEnter={() => setHighlight(index)}
+                  onClick={() => {
+                    if (props.holdFocus) return;
+                    choose(option.value);
+                  }}
+                >
+                  {option.icon ? <span className="usel-icon">{option.icon}</span> : option.label}
+                  {option.value === props.value ? <span className="tick">✓</span> : null}
+                </button>
+              ))
+            )}
+          </div>
         </div>
       ) : null}
     </div>

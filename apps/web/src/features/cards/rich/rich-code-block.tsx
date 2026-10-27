@@ -3,28 +3,24 @@ import { NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap
 import type { ReactNodeViewProps } from '@tiptap/react';
 import { common, createLowlight } from 'lowlight';
 import { USelect } from '../../../shared/ui/select/select.js';
+import { defaultRichCodeLanguage, richCodeLanguageOptions } from './rich-languages.js';
 
 const lowlight = createLowlight(common);
-
-const CODE_LANGUAGES = lowlight.listLanguages().slice().sort((left, right) => left.localeCompare(right));
 
 function CodeBlockView(props: ReactNodeViewProps) {
   const raw = props.node.attrs.language;
   const language = typeof raw === 'string' ? raw : '';
-  const extra = language !== '' && !CODE_LANGUAGES.includes(language) ? language : null;
-  const options = [
-    { value: '', label: '纯文本' },
-    ...(extra ? [{ value: extra, label: extra }] : []),
-    ...CODE_LANGUAGES.map((name) => ({ value: name, label: name })),
-  ];
+  const selected = language === 'plaintext' ? '' : language;
 
   return (
     <NodeViewWrapper className="rich-code">
       <div className="rich-code-bar" contentEditable={false}>
         <USelect
           ariaLabel="代码语言"
-          value={language}
-          options={options}
+          value={selected}
+          options={richCodeLanguageOptions(language)}
+          searchable
+          searchLabel="搜索语言"
           holdFocus
           onChange={(next) => {
             props.updateAttributes({ language: next === '' ? null : next });
@@ -41,5 +37,11 @@ function CodeBlockView(props: ReactNodeViewProps) {
 export const RichCodeBlock = CodeBlockLowlight.extend({
   addNodeView() {
     return ReactNodeViewRenderer(CodeBlockView);
+  },
+  addKeyboardShortcuts() {
+    return {
+      ...this.parent?.(),
+      'Mod-Alt-c': () => this.editor.commands.toggleCodeBlock({ language: defaultRichCodeLanguage }),
+    };
   },
 }).configure({ lowlight });

@@ -41,6 +41,7 @@ import type { LucideIcon } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { USelect, type USelectOption } from '../../../shared/ui/select/select.js';
 import { BACKGROUND_COLORS, FONT_SIZES, TEXT_COLORS, normalizeColor, normalizeFontSize, parseCustomColor } from './palette.js';
+import { defaultRichCodeLanguage } from './rich-languages.js';
 
 const FONT_SIZE_OPTIONS: USelectOption[] = [
   { value: '', label: '默认' },
@@ -444,7 +445,9 @@ export function RichToolbar(props: { editor: Editor; onImages: (files: File[]) =
       case 'task':
         return button('任务列表', ListTodo, active.task, false, live, () => editor.chain().focus().toggleTaskList().run());
       case 'code':
-        return button('代码块', Code, active.code, false, live, () => editor.chain().focus().toggleCodeBlock().run());
+        return button('代码块', Code, active.code, false, live, () =>
+          editor.chain().focus().toggleCodeBlock({ language: defaultRichCodeLanguage }).run(),
+        );
       case 'link':
         return button('链接', Link, linkOpen || active.link !== '', false, live, () => {
           setLinkHref(active.link);

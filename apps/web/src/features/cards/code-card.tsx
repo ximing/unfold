@@ -91,6 +91,8 @@ export function CodeCard(props: {
           ariaLabel="语言"
           value={selected}
           options={codeLanguageOptions(language)}
+          searchable
+          searchLabel="搜索语言"
           onChange={chooseLanguage}
         />
       }
