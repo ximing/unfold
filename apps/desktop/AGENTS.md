@@ -25,7 +25,7 @@
 - `devUrl` 必须是 `http://localhost:5173`。不要改成 `127.0.0.1`。Vite 代理到 `3000`，浏览器看到的源仍是 `localhost`。
 - 不设置 `beforeBuildCommand`。`frontendDist` 保持 `https://unfold.aimo.plus`，无路径、无末尾斜杠。
 - 导航只拒绝 `tauri:` 和 `tauri.localhost`。`open::that` 只出现在 `on_new_window`。
-- macOS 红灯隐藏窗口。托盘图标使用 `icon_as_template(true)`。
+- macOS 菜单栏没有图标。红灯隐藏窗口，从 Dock 再打开。Windows 和 Linux 仍用托盘，`icon_as_template(true)`。
 - `window-state` 排除 `VISIBLE`。不要把该插件或托盘的 JS 权限写进 capability。
 - Web 源码不检测 Tauri。壳不提供截图、剪贴板或自定义命令。
 

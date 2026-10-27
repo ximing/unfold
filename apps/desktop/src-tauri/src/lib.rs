@@ -31,6 +31,7 @@ pub fn run() {
                     tauri::webview::NewWindowResponse::Deny
                 })
                 .build()?;
+            #[cfg(not(target_os = "macos"))]
             install_tray(app)?;
             Ok(())
         })
@@ -228,6 +229,7 @@ fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<tau
     }
 }
 
+#[cfg(not(target_os = "macos"))]
 fn install_tray(app: &tauri::App) -> tauri::Result<()> {
     use tauri::image::Image;
     use tauri::menu::{Menu, MenuItem};

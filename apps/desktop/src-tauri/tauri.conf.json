@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Unfold",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "plus.aimo.unfold",
   "build": {
     "beforeDevCommand": "node scripts/before-dev.mjs",

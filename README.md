@@ -4,11 +4,11 @@
 
 在浏览器打开 [unfold.aimo.plus](https://unfold.aimo.plus)，用用户名和密码注册。注册完直接进入。
 
-也可以装桌面客户端。窗口里是同一个网站，网站更新了不用重装。安装包在 [桌面版 v0.1.0](https://github.com/ximing/unfold/releases/tag/desktop-v0.1.0)：
+也可以装桌面客户端。窗口里是同一个网站，网站更新了不用重装。安装包在 [桌面版 v0.1.1](https://github.com/ximing/unfold/releases/tag/desktop-v0.1.1)：
 
-- [Windows](https://github.com/ximing/unfold/releases/download/desktop-v0.1.0/Unfold_0.1.0_x64-setup.exe)
-- [macOS（Apple 芯片）](https://github.com/ximing/unfold/releases/download/desktop-v0.1.0/Unfold_0.1.0_aarch64.dmg)
-- [macOS（Intel）](https://github.com/ximing/unfold/releases/download/desktop-v0.1.0/Unfold_0.1.0_x64.dmg)
+- [Windows](https://github.com/ximing/unfold/releases/download/desktop-v0.1.1/Unfold_0.1.1_x64-setup.exe)
+- [macOS（Apple 芯片）](https://github.com/ximing/unfold/releases/download/desktop-v0.1.1/Unfold_0.1.1_aarch64.dmg)
+- [macOS（Intel）](https://github.com/ximing/unfold/releases/download/desktop-v0.1.1/Unfold_0.1.1_x64.dmg)
 
 下文的 ⌘ 在 Windows 和 Linux 上是 Ctrl。
 
