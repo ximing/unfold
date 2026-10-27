@@ -18,7 +18,7 @@ import { snapPoint, snapTextOrigin } from './snap.js';
 import { isFiniteNumber, layoutBoard, layoutPlaced, nextPlacementZ, textNodeHeight } from './board-layout.js';
 import { GROW_CHILD_LABEL, GROW_H, GROW_W, planGrow } from './grow.js';
 import { imageFrame } from './image-frame.js';
-import { BoardNodes } from './board-nodes.js';
+import { BoardNodes, NodeChrome } from './board-nodes.js';
 import { InclusionFrames, type InclusionFrameView } from './inclusion-frame.js';
 import {
   inclusionChildId,
@@ -30,7 +30,7 @@ import { boardMenu, inclusionMenu, type BoardMenuAction } from './board-menu.js'
 import { BoardToolbar, type BoardTool } from './board-toolbar.js';
 import { GraphViewport, type ViewportMenuHit } from './graph-viewport.js';
 import { InlineInput } from './inline-input.js';
-import { peekPlacement, type PeekPlacement } from './peek-placement.js';
+import { peekPlacement } from './peek-placement.js';
 import './board.css';
 
 export type BoardCanvasItem = {
@@ -196,12 +196,6 @@ function visibleCanvas(host: DOMRect): { left: number; top: number; width: numbe
   return { left, top: host.top, width: Math.max(0, right - left), height: host.height };
 }
 
-function samePeekPlace(a: PeekPlacement | null, b: PeekPlacement | null): boolean {
-  if (a === b) return true;
-  if (!a || !b) return false;
-  return a.flip === b.flip && Math.round(a.left) === Math.round(b.left) && Math.round(a.top) === Math.round(b.top);
-}
-
 function isImageMime(type: string): boolean {
   const mime = type.split(';')[0]?.trim().toLowerCase() ?? '';
   return mime.startsWith('image/');
@@ -281,12 +275,11 @@ export function BoardCanvas(props: {
   const [tool, setTool] = useState<BoardTool>('select');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [peekId, setPeekId] = useState<string | null>(null);
-  const [peekPlace, setPeekPlace] = useState<PeekPlacement | null>(null);
   const peekTimer = useRef(0);
   const peekCloseTimer = useRef(0);
   const peekPopRef = useRef<HTMLDivElement>(null);
   const peekBoxRef = useRef<{ id: string; x: number; y: number; w: number; h: number } | null>(null);
-  const peekPlaceRef = useRef<PeekPlacement | null>(null);
+  const applyPeekRef = useRef<() => boolean>(() => false);
   const dragRef = useRef<DragGesture | null>(null);
   const dragSerial = useRef(0);
   const [dragBox, setDragBox] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -1437,38 +1430,17 @@ export function BoardCanvas(props: {
     return () => window.removeEventListener('selectstart', stopSelect);
   }, []);
 
-  useLayoutEffect(() => {
-    if (!peekId) {
-      peekPlaceRef.current = null;
-      setPeekPlace(null);
-      return;
-    }
-    let raf = 0;
-    let stopped = false;
-    const tick = () => {
-      if (stopped) return;
-      const next = measurePeek();
-      if (!samePeekPlace(peekPlaceRef.current, next)) {
-        peekPlaceRef.current = next;
-        setPeekPlace(next);
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    tick();
-    return () => {
-      stopped = true;
-      cancelAnimationFrame(raf);
-    };
-  }, [peekId, peekBox?.x, peekBox?.y, peekBox?.w, peekBox?.h]);
-
-  function measurePeek(): PeekPlacement | null {
+  function placePeek(): boolean {
+    const pop = peekPopRef.current;
     const g = worldRef.current;
     const box = peekBoxRef.current;
-    const pop = peekPopRef.current;
-    if (!g || !box || !pop) return null;
+    if (!pop || !g || !box) return false;
     const host = g.ownerSVGElement?.parentElement;
     const matrix = g.getScreenCTM();
-    if (!host || !matrix) return null;
+    if (!host || !matrix) {
+      if (pop.style.visibility !== 'hidden') pop.style.visibility = 'hidden';
+      return false;
+    }
     const hostRect = host.getBoundingClientRect();
     const visible = visibleCanvas(hostRect);
     const origin = new DOMPoint(box.x, box.y).matrixTransform(matrix);
@@ -1485,12 +1457,45 @@ export function BoardCanvas(props: {
       cardWidth: 240,
       cardHeight,
     });
-    return {
-      left: place.left + (visible.left - hostRect.left),
-      top: place.top + (visible.top - hostRect.top),
-      flip: place.flip,
-    };
+    const placedLeft = place.left + (visible.left - hostRect.left);
+    const left = `${place.flip ? placedLeft : placedLeft - 12}px`;
+    const top = `${place.top + (visible.top - hostRect.top)}px`;
+    if (pop.style.left !== left) pop.style.left = left;
+    if (pop.style.top !== top) pop.style.top = top;
+    if (pop.classList.contains('flip') !== place.flip) pop.classList.toggle('flip', place.flip);
+    if (pop.style.visibility !== 'visible') pop.style.visibility = 'visible';
+    return true;
   }
+  applyPeekRef.current = placePeek;
+
+  useLayoutEffect(() => {
+    if (!peekId) return;
+    let raf = 0;
+    let tries = 0;
+    const run = () => {
+      tries += 1;
+      if (applyPeekRef.current() || tries >= 8) return;
+      raf = requestAnimationFrame(run);
+    };
+    run();
+    const pop = peekPopRef.current;
+    let frame = 0;
+    const observer = pop
+      ? new ResizeObserver(() => {
+          if (frame !== 0) return;
+          frame = requestAnimationFrame(() => {
+            frame = 0;
+            applyPeekRef.current();
+          });
+        })
+      : null;
+    if (pop && observer) observer.observe(pop);
+    return () => {
+      cancelAnimationFrame(raf);
+      if (frame !== 0) cancelAnimationFrame(frame);
+      observer?.disconnect();
+    };
+  }, [peekId, peekBox?.x, peekBox?.y, peekBox?.w, peekBox?.h]);
 
   const canvasClass = !toolsOn ? undefined : tool === 'text' ? 'tool-text' : tool === 'connect' ? 'tool-connect' : undefined;
 
@@ -1521,16 +1526,14 @@ export function BoardCanvas(props: {
         }
         grid={canvas.grid}
         contextItems={contextItems}
+        onViewChange={() => {
+          applyPeekRef.current();
+        }}
         overlay={
           peekBox && props.renderPeek ? (
             <div
               ref={peekPopRef}
-              className={peekPlace?.flip ? 'bpeek bpeek-pop flip' : 'bpeek bpeek-pop'}
-              style={{
-                left: peekPlace ? (peekPlace.flip ? peekPlace.left : peekPlace.left - 12) : 0,
-                top: peekPlace?.top ?? 0,
-                visibility: peekPlace ? 'visible' : 'hidden',
-              }}
+              className="bpeek bpeek-pop"
               onPointerEnter={holdPeek}
               onPointerLeave={scheduleClosePeek}
             >
@@ -1690,7 +1693,7 @@ export function BoardCanvas(props: {
                         ) : null}
                       </>
                     ) : null}
-                    <rect className="bnode-rect" x={draft.x} y={draft.y} width={draft.w} height={draft.h} rx={11} />
+                    <NodeChrome x={draft.x} y={draft.y} w={draft.w} h={draft.h} selected />
                     <InlineInput
                       x={draft.x}
                       y={draft.y + (draft.h - 34) / 2}

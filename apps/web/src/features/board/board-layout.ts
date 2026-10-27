@@ -108,7 +108,8 @@ export function placeNewCorners(
 }
 
 /**
- * 全部 x 都不是有限数时，结果与 layoutBoard 相同。
+ * 每个点都已有 x 时，按输入顺序用保存的坐标，宽高用默认卡片尺寸。
+ * 全部都没有 x 时，结果与 layoutBoard 相同。
  * 否则保留已有坐标，未放置的点用 placeNewCorners，宽高仍取 layoutBoard。
  */
 export function layoutPlaced(
@@ -116,6 +117,15 @@ export function layoutPlaced(
   links: readonly BoardLink[],
   center: { x: number; y: number },
 ): BoardBox[] {
+  if (items.every((item) => isFiniteNumber(item.x))) {
+    return items.map((item) => ({
+      id: item.id,
+      x: isFiniteNumber(item.x) ? item.x : 0,
+      y: isFiniteNumber(item.y) ? item.y : 0,
+      w: NODE_W,
+      h: NODE_H,
+    }));
+  }
   const laid = layoutBoard(items, links);
   if (items.every((item) => !isFiniteNumber(item.x))) return laid;
 

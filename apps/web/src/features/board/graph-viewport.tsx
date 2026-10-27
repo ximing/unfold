@@ -1,5 +1,5 @@
 import { Expand, ZoomIn, ZoomOut } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { UContextMenu, type UMenuEntry } from '../../shared/ui/context-menu/context-menu.js';
 import './graph-viewport.css';
 
@@ -46,6 +46,8 @@ export type GraphViewportProps = {
   overlay?: ReactNode;
   /** 点、边、空白各自的菜单。视口再给空白补上缩放 */
   contextItems?: (hit: ViewportMenuHit) => UMenuEntry[];
+  /** 平移或缩放之后。调用方只改视口上的浮层，不要因此重绘世界坐标 */
+  onViewChange?: () => void;
 };
 
 export function GraphViewport(props: GraphViewportProps) {
@@ -57,6 +59,12 @@ export function GraphViewport(props: GraphViewportProps) {
   const [menu, setMenu] = useState<{ x: number; y: number; items: UMenuEntry[] } | null>(null);
   const dragRef = useRef<{ pointerId: number; lastX: number; lastY: number } | null>(null);
   const initRef = useRef('');
+  const onViewChangeRef = useRef(props.onViewChange);
+  onViewChangeRef.current = props.onViewChange;
+
+  useLayoutEffect(() => {
+    onViewChangeRef.current?.();
+  }, [t.k, t.tx, t.ty]);
 
   useEffect(() => {
     const el = hostRef.current;

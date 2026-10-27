@@ -35,13 +35,25 @@
   max-width: 50%;
 }
 
-/* 节点 */
+/* 节点。阴影和选中光晕是实色图形：SVG 上的 filter 在平移、缩放、拖点时不会擦掉上一帧。 */
 .bnode { cursor: pointer; }
+.bnode-shade {
+  fill: rgba(0, 0, 0, 0.05);
+  stroke: none;
+  pointer-events: none;
+}
+.bnode.on .bnode-shade { fill: none; }
+.bnode-glow {
+  fill: none;
+  stroke: none;
+  pointer-events: none;
+}
+.bnode.on .bnode-glow-outer { fill: rgba(10, 102, 255, 0.07); }
+.bnode.on .bnode-glow-inner { fill: rgba(10, 102, 255, 0.13); }
 .bnode-rect {
   fill: var(--card);
   stroke: var(--line);
   stroke-width: 1;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.05));
   transition: stroke 0.12s;
 }
 .bnode.bnode-inclusion .bnode-rect { stroke-dasharray: 5 4; }
@@ -49,7 +61,6 @@
 .bnode.on .bnode-rect {
   stroke: var(--accent);
   stroke-width: 1.8;
-  filter: drop-shadow(0 2px 8px rgba(10, 102, 255, 0.25));
 }
 .bnode-name {
   fill: var(--ink);
@@ -89,21 +100,13 @@
   fill: var(--accent);
   stroke: #fff;
   stroke-width: 1.5;
-  opacity: 0;
-  pointer-events: none;
   cursor: crosshair;
-  transition: opacity 0.12s;
 }
-.bnode:hover .bnode-handle { opacity: 1; pointer-events: auto; }
 .bnode.bnode-image .bnode-rect,
-.bnode.bnode-image:hover .bnode-rect {
-  stroke: none;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.05));
-}
+.bnode.bnode-image:hover .bnode-rect,
 .bnode.bnode-image.on .bnode-rect {
   stroke: none;
   stroke-width: 1;
-  filter: none;
 }
 .bnode-image-frame {
   fill: none;
@@ -116,7 +119,6 @@
 .bnode-image.on .bnode-image-frame {
   stroke: var(--accent);
   stroke-width: 1.8;
-  filter: drop-shadow(0 2px 8px rgba(10, 102, 255, 0.25));
 }
 .bnode-photo {
   overflow: hidden;
@@ -206,6 +208,7 @@
   box-sizing: border-box;
   pointer-events: auto;
   padding-left: 12px;
+  visibility: hidden;
 }
 .bpeek-pop.flip { padding-left: 0; padding-right: 12px; }
 html.board-dragging,

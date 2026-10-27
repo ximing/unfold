@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { layoutBoard, layoutPlaced, placeNewCorners, textNodeHeight } from './board-layout.js';
+import { NODE_H, NODE_W, layoutBoard, layoutPlaced, placeNewCorners, textNodeHeight } from './board-layout.js';
 
 describe('layoutBoard', () => {
   it('没有节点时是空的', () => {
@@ -71,6 +71,17 @@ describe('layoutPlaced', () => {
     expect(laidSaved?.x).not.toBe(480);
     expect(saved).toMatchObject({ x: 480, y: 12, w: laidSaved?.w, h: laidSaved?.h });
     expect(fresh).toMatchObject({ x: 900, y: 40, w: laidSaved?.w, h: laidSaved?.h });
+  });
+
+  it('全部已有坐标时保留输入顺序和坐标', () => {
+    const items = [
+      { id: 'b', x: 10, y: 20 },
+      { id: 'a', x: 400, y: null },
+    ];
+    const boxes = layoutPlaced(items, [{ fromId: 'a', toId: 'b' }], { x: 0, y: 0 });
+    expect(boxes.map((box) => box.id)).toEqual(['b', 'a']);
+    expect(boxes[0]).toEqual({ id: 'b', x: 10, y: 20, w: NODE_W, h: NODE_H });
+    expect(boxes[1]).toEqual({ id: 'a', x: 400, y: 0, w: NODE_W, h: NODE_H });
   });
 
   it('未放置的点从给定中心向右下按 24 让开左上角', () => {
