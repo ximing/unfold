@@ -85,6 +85,33 @@ describe('edgeDraw', () => {
     expect(cross / handle).toBeLessThan(Math.sin((24 * Math.PI) / 180));
   });
 
+  it('斜向曲线弯向目标所在的上下一侧', () => {
+    const side = (target: { x: number; y: number; w: number; h: number }) => {
+      const curve = edgeDraw(from, target, 0, 1, false, 'curve');
+      const ends = edgeGeometry(from, target, 0, 1, false);
+      return {
+        bowX: curve.label.x - (ends.x1 + ends.x2) / 2,
+        bowY: curve.label.y - (ends.y1 + ends.y2) / 2,
+        dy: ends.y2 - ends.y1,
+        dx: ends.x2 - ends.x1,
+      };
+    };
+    const upRight = side({ x: 280, y: -120, w: 168, h: 56 });
+    const upLeft = side({ x: -220, y: -120, w: 168, h: 56 });
+    const downRight = side({ x: 280, y: 240, w: 168, h: 56 });
+    const downLeft = side({ x: -220, y: 240, w: 168, h: 56 });
+    expect(upRight.bowY).toBeLessThan(0);
+    expect(upRight.bowX).toBeLessThan(0);
+    expect(upLeft.bowY).toBeLessThan(0);
+    expect(upLeft.bowX).toBeGreaterThan(0);
+    expect(downRight.bowY).toBeGreaterThan(0);
+    expect(downRight.bowX).toBeLessThan(0);
+    expect(downLeft.bowY).toBeGreaterThan(0);
+    expect(downLeft.bowX).toBeGreaterThan(0);
+    expect(Math.sign(upRight.dy)).toBe(-1);
+    expect(Math.sign(downLeft.dx)).toBe(-1);
+  });
+
   it('左右并排时折线从右边框接到左边框，两条边错开', () => {
     const a = edgeDraw(from, to, 0, 2, false, 'orthogonal');
     const b = edgeDraw(from, to, 1, 2, false, 'orthogonal');

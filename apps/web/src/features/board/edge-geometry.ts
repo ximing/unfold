@@ -139,6 +139,17 @@ function smoothstep(value: number): number {
   return t * t * (3 - 2 * t);
 }
 
+/** 弯向目标的上下一侧。右上向左上，左上向右上，下面两个方向向下。 */
+function curveNormal(dir: { x: number; y: number }): { x: number; y: number } {
+  let x = -dir.y;
+  let y = dir.x;
+  if (y * dir.y < 0) {
+    x = -x;
+    y = -y;
+  }
+  return { x, y };
+}
+
 /**
  * 接近水平或垂直时不弯。斜向用长把手的三次曲线：两端顺着连线离开，弯出集中在中段。
  */
@@ -148,7 +159,7 @@ function curveDraw(ends: EdgeEnds, inset: number): EdgeDraw {
   const len = Math.hypot(dx, dy);
   if (len < 1e-6) return lineDraw(ends, inset);
   const dir = unit(dx, dy);
-  const normal = { x: -dir.y, y: dir.x };
+  const normal = curveNormal(dir);
   const major = Math.max(Math.abs(dx), Math.abs(dy));
   const minor = Math.min(Math.abs(dx), Math.abs(dy));
   const ratio = major < 1e-6 ? 0 : minor / major;
