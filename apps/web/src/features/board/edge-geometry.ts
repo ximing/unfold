@@ -73,13 +73,40 @@ export const ARROW_HALF = 3.5;
 
 export type EdgeTip = { x: number; y: number; ux: number; uy: number };
 
-export type EdgeDraw = { d: string; label: { x: number; y: number }; tip: EdgeTip };
+export type EdgeDraw = {
+  d: string;
+  label: { x: number; y: number };
+  /** 单位向量。文字从中点沿它让开笔画，不再固定往屏幕上方抬。 */
+  labelOut: { x: number; y: number };
+  tip: EdgeTip;
+};
 
 const CORNER = 12;
+/** 文字中心离开笔画的距离。 */
+export const LABEL_LIFT = 12;
+
+/** 小于这个夹角视为水平或垂直，不弯。 */
+const CURVE_STRAIGHT = Math.tan((18 * Math.PI) / 180);
+/** 夹角到这里时弯出满。 */
+const CURVE_FULL = Math.tan((40 * Math.PI) / 180);
+const CURVE_SAG_RATIO = 0.12;
+const CURVE_SAG_MAX = 48;
+const CURVE_HANDLE = 0.45;
 
 function retreat(end: { x: number; y: number }, dir: { x: number; y: number }, inset: number, room: number): { x: number; y: number } {
   const pull = Math.min(Math.max(0, inset), Math.max(0, room - 4));
   return { x: end.x - dir.x * pull, y: end.y - dir.y * pull };
+}
+
+/** 水平线把字放在上方。垂直线只往旁边让，避免把字抬向起点。 */
+function labelClearance(dir: { x: number; y: number }): { x: number; y: number } {
+  let x = -dir.y;
+  let y = dir.x;
+  if (y > 0) {
+    x = -x;
+    y = -y;
+  }
+  return { x, y };
 }
 
 function lineDraw(ends: EdgeEnds, inset: number): EdgeDraw {
@@ -91,6 +118,7 @@ function lineDraw(ends: EdgeEnds, inset: number): EdgeDraw {
   return {
     d: `M ${ends.x1} ${ends.y1} L ${end.x} ${end.y}`,
     label: edgeMidpoint(ends),
+    labelOut: labelClearance(dir),
     tip: { x: ends.x2, y: ends.y2, ux: dir.x, uy: dir.y },
   };
 }
@@ -106,19 +134,33 @@ export function arrowPath(tip: EdgeTip, length = ARROW_LEN, half = ARROW_HALF): 
   return `M ${tip.x} ${tip.y} L ${lx} ${ly} L ${rx} ${ry} Z`;
 }
 
+function smoothstep(value: number): number {
+  const t = Math.min(1, Math.max(0, value));
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * 接近水平或垂直时不弯。斜向用长把手的三次曲线：两端顺着连线离开，弯出集中在中段。
+ */
 function curveDraw(ends: EdgeEnds, inset: number): EdgeDraw {
   const dx = ends.x2 - ends.x1;
   const dy = ends.y2 - ends.y1;
   const len = Math.hypot(dx, dy);
   if (len < 1e-6) return lineDraw(ends, inset);
   const dir = unit(dx, dy);
-  const bow = Math.min(len * 0.2, 80);
-  const nx = -dir.y;
-  const ny = dir.x;
-  const c1x = ends.x1 + dir.x * (len / 3) + nx * bow;
-  const c1y = ends.y1 + dir.y * (len / 3) + ny * bow;
-  const c2x = ends.x1 + dir.x * ((2 * len) / 3) + nx * bow;
-  const c2y = ends.y1 + dir.y * ((2 * len) / 3) + ny * bow;
+  const normal = { x: -dir.y, y: dir.x };
+  const major = Math.max(Math.abs(dx), Math.abs(dy));
+  const minor = Math.min(Math.abs(dx), Math.abs(dy));
+  const ratio = major < 1e-6 ? 0 : minor / major;
+  const fade = smoothstep((ratio - CURVE_STRAIGHT) / (CURVE_FULL - CURVE_STRAIGHT));
+  const sag = fade * Math.min(len * CURVE_SAG_RATIO, CURVE_SAG_MAX);
+  if (sag < 0.75) return lineDraw(ends, inset);
+  const handle = len * CURVE_HANDLE;
+  const off = sag / 0.75;
+  const c1x = ends.x1 + dir.x * handle + normal.x * off;
+  const c1y = ends.y1 + dir.y * handle + normal.y * off;
+  const c2x = ends.x2 - dir.x * handle + normal.x * off;
+  const c2y = ends.y2 - dir.y * handle + normal.y * off;
   const tan = unit(ends.x2 - c2x, ends.y2 - c2y);
   const room = Math.hypot(ends.x2 - c2x, ends.y2 - c2y);
   const end = retreat({ x: ends.x2, y: ends.y2 }, tan, inset, room);
@@ -130,6 +172,7 @@ function curveDraw(ends: EdgeEnds, inset: number): EdgeDraw {
       x: (ends.x1 + 3 * c1x + 3 * c2x + ends.x2) / 8,
       y: (ends.y1 + 3 * c1y + 3 * c2y + ends.y2) / 8,
     },
+    labelOut: normal,
     tip: { x: ends.x2, y: ends.y2, ux: tan.x, uy: tan.y },
   };
 }
@@ -149,14 +192,19 @@ function dedupePoints(points: { x: number; y: number }[]): { x: number; y: numbe
   return kept;
 }
 
-function roundedPolyline(points: { x: number; y: number }[]): { d: string; label: { x: number; y: number } } {
+function roundedPolyline(points: { x: number; y: number }[]): {
+  d: string;
+  label: { x: number; y: number };
+  labelDir: { x: number; y: number };
+} {
   const unique = dedupePoints(points);
   if (unique.length < 2) {
     const only = unique[0] ?? { x: 0, y: 0 };
-    return { d: `M ${only.x} ${only.y}`, label: only };
+    return { d: `M ${only.x} ${only.y}`, label: only, labelDir: { x: 1, y: 0 } };
   }
   let best = -1;
   let label = unique[0] ?? { x: 0, y: 0 };
+  let labelDir = { x: 1, y: 0 };
   for (let index = 0; index < unique.length - 1; index += 1) {
     const from = unique[index];
     const to = unique[index + 1];
@@ -165,6 +213,7 @@ function roundedPolyline(points: { x: number; y: number }[]): { d: string; label
     if (len >= best) {
       best = len;
       label = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+      labelDir = unit(to.x - from.x, to.y - from.y);
     }
   }
   const parts = [`M ${unique[0]?.x ?? 0} ${unique[0]?.y ?? 0}`];
@@ -192,7 +241,7 @@ function roundedPolyline(points: { x: number; y: number }[]): { d: string; label
   }
   const last = unique[unique.length - 1];
   parts.push(`L ${last?.x ?? 0} ${last?.y ?? 0}`);
-  return { d: parts.join(' '), label };
+  return { d: parts.join(' '), label, labelDir };
 }
 
 function orthogonalDraw(from: EdgeBox, to: EdgeBox, index: number, count: number, paired: boolean, inset: number): EdgeDraw {
@@ -216,9 +265,11 @@ function orthogonalDraw(from: EdgeBox, to: EdgeBox, index: number, count: number
     const midX = (start.x + end.x) / 2;
     const elbow = [start, { x: midX, y: start.y }, { x: midX, y: end.y }, end];
     const pulled = retreat(end, arrive, inset, Math.abs(end.x - start.x));
+    const plain = roundedPolyline(elbow);
     return {
       d: roundedPolyline([start, { x: midX, y: start.y }, { x: midX, y: end.y }, pulled]).d,
-      label: roundedPolyline(elbow).label,
+      label: plain.label,
+      labelOut: labelClearance(plain.labelDir),
       tip: { x: end.x, y: end.y, ux: arrive.x, uy: arrive.y },
     };
   }
@@ -235,14 +286,16 @@ function orthogonalDraw(from: EdgeBox, to: EdgeBox, index: number, count: number
   const midY = (start.y + end.y) / 2;
   const elbow = [start, { x: start.x, y: midY }, { x: end.x, y: midY }, end];
   const pulled = retreat(end, arrive, inset, Math.abs(end.y - start.y));
+  const plain = roundedPolyline(elbow);
   return {
     d: roundedPolyline([start, { x: start.x, y: midY }, { x: end.x, y: midY }, pulled]).d,
-    label: roundedPolyline(elbow).label,
+    label: plain.label,
+    labelOut: labelClearance(plain.labelDir),
     tip: { x: end.x, y: end.y, ux: arrive.x, uy: arrive.y },
   };
 }
 
-/** 直线、轻度曲线或圆角折线。标签落在看得见的中点。arrowInset 把线尾从终点边框往回缩。 */
+/** 直线、平滑曲线或圆角折线。标签锚在中点。接近水平或垂直的曲线不弯。arrowInset 把线尾从终点边框往回缩。 */
 export function edgeDraw(
   from: EdgeBox,
   to: EdgeBox,

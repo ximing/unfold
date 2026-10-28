@@ -47,13 +47,42 @@ describe('edgeGeometry', () => {
 });
 
 describe('edgeDraw', () => {
-  it('曲线的标签离开直线中点', () => {
-    const straight = edgeDraw(from, to, 0, 1, false, 'straight');
-    const curve = edgeDraw(from, to, 0, 1, false, 'curve');
-    expect(curve.label.x).toBeCloseTo(straight.label.x);
-    expect(curve.label.y).not.toBeCloseTo(straight.label.y);
-    expect(curve.d.startsWith('M ')).toBe(true);
+  it('接近水平或垂直时曲线退成直线', () => {
+    const flat = edgeDraw(from, to, 0, 1, false, 'curve');
+    const line = edgeDraw(from, to, 0, 1, false, 'straight');
+    expect(flat.d).toBe(line.d);
+    expect(flat.label).toEqual(line.label);
+
+    const down = { x: 32, y: 220, w: 168, h: 56 };
+    const vertical = edgeDraw(from, down, 0, 1, false, 'curve');
+    expect(vertical.d.includes(' C ')).toBe(false);
+    expect(vertical.labelOut.y).toBeCloseTo(0);
+    expect(Math.abs(vertical.labelOut.x)).toBeCloseTo(1);
+  });
+
+  it('斜向曲线在中段平滑弯出，标签落在弦的中点', () => {
+    const diag = { x: 280, y: 240, w: 168, h: 56 };
+    const curve = edgeDraw(from, diag, 0, 1, false, 'curve');
+    const ends = edgeGeometry(from, diag, 0, 1, false);
+    const dx = ends.x2 - ends.x1;
+    const dy = ends.y2 - ends.y1;
+    const along = ((curve.label.x - ends.x1) * dx + (curve.label.y - ends.y1) * dy) / (dx * dx + dy * dy);
+    const lx = curve.label.x - (ends.x1 + ends.x2) / 2;
+    const ly = curve.label.y - (ends.y1 + ends.y2) / 2;
     expect(curve.d.includes(' C ')).toBe(true);
+    expect(along).toBeCloseTo(0.5, 2);
+    expect(Math.hypot(lx, ly)).toBeGreaterThan(8);
+    expect(lx * dx + ly * dy).toBeCloseTo(0, 0);
+
+    const controls = curve.d.match(/C ([\d.-]+) ([\d.-]+)/);
+    expect(controls).not.toBeNull();
+    const c1x = Number(controls?.[1]);
+    const c1y = Number(controls?.[2]);
+    const handle = Math.hypot(c1x - ends.x1, c1y - ends.y1);
+    const parallel = ((c1x - ends.x1) * dx + (c1y - ends.y1) * dy) / Math.hypot(dx, dy);
+    const cross = Math.abs((c1x - ends.x1) * dy - (c1y - ends.y1) * dx) / Math.hypot(dx, dy);
+    expect(parallel / handle).toBeGreaterThan(Math.cos((24 * Math.PI) / 180));
+    expect(cross / handle).toBeLessThan(Math.sin((24 * Math.PI) / 180));
   });
 
   it('左右并排时折线从右边框接到左边框，两条边错开', () => {
@@ -72,6 +101,7 @@ describe('edgeDraw', () => {
     expect(drawn.tip).toEqual({ x: to.x, y: centerY, ux: 1, uy: 0 });
     expect(drawn.d).toBe(`M ${from.x + from.w} ${centerY} L ${to.x - 8} ${centerY}`);
     expect(drawn.label).toEqual(plain.label);
+    expect(drawn.labelOut.y).toBeCloseTo(-1);
     expect(arrowPath(drawn.tip)).toBe(`M ${to.x} ${centerY} L ${to.x - 8} ${centerY + 3.5} L ${to.x - 8} ${centerY - 3.5} Z`);
 
     const elbow = edgeDraw(from, to, 0, 1, false, 'orthogonal', 8);

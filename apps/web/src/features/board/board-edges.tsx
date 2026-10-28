@@ -2,7 +2,7 @@ import type { EdgeAppearance } from '@unfold/dto';
 import { memo, useRef, useState, type RefObject } from 'react';
 import type { BoardCanvasLink } from './board-canvas.js';
 import type { BoardBox } from './board-layout.js';
-import { ARROW_LEN, arrowPath, edgeDraw, edgeLanes, type EdgeRoute } from './edge-geometry.js';
+import { ARROW_LEN, LABEL_LIFT, arrowPath, edgeDraw, edgeLanes, type EdgeRoute } from './edge-geometry.js';
 import { EDGE_DASH, EDGE_STROKE, EDGE_WIDTH } from './edge-style.js';
 import { shortLabel } from './label.js';
 
@@ -91,7 +91,13 @@ const EdgeView = memo(function EdgeView(props: {
       />
       {withArrow ? <path d={arrowPath(stroke.tip)} fill={color} stroke="none" pointerEvents="none" /> : null}
       {showText ? (
-        <text className="bedge-label" x={full.label.x} y={full.label.y - 9} textAnchor="middle">
+        <text
+          className="bedge-label"
+          x={full.label.x + full.labelOut.x * LABEL_LIFT}
+          y={full.label.y + full.labelOut.y * LABEL_LIFT}
+          textAnchor="middle"
+          dominantBaseline="central"
+        >
           {shortLabel(link.label)}
           {props.showMarkers && count > 0 ? (
             <tspan className="cnt" dx={link.label === '' ? 0 : 5}>
