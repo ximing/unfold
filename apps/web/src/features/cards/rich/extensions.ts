@@ -1,4 +1,4 @@
-import { Node, mergeAttributes } from '@tiptap/core';
+import { Node } from '@tiptap/core';
 import type { NodeViewRendererProps } from '@tiptap/core';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
 import { Mathematics } from '@tiptap/extension-mathematics';
@@ -12,9 +12,7 @@ import StarterKit from '@tiptap/starter-kit';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { normalizeColor, normalizeFontSize } from './palette.js';
 import { RichCodeBlock } from './rich-code-block.js';
-
-const UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+import { RichImage } from './rich-image.js';
 
 const ALIGN_TYPES = [
   'paragraph',
@@ -72,66 +70,6 @@ const RichTableCell = TableCell.extend({
 const RichTableHeader = TableHeader.extend({
   addAttributes() {
     return { ...this.parent?.(), backgroundColor: backgroundAttribute() };
-  },
-});
-
-function assetSrc(id: string): string {
-  return UUID.test(id) ? `/api/assets/${id}` : '';
-}
-
-function readAssetId(element: HTMLElement): string | null {
-  const explicit = element.getAttribute('data-asset') ?? '';
-  if (UUID.test(explicit)) return explicit.toLowerCase();
-  const match = /\/api\/assets\/([0-9a-f-]{36})/i.exec(element.getAttribute('src') ?? '');
-  if (match?.[1] && UUID.test(match[1])) return match[1].toLowerCase();
-  return null;
-}
-
-/** src 只存资源 id，显示地址在渲染时再拼。 */
-const RichImage = Node.create({
-  name: 'image',
-  group: 'block',
-  atom: true,
-  draggable: false,
-  addAttributes() {
-    return {
-      src: { default: null, rendered: false },
-      alt: { default: null, rendered: false },
-      width: { default: null, rendered: false },
-    };
-  },
-  parseHTML() {
-    return [
-      {
-        tag: 'img[data-rich-image]',
-        getAttrs(dom) {
-          if (!(dom instanceof HTMLElement)) return false;
-          const src = readAssetId(dom);
-          if (!src) return false;
-          const alt = (dom.getAttribute('alt') ?? '').trim().slice(0, 200);
-          const width = Number(dom.getAttribute('width'));
-          const attrs: { src: string; alt?: string; width?: number } = { src };
-          if (alt !== '') attrs.alt = alt;
-          if (Number.isFinite(width) && width >= 32 && width <= 1200) attrs.width = width;
-          return attrs;
-        },
-      },
-    ];
-  },
-  renderHTML({ HTMLAttributes, node }) {
-    const src = typeof node.attrs.src === 'string' ? node.attrs.src : '';
-    const alt = typeof node.attrs.alt === 'string' ? node.attrs.alt : '';
-    const width = node.attrs.width;
-    return [
-      'img',
-      mergeAttributes(HTMLAttributes, {
-        'data-rich-image': 'true',
-        'data-asset': src,
-        src: assetSrc(src),
-        alt,
-        ...(typeof width === 'number' ? { width: String(width) } : {}),
-      }),
-    ];
   },
 });
 
