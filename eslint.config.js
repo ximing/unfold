@@ -18,6 +18,7 @@ export default defineConfig(
       '.claude/**',
       '.grok/**',
       '.codegraph/**',
+      '.oil-ui/**',
     ],
   },
   {
