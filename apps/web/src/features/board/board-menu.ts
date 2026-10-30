@@ -57,12 +57,12 @@ export function boardMenu(target: BoardMenuTarget): BoardMenuEntry[] {
     if (target.canOpen) items.push({ action: 'open', label: '打开', hint: '双击' });
     if (target.canRename) items.push({ action: 'rename', label: '改名', hint: '双击' });
     if (target.canGrow) {
-      items.push({ action: 'grow-child', label: '建下级', hint: 'Tab' });
-      items.push({ action: 'grow-sibling', label: '建同级', hint: 'Enter' });
+      items.push({ action: 'grow-child', label: '在旁边新建', hint: 'Tab' });
+      items.push({ action: 'grow-sibling', label: '在下方新建', hint: 'Enter' });
     }
     if (target.canConnect) items.push({ action: 'connect', label: '从这里连线' });
     const tail: BoardMenuEntry[] = [];
-    if (target.canRemove) tail.push({ action: 'remove', label: '移出这个合集' });
+    if (target.canRemove) tail.push({ action: 'remove', label: '移出当前合集' });
     if (target.canDeleteItem) {
       tail.push({
         action: 'delete-item',

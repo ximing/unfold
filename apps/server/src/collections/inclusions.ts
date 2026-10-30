@@ -48,24 +48,6 @@ async function inclusionLinks(db: Query, userId: string): Promise<Link[]> {
   return rows;
 }
 
-async function relationLabels(db: Query, userId: string, parentId: string, childId: string): Promise<string[]> {
-  const rows = await db
-    .select({ fromId: collectionEdges.fromId, toId: collectionEdges.toId, label: collectionEdges.label })
-    .from(collectionEdges)
-    .where(
-      and(
-        eq(collectionEdges.userId, userId),
-        isNull(collectionEdges.deletedAt),
-        or(
-          and(eq(collectionEdges.fromId, parentId), eq(collectionEdges.toId, childId)),
-          and(eq(collectionEdges.fromId, childId), eq(collectionEdges.toId, parentId)),
-        ),
-      ),
-    )
-    .orderBy(asc(collectionEdges.createdAt), asc(collectionEdges.id));
-  return rows.map((row) => row.label);
-}
-
 /** 与父合集已有点边相连的其他合集。两个方向各查一次。 */
 async function linkedByNodes(db: Query, userId: string, parentId: string): Promise<Set<string>> {
   const linked = new Set<string>();
@@ -160,19 +142,6 @@ export async function createInclusion(
       const links = await inclusionLinks(tx, userId);
       if (links.some((link) => link.parentId === parentId && link.childId === body.childId)) return 'exists';
       if (closesCycle(parentId, body.childId, links)) return 'cycle';
-
-      const labels = await relationLabels(tx, userId, parentId, body.childId);
-      const nodeLinks = await linkedByNodes(tx, userId, parentId);
-      const linked = labels.length > 0 || nodeLinks.has(body.childId);
-      if (!linked) {
-        if (!body.label) return 'needs-label';
-        await tx.insert(collectionEdges).values({
-          userId,
-          fromId: parentId,
-          toId: body.childId,
-          label: body.label,
-        });
-      }
 
       const points = await tx
         .select({ x: memberships.x, y: memberships.y })

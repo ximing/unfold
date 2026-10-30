@@ -9,11 +9,13 @@ import type {
   Edge,
   EdgeAppearance,
   EdgeDetail,
+  CreateNodeResult,
   InclusionCandidates,
   Library,
   LibraryCollection,
-  Node,
   NodeDetail,
+  OutlineItem,
+  RestoreOutlineBody,
   SearchHit,
   UpdateInclusionBody,
 } from '@unfold/dto';
@@ -21,7 +23,7 @@ import { defaultEdgeAppearance } from '@unfold/dto';
 import { watchWrite } from '../../shared/save/save-bus.js';
 import { saveAppearance } from './appearance.js';
 import { createCard, deleteCard, updateCard } from './cards.js';
-import { createCollection, addMember, createNode, deleteCollection, loadCollections, removeMember, renameCollection } from './collections.js';
+import { createCollection, addMember, createNode, deleteCollection, loadCollections, renameCollection } from './collections.js';
 import {
   createCollectionEdge,
   deleteCollectionEdge,
@@ -31,10 +33,11 @@ import {
 import { createEdge, deleteEdge, loadEdge, renameEdge } from './edges.js';
 import { loadGraph, loadLibrary } from './graph.js';
 import { createInclusion, loadInclusionCandidates, removeInclusion, updateInclusion } from './inclusions.js';
+import { putOutline, removeMember, restoreOutline, type OutlineWrite } from './outline.js';
 import { clearPeek, deleteNode, describeNode, loadNode, loadPeek, renameNode } from './nodes.js';
 import { savePlacements, type PlacementWrite } from './placements.js';
 import { pullView, setSyncView, type SyncView } from './pull.js';
-import { clearSearch, search } from './search.js';
+import { clearSearch, search, type SearchArgs } from './search.js';
 
 export type LibraryJobs = {
   graph: number;
@@ -55,6 +58,9 @@ export type LibraryState = {
   collectionEdgeDetail: CollectionEdgeDetail | null;
   peek: NodeDetail | null;
   searchHits: SearchHit[];
+  searchCursor: string | null;
+  searchError: string;
+  searchLoading: boolean;
   error: string;
   jobs: LibraryJobs;
 };
@@ -68,6 +74,7 @@ export class LibraryService extends Service implements LibraryState {
     bridges: [],
     inclusions: [],
     appearance: defaultEdgeAppearance,
+    outlineVersion: 0,
   };
   graphId = '';
   nodeDetail: NodeDetail | null = null;
@@ -75,6 +82,9 @@ export class LibraryService extends Service implements LibraryState {
   collectionEdgeDetail: CollectionEdgeDetail | null = null;
   peek: NodeDetail | null = null;
   searchHits: SearchHit[] = [];
+  searchCursor: string | null = null;
+  searchError = '';
+  searchLoading = false;
   error = '';
   jobs: LibraryJobs = { graph: 0, node: 0, edge: 0, collectionEdge: 0, peek: 0, search: 0 };
 
@@ -102,16 +112,28 @@ export class LibraryService extends Service implements LibraryState {
     return deleteCollection(this, id);
   }
 
-  async createNode(collectionId: string, name: string): Promise<Node | null> {
-    return this.write(() => createNode(this, collectionId, name), (node) => node !== null);
+  async createNode(
+    collectionId: string,
+    name: string,
+    place?: { parentId?: string | null; afterNodeId?: string },
+  ): Promise<CreateNodeResult | null> {
+    return this.write(() => createNode(this, collectionId, name, place), (node) => node !== null);
   }
 
-  async addMember(collectionId: string, nodeId: string): Promise<boolean> {
-    return addMember(this, collectionId, nodeId);
+  async addMember(collectionId: string, nodeId: string, parentId?: string | null) {
+    return addMember(this, collectionId, nodeId, parentId);
   }
 
-  async removeMember(collectionId: string, nodeId: string): Promise<boolean> {
-    return removeMember(this, collectionId, nodeId);
+  async removeMember(collectionId: string, nodeId: string, expectedVersion?: number): Promise<OutlineWrite> {
+    return this.write(() => removeMember(this, collectionId, nodeId, expectedVersion), (result) => result.ok);
+  }
+
+  async putOutline(collectionId: string, expectedVersion: number, items: OutlineItem[]): Promise<OutlineWrite> {
+    return this.write(() => putOutline(this, collectionId, expectedVersion, items), (result) => result.ok);
+  }
+
+  async restoreOutline(collectionId: string, body: RestoreOutlineBody): Promise<OutlineWrite> {
+    return this.write(() => restoreOutline(this, collectionId, body), (result) => result.ok);
   }
 
   async loadLibrary(): Promise<boolean> {
@@ -222,8 +244,8 @@ export class LibraryService extends Service implements LibraryState {
     clearSearch(this);
   }
 
-  async search(query: string): Promise<void> {
-    return search(this, query);
+  async search(args: SearchArgs): Promise<void> {
+    return search(this, args);
   }
 
   watchView(view: SyncView | null): void {

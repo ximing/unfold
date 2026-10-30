@@ -32,6 +32,8 @@ type GraphNode = {
   assetId: string | null;
   cardCount: number;
   cardTypes: string[];
+  parentId: string | null;
+  outlineOrder: number;
 };
 
 describe('canvas placements', () => {
@@ -96,7 +98,7 @@ describe('canvas placements', () => {
       const sharedRes = await call('POST', `/api/collections/${collectionA.id}/nodes`, { name: sharedName });
       expect(sharedRes.statusCode).toBe(201);
       const shared = sharedRes.json() as { id: string; name: string };
-      expect(shared).toEqual({ id: shared.id, name: sharedName });
+      expect(shared).toMatchObject({ id: shared.id, name: sharedName });
       created.nodes.push(shared.id);
 
       const otherRes = await call('POST', `/api/collections/${collectionB.id}/nodes`, { name: otherName });
@@ -105,7 +107,7 @@ describe('canvas placements', () => {
       created.nodes.push(other.id);
 
       const joined = await call('POST', `/api/collections/${collectionB.id}/members`, { nodeId: shared.id });
-      expect(joined.statusCode).toBe(204);
+      expect(joined.statusCode).toBe(200);
 
       const emptyA = await graphOf(collectionA.id);
       expect(emptyA.edges).toEqual([]);
@@ -121,6 +123,8 @@ describe('canvas placements', () => {
         assetId: null,
         cardCount: 0,
         cardTypes: [],
+        parentId: null,
+        outlineOrder: 0,
       });
 
       const emptyB = await graphOf(collectionB.id);

@@ -26,6 +26,18 @@
   pointer-events: none;
 }
 .canvas-hint .kbd { margin: 0 2px; }
+.binput-stack { display: flex; flex-direction: column; gap: 4px; }
+.blink-picks { display: flex; flex-wrap: wrap; gap: 4px; }
+.blink-picks button {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
 .canvas-error {
   position: absolute;
   top: 12px;
@@ -265,3 +277,16 @@ html.board-dragging * {
   outline: none;
   box-shadow: 0 0 0 3px var(--accent-soft), var(--sh-raise);
 }
+/* 节点内的行内编辑：节点框（NodeChrome）就是编辑容器，输入框完全融入，只留文字与光标。
+   文字居中与 .bnode-name 的 textAnchor=middle 对齐；栈撑满 foreignObject，输入框 height:100% 才生效。 */
+.binput-node .binput-stack { height: 100%; }
+.binput-node input {
+  padding: 0;
+  text-align: center;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+/* 外框已表达编辑态，压住 base.css 的全局 focus-visible 蓝环（只限这一处）。 */
+.binput-node input:focus-visible { outline: none; }

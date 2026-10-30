@@ -19,6 +19,7 @@ export const EdgePanel = observer(function EdgePanel(props: {
   onTouched: () => void;
   /** 非 0 时打开删除确认。右键菜单和检查器共用这一条 */
   askRemove?: number;
+  focusCardId?: string | null;
 }) {
   const library = useService(LibraryService);
   const [confirm, setConfirm] = useState(false);
@@ -48,6 +49,7 @@ export const EdgePanel = observer(function EdgePanel(props: {
           />
           <CardStack
             types={EDGE_CARD_TYPES}
+            focusCardId={props.focusCardId}
             cards={detail.cards}
             onCreate={(type: CardType) => {
               void (async () => {

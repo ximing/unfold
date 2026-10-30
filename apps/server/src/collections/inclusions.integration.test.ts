@@ -116,7 +116,7 @@ describe('collection inclusions', () => {
     return res.json() as GraphBody;
   }
 
-  it('puts another collection on the board when the relation is named or already linked', async () => {
+  it('puts another collection on the board without creating a collection edge', async () => {
     const token = randomUUID().replaceAll('-', '').slice(0, 12);
     const label = `包含${token.slice(0, 4)}`;
     const created = { nodes: [] as string[], collections: [] as string[] };
@@ -175,8 +175,8 @@ describe('collection inclusions', () => {
         originX: 0,
         originY: 0,
       });
-      expect(unlabeled.statusCode).toBe(400);
-      expect(errorOf(unlabeled.json())).toEqual({ code: 'invalid_body', message: '要先写下两者的关系' });
+      expect(unlabeled.statusCode).toBe(201);
+      expect(unlabeled.json()).toEqual({ childId: loose });
 
       const inserted = await call('POST', `/api/collections/${parent}/inclusions`, {
         childId: child,
@@ -189,14 +189,17 @@ describe('collection inclusions', () => {
 
       const library = await call('GET', '/api/library');
       expect(library.statusCode).toBe(200);
-      const libraryEdges = (library.json() as { edges: GraphEdge[] }).edges;
-      expect(libraryEdges).toEqual(
-        expect.arrayContaining([expect.objectContaining({ fromId: parent, toId: child, label })]),
-      );
+      const between = (left: string, right: string) =>
+        (library.json() as { edges: GraphEdge[] }).edges.filter(
+          (edge) =>
+            (edge.fromId === left && edge.toId === right) || (edge.fromId === right && edge.toId === left),
+        );
+      expect(between(parent, loose)).toEqual([]);
+      expect(between(parent, child)).toEqual([]);
 
       const first = await graphOf(parent);
       const placedChild = first.inclusions.find((item) => item.childId === child);
-      expect(placedChild).toMatchObject({ x: 18, y: 30, collapsed: false, labels: [label] });
+      expect(placedChild).toMatchObject({ x: 18, y: 30, collapsed: false, labels: [] });
       expect(placedChild?.nodes.map((node) => node.id)).toEqual([childNode]);
       expect(placedChild?.nodes[0]).toMatchObject({ x: 10, y: 30 });
 
@@ -261,9 +264,12 @@ describe('collection inclusions', () => {
       const childGraph = await graphOf(child);
       expect(childGraph.nodes.map((node) => node.id)).toContain(childNode);
       const libraryAfter = await call('GET', '/api/library');
-      expect((libraryAfter.json() as { edges: GraphEdge[] }).edges).toEqual(
-        expect.arrayContaining([expect.objectContaining({ fromId: parent, toId: child, label })]),
-      );
+      expect(
+        (libraryAfter.json() as { edges: GraphEdge[] }).edges.filter(
+          (edge) =>
+            (edge.fromId === parent && edge.toId === child) || (edge.fromId === child && edge.toId === parent),
+        ),
+      ).toEqual([]);
 
       const registered = await app.inject({
         method: 'POST',

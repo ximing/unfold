@@ -3,7 +3,6 @@ import type { InclusionCandidate } from '@unfold/dto';
 import { useEffect, useState, type FormEvent } from 'react';
 import { LibraryService } from '../library/library.service.js';
 import { UButton } from '../../shared/ui/button/button.js';
-import { UField, UTextInput } from '../../shared/ui/field/field.js';
 import { UModal } from '../../shared/ui/modal/modal.js';
 import './inclusion-dialog.css';
 
@@ -16,7 +15,6 @@ export const InclusionDialog = observer(function InclusionDialog(props: {
   const library = useService(LibraryService);
   const [rows, setRows] = useState<InclusionCandidate[] | null>(null);
   const [selected, setSelected] = useState('');
-  const [label, setLabel] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -32,18 +30,16 @@ export const InclusionDialog = observer(function InclusionDialog(props: {
 
   const current = rows?.find((row) => row.id === selected) ?? null;
   const linked = current?.linked === true;
-  const canSubmit = current !== null && !busy && (linked || label.trim() !== '');
+  const canSubmit = current !== null && !busy;
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!current || busy) return;
-    if (!linked && label.trim() === '') return;
     setBusy(true);
     const ok = await library.createInclusion(props.collectionId, {
       childId: current.id,
       originX: props.origin.x,
       originY: props.origin.y,
-      ...(linked ? {} : { label: label.trim() }),
     });
     setBusy(false);
     if (!ok) return;
@@ -65,10 +61,7 @@ export const InclusionDialog = observer(function InclusionDialog(props: {
                   type="button"
                   className={row.id === selected ? 'on' : undefined}
                   aria-pressed={row.id === selected}
-                  onClick={() => {
-                    setSelected(row.id);
-                    setLabel('');
-                  }}
+                  onClick={() => setSelected(row.id)}
                 >
                   <span>{row.title}</span>
                   <span className="count">{row.nodeCount} 个点</span>
@@ -81,18 +74,6 @@ export const InclusionDialog = observer(function InclusionDialog(props: {
           <p className="inclusion-note">
             {current.labels.length > 0 ? `已有关系：${current.labels.join('、')}` : '已经有连线，可以直接引入'}
           </p>
-        ) : null}
-        {current && !linked ? (
-          <UField label="关系" htmlFor="inclusion-label" hint="从当前合集指向这个合集">
-            <UTextInput
-              id="inclusion-label"
-              value={label}
-              maxLength={40}
-              placeholder="例如：包含"
-              autoFocus
-              onChange={(event) => setLabel(event.target.value)}
-            />
-          </UField>
         ) : null}
         {library.error !== '' ? <p role="alert">{library.error}</p> : null}
         <div className="ft">

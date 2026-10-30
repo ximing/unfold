@@ -9,7 +9,6 @@ import { LibraryService } from '../library/library.service.js';
 import { startLive } from '../live/live.js';
 import { SessionService } from '../session/session.service.js';
 import { CollectionSwitch } from './collection-switch.js';
-import { SaveStatus } from './save-status.js';
 import { MoreMenu } from './more-menu.js';
 import { SearchPalette } from './search-palette.js';
 import { SettingsMenu } from './settings-menu.js';
@@ -82,7 +81,6 @@ const ShellView = observer(function ShellView() {
 
   return (
     <div className="wk">
-      <SaveStatus />
       <div className="stage-wrap">
         <Outlet />
       </div>

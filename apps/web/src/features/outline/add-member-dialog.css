@@ -1,0 +1,177 @@
+/* ============================================================
+   加入已有点对话框
+   ============================================================ */
+.addm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(30, 30, 40, 0.28);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  animation: fade-in 0.15s var(--ease-out);
+}
+.addm-modal {
+  width: 480px;
+  max-width: 100%;
+  background: var(--card);
+  border-radius: var(--r-xl);
+  box-shadow: var(--sh-overlay);
+  overflow: hidden;
+  animation: pop-in 0.18s var(--ease-spring);
+}
+.addm-head {
+  display: flex;
+  align-items: center;
+  padding: 16px 20px 0;
+}
+.addm-head h2 {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 600;
+}
+.addm-close {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  color: var(--mute);
+  transition: background 0.12s;
+}
+.addm-close:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--ink);
+}
+.addm-close svg {
+  width: 16px;
+  height: 16px;
+}
+.addm-body {
+  padding: 14px 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.addm-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--canvas);
+  padding: 8px 12px;
+  transition:
+    border-color 0.12s,
+    box-shadow 0.12s,
+    background 0.12s;
+}
+.addm-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  background: var(--card);
+}
+.addm-search svg {
+  color: var(--faint);
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+.addm-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: none;
+  font-size: 14px;
+}
+.addm-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 264px;
+  overflow: auto;
+  margin: 0 -6px;
+  padding: 0 6px;
+}
+.addm-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  transition: background 0.1s;
+}
+.addm-pick:hover {
+  background: rgba(0, 0, 0, 0.032);
+}
+.addm-pick.on {
+  background: var(--accent-soft);
+}
+.addm-tick {
+  width: 17px;
+  height: 17px;
+  flex: none;
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
+}
+.addm-pick.on .addm-tick {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.addm-tick svg {
+  width: 10px;
+  height: 10px;
+  opacity: 0;
+}
+.addm-pick.on .addm-tick svg {
+  opacity: 1;
+}
+.addm-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.addm-name {
+  font-size: 14px;
+  line-height: 1.4;
+}
+.addm-meta {
+  font-size: 12px;
+  color: #55555a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.addm-note {
+  font-size: 12px;
+  color: var(--mute);
+  line-height: 1.5;
+}
+.addm-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 20px 16px;
+}
+/* 主按钮带父点名称，过长时省略不撑破模态 */
+.addm-foot .addm-join {
+  max-width: 300px;
+}
+.addm-join-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

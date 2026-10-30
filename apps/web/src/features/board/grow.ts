@@ -4,38 +4,17 @@ import { GAP_X, GAP_Y, NODE_H, NODE_W } from './board-layout.js';
 export const GROW_W = NODE_W;
 export const GROW_H = NODE_H;
 
-export const GROW_SIBLING_BLOCKED = '这个点有多个上级，无法创建同级';
-
-/** Tab 建下级时先写上的关系说明，之后可以改。 */
-export const GROW_CHILD_LABEL = '下一级';
-
 type Box = { x: number; y: number; w: number; h: number };
-type Link = { fromId: string; toId: string };
 
-export type GrowPlan =
-  | { ok: true; fromId: string | null; x: number; y: number }
-  | { ok: false; message: string };
-
-/** 指向这个点的边的起点。同一个起点只算一次。自环不算。 */
-function parentIds(nodeId: string, links: readonly Link[]): string[] {
-  const seen = new Set<string>();
-  const ids: string[] = [];
-  for (const link of links) {
-    if (link.toId !== nodeId || link.fromId === nodeId) continue;
-    if (seen.has(link.fromId)) continue;
-    seen.add(link.fromId);
-    ids.push(link.fromId);
-  }
-  return ids;
-}
+export type GrowRole = 'beside' | 'below';
 
 function overlaps(left: Box, right: Box): boolean {
   return left.x < right.x + right.w && left.x + left.w > right.x && left.y < right.y + right.h && left.y + left.h > right.y;
 }
 
 /**
- * 下级按方向贴在旁边。左右被挡住就向下让，上下被挡住就向右让。
- * 同级用 below：始终在下方，挡住继续向下。
+ * beside 沿账号方向贴在旁边。below 始终在下方。
+ * 左右被挡住就向下让，上下被挡住就向右让。下方被挡住就继续向下。
  */
 function placeGrow(anchor: Box, boxes: readonly Box[], direction: CanvasGrow | 'below'): { x: number; y: number } {
   const dir = direction === 'below' ? 'down' : direction;
@@ -56,20 +35,12 @@ function placeGrow(anchor: Box, boxes: readonly Box[], direction: CanvasGrow | '
   return { x, y };
 }
 
+/** 只决定落点。不返回连边起点，也不带关系标签。 */
 export function planGrow(
-  role: 'child' | 'sibling',
-  nodeId: string,
-  links: readonly Link[],
+  role: GrowRole,
   anchor: Box,
   boxes: readonly Box[],
   direction: CanvasGrow = 'down',
-): GrowPlan {
-  if (role === 'child') {
-    const at = placeGrow(anchor, boxes, direction);
-    return { ok: true, fromId: nodeId, x: at.x, y: at.y };
-  }
-  const parents = parentIds(nodeId, links);
-  if (parents.length > 1) return { ok: false, message: GROW_SIBLING_BLOCKED };
-  const at = placeGrow(anchor, boxes, 'below');
-  return { ok: true, fromId: parents[0] ?? null, x: at.x, y: at.y };
+): { x: number; y: number } {
+  return placeGrow(anchor, boxes, role === 'below' ? 'below' : direction);
 }

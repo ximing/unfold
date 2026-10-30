@@ -12,12 +12,13 @@ import {
 } from 'react';
 import type { UMenuEntry } from '../../shared/ui/context-menu/context-menu.js';
 import { BoardEdges } from './board-edges.js';
-import { ARROW_LEN, anchorOnBorder, arrowPath, edgeDraw, edgeLanes } from './edge-geometry.js';
-import { EDGE_DASH, EDGE_STROKE, EDGE_WIDTH } from './edge-style.js';
+import { anchorOnBorder, edgeDraw, edgeLanes } from './edge-geometry.js';
+import { EDGE_STROKE, EDGE_WIDTH } from './edge-style.js';
 import { snapPoint, snapTextOrigin } from './snap.js';
-import { isFiniteNumber, layoutBoard, layoutPlaced, nextPlacementZ, textNodeHeight } from './board-layout.js';
-import { GROW_CHILD_LABEL, GROW_H, GROW_W, planGrow } from './grow.js';
-import { imageFrame } from './image-frame.js';
+import { isFiniteNumber, layoutBoard, layoutPlaced, nextPlacementZ, NODE_H, NODE_W, textNodeHeight } from './board-layout.js';
+import { GROW_H, GROW_W, planGrow } from './grow.js';
+import { LinkComposer } from './link-composer.js';
+import { imageFrame, IMAGE_NAME_LINE } from './image-frame.js';
 import { BoardNodes, NodeChrome } from './board-nodes.js';
 import { InclusionFrames, type InclusionFrameView } from './inclusion-frame.js';
 import {
@@ -62,10 +63,14 @@ type Editing =
   | { kind: 'rename'; id: string }
   | { kind: 'link'; fromId: string; toId: string }
   | { kind: 'relabel'; id: string }
-  | { kind: 'grow'; role: 'child' | 'sibling'; fromId: string | null; x: number; y: number; groupId: string | null }
+  | { kind: 'grow'; role: 'beside' | 'below'; x: number; y: number; groupId: string | null }
   | null;
 
 type FrameShift = { childId: string; dx: number; dy: number; anchorX: number; anchorY: number };
+
+/** 行内输入框高 34。输入文字垂直居中且略低于几何中心，向上提 INLINE_DY 与节点名字的基线排版对齐。 */
+const INLINE_H = 34;
+const INLINE_DY = 20;
 
 type FrameDrag = {
   serial: number;
@@ -239,17 +244,13 @@ export function BoardCanvas(props: {
   onCanvas?: (patch: Partial<CanvasPrefs>) => void;
   /** 改边的标签。空字符串或与原来相同由调用方忽略 */
   onRelabel?: (id: string, label: string) => void;
-  /** 选中点后 Tab 建下级、Enter 建同级。名字写完才调用。label 有值时从 fromId 连出这条边 */
+  /** 选中点后 Tab 在旁边新建、Enter 在下方新建。名字写完才调用，不连边。 */
   onGrowNode?: (draft: {
     name: string;
-    fromId: string | null;
-    label: string | null;
     x: number;
     y: number;
     groupId: string | null;
   }) => void;
-  /** 同级有多个上级时 */
-  onGrowBlocked?: (message: string) => void;
   /** 选文件、粘贴或拖入后交给调用方。不传则只回到选择工具 */
   onInsertImages?: (files: File[], at: Pt, anchor: 'center' | 'corner', groupId: string | null) => void;
   /** 当前合集里展开或收起的子集合。用来画边框、拖动整块区域 */
@@ -305,6 +306,9 @@ export function BoardCanvas(props: {
   const linkDragRef = useRef<LinkDrag | null>(null);
   const textClickRef = useRef<{ pointerId: number; x: number; y: number; blocked: boolean } | null>(null);
   const blankRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
+  const clickTimerRef = useRef(0);
+  const clickActionRef = useRef<(() => void) | null>(null);
+  const dragEndAtRef = useRef(0);
   const fittedWorld = useRef({ worldX: 0, worldY: 0, worldWidth: 1, worldHeight: 1 });
   itemsRef.current = props.items;
   linksRef.current = props.links;
@@ -594,6 +598,39 @@ export function BoardCanvas(props: {
     [],
   );
 
+  /* ---------- 单击选中：拖动收尾的 click 吞掉，选中动作等一个双击窗口 ---------- */
+  function cancelPendingClick() {
+    if (clickTimerRef.current !== 0) {
+      window.clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = 0;
+    }
+    clickActionRef.current = null;
+  }
+
+  /** click 紧跟 pointerup 到达；拖动刚结束的那一次不算单击 */
+  function clickFollowsDrag(): boolean {
+    return dragEndAtRef.current !== 0 && performance.now() - dragEndAtRef.current < 350;
+  }
+
+  function selectOnSingleClick(select: () => void) {
+    if (clickFollowsDrag()) return;
+    cancelPendingClick();
+    clickActionRef.current = select;
+    clickTimerRef.current = window.setTimeout(() => {
+      clickTimerRef.current = 0;
+      const run = clickActionRef.current;
+      clickActionRef.current = null;
+      run?.();
+    }, 250);
+  }
+
+  useEffect(
+    () => () => {
+      if (clickTimerRef.current !== 0) window.clearTimeout(clickTimerRef.current);
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!settingsOpen) return;
     const onPointerDown = (event: PointerEvent) => {
@@ -606,21 +643,15 @@ export function BoardCanvas(props: {
     return () => window.removeEventListener('pointerdown', onPointerDown, true);
   }, [settingsOpen]);
 
-  function beginGrow(role: 'child' | 'sibling', nodeId: string) {
+  function beginGrow(role: 'beside' | 'below', nodeId: string) {
     const anchor = boxOf.get(nodeId);
     const source = itemsRef.current.find((entry) => entry.id === nodeId);
     if (!anchor || !props.onGrowNode || isUploading(nodeId) || source?.face === 'inclusion') return;
     disarmPeek();
-    const plan = planGrow(role, nodeId, props.links, anchor, boxes, canvas.grow);
-    if (!plan.ok) {
-      props.onGrowBlocked?.(plan.message);
-      return;
-    }
-    const at = snapPoint({ x: plan.x, y: plan.y }, snapRef.current);
+    const at = snapPoint(planGrow(role, anchor, boxes, canvas.grow), snapRef.current);
     const next: Editing = {
       kind: 'grow',
       role,
-      fromId: plan.fromId,
       x: at.x,
       y: at.y,
       groupId: source?.groupId ?? null,
@@ -706,8 +737,8 @@ export function BoardCanvas(props: {
     else if (action === 'image') pickImages({ x: hit.worldX, y: hit.worldY });
     else if (action === 'rename') startRename(hit.id);
     else if (action === 'open') props.onOpenItem?.(hit.id);
-    else if (action === 'grow-child') beginGrow('child', hit.id);
-    else if (action === 'grow-sibling') beginGrow('sibling', hit.id);
+    else if (action === 'grow-child') beginGrow('beside', hit.id);
+    else if (action === 'grow-sibling') beginGrow('below', hit.id);
     else if (action === 'connect') startConnect(hit.id);
     else if (action === 'remove') props.onRemoveItem?.(hit.id);
     else if (action === 'delete-item') props.onAskRemoveItem?.(hit.id);
@@ -762,6 +793,13 @@ export function BoardCanvas(props: {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (isFieldTarget(event.target)) return;
       if (document.querySelector('.modal-wrap, .overlay, .ctx-menu')) return;
+      // 点本身不能聚焦，焦点在 body 或画布上才建点。检查器和底栏里的 Tab / Enter 留给控件。
+      if (
+        event.target instanceof Element &&
+        event.target.closest('.panel, .collection-bar, .dock, .unassigned-pane, .outline-shell')
+      ) {
+        return;
+      }
 
       if (event.key === 'Escape') {
         if (settingsOpen) {
@@ -888,7 +926,7 @@ export function BoardCanvas(props: {
         const item = props.items.find((entry) => entry.id === props.selectedId);
         if (!item || item.uploading) return;
         event.preventDefault();
-        beginGrow('child', item.id);
+        beginGrow('beside', item.id);
         return;
       }
       if (event.key === 'Enter') {
@@ -898,7 +936,7 @@ export function BoardCanvas(props: {
         if (item && props.onGrowNode) {
           if (event.repeat) return;
           event.preventDefault();
-          beginGrow('sibling', item.id);
+          beginGrow('below', item.id);
           return;
         }
         if (item) {
@@ -1170,6 +1208,7 @@ export function BoardCanvas(props: {
       if (!drag || drag.pointerId !== event.pointerId) return;
       dragRef.current = null;
       releaseDragChrome();
+      if (drag.moved) dragEndAtRef.current = performance.now();
       const serial = drag.serial;
       if (!commit || !drag.moved) {
         if (dragSerial.current === serial) setDragBox(null);
@@ -1257,6 +1296,7 @@ export function BoardCanvas(props: {
       if (!drag || drag.pointerId !== event.pointerId) return;
       frameDragRef.current = null;
       releaseDragChrome();
+      if (drag.moved) dragEndAtRef.current = performance.now();
       const serial = drag.serial;
       if (!commit || !drag.moved) {
         if (frameSerial.current === serial) setFrameShift(null);
@@ -1335,6 +1375,7 @@ export function BoardCanvas(props: {
       if (!resize || resize.pointerId !== event.pointerId) return;
       resizeRef.current = null;
       releaseDragChrome();
+      if (resize.width !== resize.originWidth) dragEndAtRef.current = performance.now();
       const serial = resize.serial;
       const width = resize.width;
       if (!commit || width === resize.originWidth) {
@@ -1578,12 +1619,14 @@ export function BoardCanvas(props: {
             labels={canvas.labels}
             showMarkers={!toolsOn || canvas.markers}
             onSelect={(id) => {
-              disarmPeek();
-              props.onSelectLink(id);
+              selectOnSingleClick(() => {
+                disarmPeek();
+                props.onSelectLink(id);
+              });
             }}
             onActivate={(id) => {
+              cancelPendingClick();
               disarmPeek();
-              props.onSelectLink(id);
               if (!props.onRelabel) return;
               const next: Editing = { kind: 'relabel', id };
               editingRef.current = next;
@@ -1598,10 +1641,13 @@ export function BoardCanvas(props: {
             onSelect={(id) => {
               if (isUploading(id)) return;
               if (toolsOn && toolRef.current === 'connect') return;
-              disarmPeek();
-              props.onSelectItem(id);
+              selectOnSingleClick(() => {
+                disarmPeek();
+                props.onSelectItem(id);
+              });
             }}
             onActivate={(id) => {
+              cancelPendingClick();
               disarmPeek();
               if (isUploading(id)) return;
               if (toolsOn && toolRef.current === 'connect') return;
@@ -1619,7 +1665,10 @@ export function BoardCanvas(props: {
             }}
             onPointerEnter={armPeek}
             onPointerLeave={scheduleClosePeek}
-            onPointerDown={disarmPeek}
+            onPointerDown={() => {
+              cancelPendingClick();
+              disarmPeek();
+            }}
             onDragPointerDown={props.onMove && selectTool ? beginDrag : undefined}
             onBeginLink={props.onConnect && selectTool ? beginLink : undefined}
             imageHeights={imageHeights}
@@ -1632,10 +1681,13 @@ export function BoardCanvas(props: {
             selectedId={props.selectedId}
             layer="front"
             onSelect={(id) => {
-              disarmPeek();
-              props.onSelectItem(id);
+              selectOnSingleClick(() => {
+                disarmPeek();
+                props.onSelectItem(id);
+              });
             }}
             onActivate={(id) => {
+              cancelPendingClick();
               const childId = inclusionChildId(id);
               if (childId) props.onToggleInclusion?.(childId);
             }}
@@ -1669,46 +1721,22 @@ export function BoardCanvas(props: {
           {editing?.kind === 'grow'
             ? (() => {
                 const draft = { x: editing.x, y: editing.y, w: GROW_W, h: GROW_H };
-                const from = editing.role === 'child' && editing.fromId ? boxOf.get(editing.fromId) : undefined;
-                const withArrow = appearance.arrow === 'end';
-                const seg = from ? edgeDraw(from, draft, 0, 1, false, route, withArrow ? ARROW_LEN : 0) : null;
-                const ink = EDGE_STROKE[appearance.color].line;
                 return (
                   <g className="node bnode on">
-                    {seg ? (
-                      <>
-                        <path
-                          className="bedge"
-                          d={seg.d}
-                          style={{
-                            stroke: ink,
-                            strokeWidth: EDGE_WIDTH[appearance.width],
-                            strokeDasharray: EDGE_DASH[appearance.dash],
-                          }}
-                          strokeLinecap={withArrow ? 'butt' : 'round'}
-                          pointerEvents="none"
-                        />
-                        {withArrow ? (
-                          <path d={arrowPath(seg.tip)} fill={ink} stroke="none" pointerEvents="none" />
-                        ) : null}
-                      </>
-                    ) : null}
                     <NodeChrome x={draft.x} y={draft.y} w={draft.w} h={draft.h} selected />
                     <InlineInput
+                      variant="node"
                       x={draft.x}
-                      y={draft.y + (draft.h - 34) / 2}
+                      y={draft.y + draft.h / 2 - INLINE_DY}
                       w={draft.w}
-                      h={34}
+                      h={INLINE_H}
                       placeholder="点的名字"
                       onCommit={(name) => {
                         if (editingRef.current?.kind !== 'grow') return;
                         const current = editingRef.current;
                         finishEditing();
-                        const label = current.role === 'child' && current.fromId ? GROW_CHILD_LABEL : null;
                         props.onGrowNode?.({
                           name,
-                          fromId: label ? current.fromId : null,
-                          label,
                           x: current.x,
                           y: current.y,
                           groupId: current.groupId,
@@ -1725,35 +1753,51 @@ export function BoardCanvas(props: {
             : null}
 
           {editing?.kind === 'create' ? (
-            <InlineInput
-              x={editing.at.x - 84}
-              y={editing.at.y - 17}
-              w={168}
-              h={34}
-              placeholder={props.createPlaceholder ?? ''}
-              onCommit={(name) => {
-                if (editingRef.current?.kind !== 'create') return;
-                const draft = editingRef.current;
-                finishEditing();
-                props.onCreate?.(name, draft.at, draft.groupId);
-              }}
-              onCancel={() => {
-                if (editingRef.current?.kind !== 'create') return;
-                stopEditing();
-              }}
-            />
+            <g className="node bnode on">
+              <NodeChrome x={editing.at.x - NODE_W / 2} y={editing.at.y - NODE_H / 2} w={NODE_W} h={NODE_H} selected />
+              <InlineInput
+                variant="node"
+                x={editing.at.x - NODE_W / 2}
+                y={editing.at.y - INLINE_DY}
+                w={NODE_W}
+                h={INLINE_H}
+                placeholder={props.createPlaceholder ?? ''}
+                onCommit={(name) => {
+                  if (editingRef.current?.kind !== 'create') return;
+                  const draft = editingRef.current;
+                  finishEditing();
+                  props.onCreate?.(name, draft.at, draft.groupId);
+                }}
+                onCancel={() => {
+                  if (editingRef.current?.kind !== 'create') return;
+                  stopEditing();
+                }}
+              />
+            </g>
           ) : null}
           {editing?.kind === 'rename'
             ? (() => {
                 const box = boxOf.get(editing.id);
                 const item = props.items.find((entry) => entry.id === editing.id);
                 if (!box || !item) return null;
+                // 输入文字落在节点名字的排版位置：图片点在底部名字行，文字点带描述时靠顶，否则居中。
+                const desc = (item.description ?? '').trim();
+                const cy = box.y + box.h / 2;
+                const nameY =
+                  item.kind === 'image'
+                    ? box.y + box.h - IMAGE_NAME_LINE / 2
+                    : desc !== ''
+                      ? box.y + 15
+                      : (item.types ?? []).length > 0
+                        ? cy - 4
+                        : cy;
                 return (
                   <InlineInput
-                    x={box.x - 2}
-                    y={box.y + box.h / 2 - 17}
-                    w={box.w + 4}
-                    h={34}
+                    variant="node"
+                    x={box.x}
+                    y={nameY - INLINE_DY}
+                    w={box.w}
+                    h={INLINE_H}
                     initial={item.label}
                     placeholder={item.label}
                     onCommit={(name) => {
@@ -1776,7 +1820,7 @@ export function BoardCanvas(props: {
                 if (!from || !to) return null;
                 const mid = edgeDraw(from, to, 0, 1, false, route).label;
                 return (
-                  <InlineInput
+                  <LinkComposer
                     x={mid.x - 84}
                     y={mid.y - 17}
                     w={168}
@@ -1806,7 +1850,7 @@ export function BoardCanvas(props: {
                 const lane = edgeLanes(props.links).get(link.id) ?? { index: 0, count: 1, paired: false };
                 const mid = edgeDraw(from, to, lane.index, lane.count, lane.paired, route).label;
                 return (
-                  <InlineInput
+                  <LinkComposer
                     x={mid.x - 84}
                     y={mid.y - 17}
                     w={168}

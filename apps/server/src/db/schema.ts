@@ -45,6 +45,8 @@ export const collections = pgTable('collections', {
   edgeWidth: text('edge_width').notNull().default('thin'),
   edgeColor: text('edge_color').notNull().default('gray'),
   edgeArrow: text('edge_arrow').notNull().default('end'),
+  outlineVersion: integer('outline_version').notNull().default(0),
+  outlineInitialized: boolean('outline_initialized').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -86,12 +88,18 @@ export const memberships = pgTable(
     y: doublePrecision('y'),
     z: integer('z'),
     imageWidth: integer('image_width'),
+    parentNodeId: uuid('parent_node_id').references(() => nodes.id, { onDelete: 'set null' }),
+    outlineOrder: integer('outline_order').notNull().default(0),
   },
   (table) => [
     primaryKey({ columns: [table.collectionId, table.nodeId] }),
     check(
       'memberships_image_width_check',
       sql`${table.imageWidth} IS NULL OR (${table.imageWidth} >= 120 AND ${table.imageWidth} <= 480)`,
+    ),
+    check(
+      'memberships_parent_not_self_check',
+      sql`${table.parentNodeId} IS NULL OR ${table.parentNodeId} <> ${table.nodeId}`,
     ),
   ],
 );

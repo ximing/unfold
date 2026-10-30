@@ -8,6 +8,7 @@ import {
   graphNodeSchema,
   placementsBodySchema,
   richDocSchema,
+  unassignedNodesSchema,
 } from './index.js';
 
 const ownerId = '550e8400-e29b-41d4-a716-446655440000';
@@ -145,6 +146,8 @@ describe('graphNodeSchema', () => {
         assetId: null,
         cardCount: 0,
         cardTypes: [],
+        parentId: null,
+        outlineOrder: 0,
       }),
     ).toMatchObject({
       kind: 'text',
@@ -167,8 +170,29 @@ describe('graphNodeSchema', () => {
         assetId: ownerId,
         cardCount: 0,
         cardTypes: ['note', 'rich'],
+        parentId: null,
+        outlineOrder: 1,
       }),
     ).toMatchObject({ kind: 'image', x: 1.5, y: -2, z: 4, imageWidth: 220, assetId: ownerId });
+  });
+});
+
+describe('unassignedNodesSchema', () => {
+  it('accepts kind and cardCount on each node', () => {
+    const body = unassignedNodesSchema.parse({
+      nodes: [
+        { id: ownerId, name: '点', description: '', kind: 'image', cardCount: 3 },
+        { id: '550e8400-e29b-41d4-a716-446655440002', name: '空点', description: '', kind: 'text', cardCount: 0 },
+      ],
+      nextCursor: null,
+    });
+    expect(body.nodes[0]).toMatchObject({ kind: 'image', cardCount: 3 });
+  });
+
+  it('rejects an unknown kind or a negative cardCount', () => {
+    const node = { id: ownerId, name: '点', description: '', kind: 'text', cardCount: 0 };
+    expect(unassignedNodesSchema.safeParse({ nodes: [{ ...node, kind: 'video' }], nextCursor: null }).success).toBe(false);
+    expect(unassignedNodesSchema.safeParse({ nodes: [{ ...node, cardCount: -1 }], nextCursor: null }).success).toBe(false);
   });
 });
 

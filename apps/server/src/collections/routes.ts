@@ -5,6 +5,8 @@ import {
   createNodeBodySchema,
   edgeAppearanceSchema,
   placementsBodySchema,
+  putOutlineBodySchema,
+  restoreOutlineBodySchema,
   updateCollectionBodySchema,
   updateInclusionBodySchema,
   type EdgeAppearance,
@@ -15,12 +17,20 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { cards, collectionEdges, collections, memberships, nodes } from '../db/schema.js';
 import {
   activeCollection,
-  activeNode,
   type Database,
   removeCollection,
 } from '../graph/db.js';
 import { assembleCollectionGraph } from './graph-view.js';
 import { createInclusion, listInclusionCandidates, removeInclusion, updateInclusion, type InclusionFailure } from './inclusions.js';
+import {
+  addCollectionMember,
+  createCollectionNode,
+  ensureCollectionOutline,
+  putCollectionOutline,
+  removeCollectionMember,
+  restoreCollectionOutline,
+  type OutlineFailure,
+} from './outline.js';
 import {
   bodyMessage,
   collectionNotFound,
@@ -35,6 +45,7 @@ import {
   invalidBody,
   memberParamsSchema,
   nodeNotFound,
+  outlineConflict,
   type SessionLookup,
 } from '../http.js';
 
@@ -72,6 +83,13 @@ async function readAppearance(db: Database, userId: string, id: string): Promise
 }
 
 class PlacementNotMember extends Error {}
+
+function sendOutlineFailure(reply: FastifyReply, failure: OutlineFailure) {
+  if (failure === 'missing') return reply.code(404).send(collectionNotFound);
+  if (failure === 'absent') return reply.code(404).send(nodeNotFound);
+  if (failure === 'conflict') return reply.code(409).send(outlineConflict);
+  return reply.code(400).send(invalidBody());
+}
 
 function sendInclusionFailure(reply: FastifyReply, failure: InclusionFailure) {
   if (failure === 'missing') return reply.code(404).send(collectionNotFound);
@@ -233,12 +251,12 @@ export function registerCollectionRoutes(app: FastifyInstance, db: Database, ses
 
     const params = idParamsSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send(invalidBody());
-    const collection = await activeCollection(db, user.id, params.data.id);
-    if (!collection) return reply.code(404).send(collectionNotFound);
-    const appearance = await readAppearance(db, user.id, collection.id);
+    const outlineVersion = await ensureCollectionOutline(db, user.id, params.data.id);
+    if (outlineVersion === null) return reply.code(404).send(collectionNotFound);
+    const appearance = await readAppearance(db, user.id, params.data.id);
     if (!appearance) return reply.code(404).send(collectionNotFound);
-    const body = await assembleCollectionGraph(db, user.id, collection.id, appearance);
-    return reply.code(200).send(body);
+    const body = await assembleCollectionGraph(db, user.id, params.data.id, appearance);
+    return reply.code(200).send({ ...body, outlineVersion });
   });
 
   app.get('/api/collections/:id/inclusion-candidates', async (request, reply) => {
@@ -384,19 +402,8 @@ export function registerCollectionRoutes(app: FastifyInstance, db: Database, ses
     const parsed = createNodeBodySchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send(invalidBody(bodyMessage(parsed.error)));
 
-    const created = await db.transaction(async (tx) => {
-      const collection = await activeCollection(tx, user.id, params.data.id);
-      if (!collection) return null;
-      const inserted = await tx
-        .insert(nodes)
-        .values({ userId: user.id, name: parsed.data.name })
-        .returning({ id: nodes.id, name: nodes.name });
-      const node = inserted[0];
-      if (!node) return null;
-      await tx.insert(memberships).values({ collectionId: collection.id, nodeId: node.id });
-      return node;
-    });
-    if (!created) return reply.code(404).send(collectionNotFound);
+    const created = await createCollectionNode(db, user.id, params.data.id, parsed.data);
+    if (typeof created === 'string') return sendOutlineFailure(reply, created);
     return reply.code(201).send(created);
   });
 
@@ -409,16 +416,15 @@ export function registerCollectionRoutes(app: FastifyInstance, db: Database, ses
     const parsed = addMemberBodySchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send(invalidBody());
 
-    const collection = await activeCollection(db, user.id, params.data.id);
-    if (!collection) return reply.code(404).send(collectionNotFound);
-    const node = await activeNode(db, user.id, parsed.data.nodeId);
-    if (!node) return reply.code(404).send(nodeNotFound);
-
-    await db
-      .insert(memberships)
-      .values({ collectionId: collection.id, nodeId: node.id })
-      .onConflictDoNothing();
-    return reply.code(204).send();
+    const result = await addCollectionMember(
+      db,
+      user.id,
+      params.data.id,
+      parsed.data.nodeId,
+      parsed.data.parentId ?? null,
+    );
+    if (typeof result === 'string') return sendOutlineFailure(reply, result);
+    return reply.code(200).send(result);
   });
 
   app.delete('/api/collections/:id/members/:nodeId', async (request, reply) => {
@@ -427,12 +433,42 @@ export function registerCollectionRoutes(app: FastifyInstance, db: Database, ses
 
     const params = memberParamsSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send(invalidBody());
-    const collection = await activeCollection(db, user.id, params.data.id);
-    if (!collection) return reply.code(404).send(collectionNotFound);
+    const query = request.query as { expectedVersion?: unknown };
+    let expectedVersion: number | undefined;
+    if (query.expectedVersion !== undefined) {
+      if (typeof query.expectedVersion !== 'string' || !/^\d+$/.test(query.expectedVersion)) {
+        return reply.code(400).send(invalidBody());
+      }
+      expectedVersion = Number(query.expectedVersion);
+    }
+    const result = await removeCollectionMember(db, user.id, params.data.id, params.data.nodeId, expectedVersion);
+    if (typeof result === 'string') return sendOutlineFailure(reply, result);
+    return reply.code(200).send(result);
+  });
 
-    await db
-      .delete(memberships)
-      .where(and(eq(memberships.collectionId, collection.id), eq(memberships.nodeId, params.data.nodeId)));
-    return reply.code(204).send();
+  app.put('/api/collections/:id/outline', async (request, reply) => {
+    const user = await session(request, reply);
+    if (!user) return;
+
+    const params = idParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send(invalidBody());
+    const parsed = putOutlineBodySchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send(invalidBody(bodyMessage(parsed.error)));
+    const result = await putCollectionOutline(db, user.id, params.data.id, parsed.data);
+    if (typeof result === 'string') return sendOutlineFailure(reply, result);
+    return reply.code(200).send(result);
+  });
+
+  app.post('/api/collections/:id/outline/restore', async (request, reply) => {
+    const user = await session(request, reply);
+    if (!user) return;
+
+    const params = idParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send(invalidBody());
+    const parsed = restoreOutlineBodySchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send(invalidBody(bodyMessage(parsed.error)));
+    const result = await restoreCollectionOutline(db, user.id, params.data.id, parsed.data);
+    if (typeof result === 'string') return sendOutlineFailure(reply, result);
+    return reply.code(200).send(result);
   });
 }

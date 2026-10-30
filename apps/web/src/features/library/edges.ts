@@ -4,6 +4,7 @@ import type {
 } from '@unfold/dto';
 import {
   edgeDetailSchema,
+  edgeLabelsSchema,
   edgeSchema,
 } from '@unfold/dto';
 import type { LibraryState } from './library.service.js';
@@ -60,6 +61,16 @@ export async function renameEdge(state: LibraryState, id: string, label: string)
   };
   if (state.edgeDetail?.id === id) state.edgeDetail = { ...state.edgeDetail, label: next.label };
   return true;
+}
+
+export async function fetchEdgeLabels(): Promise<string[]> {
+  const res = await apiSend('/api/edge-labels', { credentials: 'include' });
+  if (!res?.ok) return [];
+  try {
+    return edgeLabelsSchema.parse(await res.json()).labels;
+  } catch {
+    return [];
+  }
 }
 
 export async function deleteEdge(state: LibraryState, id: string): Promise<boolean> {

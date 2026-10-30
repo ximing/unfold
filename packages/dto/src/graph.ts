@@ -10,6 +10,8 @@ function trimmed(emptyMessage: string, max: number) {
 
 export const ownerKindSchema = z.enum(['node', 'edge', 'collection_edge']);
 
+export const nodeKindSchema = z.enum(['text', 'image']);
+
 export const cardTypeSchema = z.enum([
   'note',
   'code',
@@ -77,6 +79,8 @@ export const nodeSchema = z.object({
 
 export const createNodeBodySchema = z.strictObject({
   name: trimmed('名字不能是空的', 80),
+  parentId: z.uuid().nullable().optional(),
+  afterNodeId: z.uuid().optional(),
 });
 
 export const updateNodeBodySchema = z
@@ -90,6 +94,59 @@ export const updateNodeBodySchema = z
 
 export const addMemberBodySchema = z.strictObject({
   nodeId: z.uuid(),
+  parentId: z.uuid().nullable().optional(),
+});
+
+export const outlineItemSchema = z.strictObject({
+  nodeId: z.uuid(),
+  parentId: z.uuid().nullable(),
+  order: z.int().nonnegative(),
+});
+
+export const putOutlineBodySchema = z.strictObject({
+  expectedVersion: z.int().nonnegative(),
+  items: z.array(outlineItemSchema),
+});
+
+export const outlineVersionSchema = z.object({
+  outlineVersion: z.int().nonnegative(),
+});
+
+export const duplicateNodeSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  description: z.string(),
+  collections: z.array(collectionSchema),
+});
+
+export const createNodeResultSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  parentId: z.uuid().nullable(),
+  outlineOrder: z.int().nonnegative(),
+  outlineVersion: z.int().nonnegative(),
+  duplicates: z.array(duplicateNodeSchema).max(5),
+});
+
+export const memberResultSchema = z.object({
+  status: z.enum(['joined', 'exists']),
+  parentId: z.uuid().nullable(),
+  outlineOrder: z.int().nonnegative(),
+  outlineVersion: z.int().nonnegative(),
+});
+
+export const restoreOutlineBodySchema = z.strictObject({
+  expectedVersion: z.int().nonnegative(),
+  nodeId: z.uuid(),
+  parentId: z.uuid().nullable(),
+  order: z.int().nonnegative(),
+  placement: z.strictObject({
+    x: z.number().finite().nullable(),
+    y: z.number().finite().nullable(),
+    z: z.int().nullable(),
+    imageWidth: z.int().min(120).max(480).nullable(),
+  }),
+  children: z.array(outlineItemSchema),
 });
 
 export const edgeSchema = z.object({
@@ -146,7 +203,7 @@ const labelText = trimmed('关系说明不能是空的', 40);
 
 export const graphNodeSchema = nodeSchema.extend({
   description: z.string(),
-  kind: z.enum(['text', 'image']),
+  kind: nodeKindSchema,
   x: z.number().nullable(),
   y: z.number().nullable(),
   z: z.int().nullable(),
@@ -154,6 +211,8 @@ export const graphNodeSchema = nodeSchema.extend({
   assetId: z.uuid().nullable(),
   cardCount: z.int().nonnegative(),
   cardTypes: z.array(cardTypeSchema),
+  parentId: z.uuid().nullable(),
+  outlineOrder: z.int().nonnegative(),
 });
 
 export const placementsBodySchema = z.strictObject({
@@ -204,6 +263,7 @@ export const collectionGraphSchema = z.object({
   bridges: z.array(graphEdgeSchema),
   inclusions: z.array(graphInclusionSchema),
   appearance: edgeAppearanceSchema,
+  outlineVersion: z.int().nonnegative(),
 });
 
 export const createInclusionBodySchema = z.strictObject({
@@ -330,15 +390,39 @@ export const updateCardBodySchema = z.strictObject({
 });
 
 export const searchHitSchema = z.object({
-  nodeId: z.uuid(),
-  name: z.string(),
-  collectionId: z.string(),
-  collectionTitle: z.string(),
+  kind: z.enum(['collection', 'node', 'edge', 'collection_edge', 'card']),
+  id: z.uuid(),
+  title: z.string(),
+  field: z.enum(['title', 'name', 'description', 'label', 'content']),
   snippet: z.string(),
+  collectionId: z.uuid().nullable(),
+  collectionTitle: z.string().nullable(),
+  nodeId: z.uuid().nullable(),
+  edgeId: z.uuid().nullable(),
+  cardId: z.uuid().nullable(),
+  ownerKind: z.enum(['node', 'edge', 'collection_edge']).nullable(),
 });
 
 export const searchResponseSchema = z.object({
   hits: z.array(searchHitSchema).max(30),
+  nextCursor: z.string().nullable(),
+});
+
+export const unassignedNodeSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  description: z.string(),
+  kind: nodeKindSchema,
+  cardCount: z.int().nonnegative(),
+});
+
+export const unassignedNodesSchema = z.object({
+  nodes: z.array(unassignedNodeSchema).max(30),
+  nextCursor: z.string().nullable(),
+});
+
+export const edgeLabelsSchema = z.object({
+  labels: z.array(z.string()).max(20),
 });
 
 export const liveNoticeSchema = z.object({
@@ -346,6 +430,7 @@ export const liveNoticeSchema = z.object({
 });
 
 export type OwnerKind = z.infer<typeof ownerKindSchema>;
+export type NodeKind = z.infer<typeof nodeKindSchema>;
 export type CardType = z.infer<typeof cardTypeSchema>;
 export type Collection = z.infer<typeof collectionSchema>;
 export type CreateCollectionBody = z.infer<typeof createCollectionBodySchema>;
@@ -355,6 +440,13 @@ export type Node = z.infer<typeof nodeSchema>;
 export type CreateNodeBody = z.infer<typeof createNodeBodySchema>;
 export type UpdateNodeBody = z.infer<typeof updateNodeBodySchema>;
 export type AddMemberBody = z.infer<typeof addMemberBodySchema>;
+export type OutlineItemBody = z.infer<typeof outlineItemSchema>;
+export type PutOutlineBody = z.infer<typeof putOutlineBodySchema>;
+export type OutlineVersion = z.infer<typeof outlineVersionSchema>;
+export type DuplicateNode = z.infer<typeof duplicateNodeSchema>;
+export type CreateNodeResult = z.infer<typeof createNodeResultSchema>;
+export type MemberResult = z.infer<typeof memberResultSchema>;
+export type RestoreOutlineBody = z.infer<typeof restoreOutlineBodySchema>;
 export type PlacementsBody = z.infer<typeof placementsBodySchema>;
 export type EdgeDash = z.infer<typeof edgeDashSchema>;
 export type EdgeWidth = z.infer<typeof edgeWidthSchema>;
@@ -386,4 +478,7 @@ export type CreateCardBody = z.infer<typeof createCardBodySchema>;
 export type UpdateCardBody = z.infer<typeof updateCardBodySchema>;
 export type SearchHit = z.infer<typeof searchHitSchema>;
 export type SearchResponse = z.infer<typeof searchResponseSchema>;
+export type UnassignedNode = z.infer<typeof unassignedNodeSchema>;
+export type UnassignedNodes = z.infer<typeof unassignedNodesSchema>;
+export type EdgeLabels = z.infer<typeof edgeLabelsSchema>;
 export type LiveNotice = z.infer<typeof liveNoticeSchema>;

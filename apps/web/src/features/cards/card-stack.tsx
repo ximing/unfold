@@ -1,4 +1,5 @@
 import type { Card, CardType } from '@unfold/dto';
+import { useEffect } from 'react';
 import 'highlight.js/styles/github.css';
 import { CARD_TYPES, cardMeta } from './card-meta.js';
 import { CodeCard } from './code-card.js';
@@ -99,31 +100,41 @@ function OneCard(props: {
 export function CardStack(props: {
   cards: Card[];
   types?: CardType[];
+  /** 点的检查器自己画添加按钮时关掉这一排。 */
+  hideAdd?: boolean;
+  focusCardId?: string | null;
   onCreate: (type: CardType) => void;
   onUpdate: (id: string, content: Card['content']) => Promise<boolean> | void;
   onDelete: (id: string) => void;
 }) {
   const types = props.types ?? CARD_TYPES;
+  useEffect(() => {
+    if (!props.focusCardId) return;
+    document.getElementById(`card-${props.focusCardId}`)?.scrollIntoView({ block: 'nearest' });
+  }, [props.focusCardId, props.cards]);
   return (
     <div className="card-stack">
-      <div className="card-add">
-        {types.map((type) => {
-          const meta = cardMeta(type);
-          return (
-            <button key={type} type="button" className="card-add-btn" onClick={() => props.onCreate(type)}>
-              <i style={{ background: meta.hue }}>{meta.glyph}</i>
-              {meta.label}
-            </button>
-          );
-        })}
-      </div>
+      {props.hideAdd ? null : (
+        <div className="card-add">
+          {types.map((type) => {
+            const meta = cardMeta(type);
+            return (
+              <button key={type} type="button" className="card-add-btn" onClick={() => props.onCreate(type)}>
+                <i style={{ background: meta.hue }}>{meta.glyph}</i>
+                {meta.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
       {props.cards.map((card) => (
-        <OneCard
-          key={card.id}
-          card={card}
-          onUpdate={(content) => props.onUpdate(card.id, content)}
-          onDelete={() => props.onDelete(card.id)}
-        />
+        <div key={card.id} id={`card-${card.id}`}>
+          <OneCard
+            card={card}
+            onUpdate={(content) => props.onUpdate(card.id, content)}
+            onDelete={() => props.onDelete(card.id)}
+          />
+        </div>
       ))}
     </div>
   );

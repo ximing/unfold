@@ -1,35 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import { GAP_X, GAP_Y, NODE_H, NODE_W } from './board-layout.js';
-import { GROW_CHILD_LABEL, GROW_SIBLING_BLOCKED, planGrow } from './grow.js';
+import { planGrow } from './grow.js';
 
 const anchor = { x: 32, y: 48, w: NODE_W, h: NODE_H };
 
 describe('planGrow', () => {
-  it('下级的占位标签是下一级', () => {
-    expect(GROW_CHILD_LABEL).toBe('下一级');
+  it('旁边默认放在下方，计划里没有连边', () => {
+    const plan = planGrow('beside', anchor, [anchor]);
+    expect(plan).toEqual({ x: anchor.x, y: anchor.y + anchor.h + GAP_Y });
+    expect(plan).not.toHaveProperty('fromId');
+    expect(plan).not.toHaveProperty('label');
   });
 
-  it('下级默认放在下方，边从选中点指出', () => {
-    const plan = planGrow('child', 'a', [], anchor, [anchor]);
-    expect(plan).toEqual({ ok: true, fromId: 'a', x: anchor.x, y: anchor.y + anchor.h + GAP_Y });
-  });
-
-  it('下级方向可以改成上、左、右', () => {
-    expect(planGrow('child', 'a', [], anchor, [anchor], 'up')).toEqual({
-      ok: true,
-      fromId: 'a',
+  it('旁边方向可以改成上、左、右', () => {
+    expect(planGrow('beside', anchor, [anchor], 'up')).toEqual({
       x: anchor.x,
       y: anchor.y - NODE_H - GAP_Y,
     });
-    expect(planGrow('child', 'a', [], anchor, [anchor], 'left')).toEqual({
-      ok: true,
-      fromId: 'a',
+    expect(planGrow('beside', anchor, [anchor], 'left')).toEqual({
       x: anchor.x - NODE_W - GAP_X,
       y: anchor.y,
     });
-    expect(planGrow('child', 'a', [], anchor, [anchor], 'right')).toEqual({
-      ok: true,
-      fromId: 'a',
+    expect(planGrow('beside', anchor, [anchor], 'right')).toEqual({
       x: anchor.x + anchor.w + GAP_X,
       y: anchor.y,
     });
@@ -37,24 +29,22 @@ describe('planGrow', () => {
 
   it('左右被挡住时向下让，上下被挡住时向右让', () => {
     const rightSlot = { x: anchor.x + anchor.w + GAP_X, y: anchor.y, w: NODE_W, h: NODE_H };
-    expect(planGrow('child', 'a', [], anchor, [anchor, rightSlot], 'right')).toEqual({
-      ok: true,
-      fromId: 'a',
+    expect(planGrow('beside', anchor, [anchor, rightSlot], 'right')).toEqual({
       x: rightSlot.x,
       y: anchor.y + NODE_H + GAP_Y,
     });
     const leftX = anchor.x - NODE_W - GAP_X;
-    expect(planGrow('child', 'a', [], anchor, [anchor, { x: leftX, y: anchor.y, w: NODE_W, h: NODE_H }], 'left')).toMatchObject({
+    expect(planGrow('beside', anchor, [anchor, { x: leftX, y: anchor.y, w: NODE_W, h: NODE_H }], 'left')).toEqual({
       x: leftX,
       y: anchor.y + NODE_H + GAP_Y,
     });
     const downY = anchor.y + anchor.h + GAP_Y;
-    expect(planGrow('child', 'a', [], anchor, [anchor, { x: anchor.x, y: downY, w: NODE_W, h: NODE_H }], 'down')).toMatchObject({
+    expect(planGrow('beside', anchor, [anchor, { x: anchor.x, y: downY, w: NODE_W, h: NODE_H }], 'down')).toEqual({
       x: anchor.x + NODE_W + GAP_X,
       y: downY,
     });
     const upY = anchor.y - NODE_H - GAP_Y;
-    expect(planGrow('child', 'a', [], anchor, [anchor, { x: anchor.x, y: upY, w: NODE_W, h: NODE_H }], 'up')).toMatchObject({
+    expect(planGrow('beside', anchor, [anchor, { x: anchor.x, y: upY, w: NODE_W, h: NODE_H }], 'up')).toEqual({
       x: anchor.x + NODE_W + GAP_X,
       y: upY,
     });
@@ -62,42 +52,14 @@ describe('planGrow', () => {
 
   it('图片点按自己的宽高让开', () => {
     const image = { x: 10, y: 20, w: 220, h: 180 };
-    const child = planGrow('child', 'img', [], image, [image]);
-    const sibling = planGrow('sibling', 'img', [], image, [image]);
-    expect(child).toMatchObject({ x: image.x, y: image.y + image.h + GAP_Y });
-    expect(sibling).toMatchObject({ fromId: null, x: image.x, y: image.y + image.h + GAP_Y });
+    expect(planGrow('beside', image, [image])).toEqual({ x: image.x, y: image.y + image.h + GAP_Y });
+    expect(planGrow('below', image, [image])).toEqual({ x: image.x, y: image.y + image.h + GAP_Y });
   });
 
-  it('一个上级时同级接在这个上级上，同一个起点只算一次', () => {
-    const plan = planGrow(
-      'sibling',
-      'a',
-      [
-        { fromId: 'p', toId: 'a' },
-        { fromId: 'p', toId: 'a' },
-      ],
-      anchor,
-      [anchor],
-    );
-    expect(plan).toEqual({ ok: true, fromId: 'p', x: anchor.x, y: anchor.y + anchor.h + GAP_Y });
-  });
-
-  it('没有上级时同级不连边', () => {
-    const plan = planGrow('sibling', 'a', [{ fromId: 'a', toId: 'a' }], anchor, [anchor]);
-    expect(plan).toEqual({ ok: true, fromId: null, x: anchor.x, y: anchor.y + anchor.h + GAP_Y });
-  });
-
-  it('多个上级时不创建', () => {
-    const plan = planGrow(
-      'sibling',
-      'a',
-      [
-        { fromId: 'p', toId: 'a' },
-        { fromId: 'q', toId: 'a' },
-      ],
-      anchor,
-      [anchor],
-    );
-    expect(plan).toEqual({ ok: false, message: GROW_SIBLING_BLOCKED });
+  it('多个入边时下方仍然成功，计划里没有自动连边标签', () => {
+    const plan = planGrow('below', anchor, [anchor]);
+    expect(plan).toEqual({ x: anchor.x, y: anchor.y + anchor.h + GAP_Y });
+    expect(plan).not.toHaveProperty('fromId');
+    expect(plan).not.toHaveProperty('label');
   });
 });

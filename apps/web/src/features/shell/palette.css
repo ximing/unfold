@@ -1,5 +1,5 @@
 /* ============================================================
-   浮层：命令面板 / 模态 / toast / 右键
+   搜索面板：Spotlight 风格浮层
    ============================================================ */
 .overlay {
   position: fixed;
@@ -14,7 +14,7 @@
   animation: fade-in 0.15s var(--ease-out);
 }
 .palette {
-  width: 580px;
+  width: 620px;
   max-width: calc(100vw - 48px);
   background: var(--glass);
   -webkit-backdrop-filter: blur(32px) saturate(1.6);
@@ -25,29 +25,86 @@
   overflow: hidden;
   animation: pop-in 0.18s var(--ease-spring);
 }
-.palette .pin { display: flex; align-items: center; gap: 10px; padding: 15px 18px; border-bottom: 1px solid var(--line-soft); }
+.palette .pin { display: flex; align-items: center; gap: 10px; padding: 15px 18px; }
 .palette .pin svg { width: 17px; height: 17px; color: var(--faint); flex: none; }
 .palette .pin input { flex: 1; border: none; outline: none; font-size: 17px; background: none; color: var(--ink); }
-.palette .hits { max-height: 48vh; overflow-y: auto; padding: 6px; }
+.palette-scope { display: flex; align-items: center; padding: 0 18px 10px; }
+/* 小控件统一胶囊形状语言：槽、滑块与按钮同为 999 */
+.palette-scope .useg { border-radius: 999px; }
+.palette-scope .useg-thumb { border-radius: 999px; }
+.palette-scope .useg button { padding: 3px 12px; font-size: 12px; border-radius: 999px; }
+.palette .hits {
+  max-height: 46vh;
+  overflow-y: auto;
+  padding: 4px 8px 8px;
+  border-top: 1px solid var(--line-soft);
+}
+.palette .hits:empty { padding: 0; border-top: none; }
+.palette .hit-group {
+  font-size: 11px;
+  color: #55555a;
+  letter-spacing: 0.04em;
+  padding: 10px 12px 3px;
+}
 .palette .hit {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 1px;
   width: 100%;
-  padding: 8px 12px;
+  padding: 7px 12px;
   border-radius: 9px;
   font-size: 14px;
+  text-align: left;
+  transition: background 0.08s;
 }
-.palette .hit small {
-  color: var(--faint);
+.palette .hit.hl { background: rgba(0, 0, 0, 0.05); }
+.palette .hit.hl .hit-title { color: var(--accent-deep); }
+.palette .hit-title { display: block; font-size: 14px; }
+.palette .hit-title .hit-kind {
+  display: inline-block;
+  margin-left: 7px;
+  font-size: 10px;
+  color: #55555a;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  padding: 0 4px;
+  vertical-align: 1px;
+}
+.palette .hit-meta {
   font-size: 12px;
-  margin-left: auto;
-  min-width: 0;
+  color: #55555a;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 45%;
 }
-.palette .hit.hl { background: var(--accent); color: #fff; }
-.palette .hit.hl small { color: rgba(255, 255, 255, 0.75); }
+.palette mark {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  border-radius: 3px;
+  padding: 0 1px;
+}
 .palette .empty-line { padding: 18px; font-size: 13px; color: var(--faint); text-align: center; }
+.palette .more-hits {
+  display: block;
+  width: calc(100% - 24px);
+  margin: 4px 12px 6px;
+  padding: 6px;
+  font-size: 12px;
+  color: var(--mute);
+  text-align: center;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.palette .more-hits:hover { background: rgba(0, 0, 0, 0.04); color: var(--ink); }
+.palette .more-hits:disabled { opacity: 0.5; cursor: default; }
+.palette .foot {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  padding: 8px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 11px;
+  color: #55555a;
+}
+.palette .foot kbd { font: inherit; color: #55555a; }

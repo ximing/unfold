@@ -15,6 +15,8 @@ type MemberRow = {
   y: number | null;
   z: number | null;
   imageWidth: number | null;
+  parentId: string | null;
+  outlineOrder: number;
 };
 
 type EdgeRow = { id: string; fromId: string; toId: string; label: string };
@@ -60,6 +62,8 @@ function toNode(row: MemberRow, stat: CardStat | undefined, assetId: string | nu
     assetId,
     cardCount: stat?.count ?? 0,
     cardTypes: stat?.types ?? [],
+    parentId: row.parentId,
+    outlineOrder: row.outlineOrder,
   };
 }
 
@@ -106,6 +110,8 @@ export async function assembleCollectionGraph(
       y: memberships.y,
       z: memberships.z,
       imageWidth: memberships.imageWidth,
+      parentId: memberships.parentNodeId,
+      outlineOrder: memberships.outlineOrder,
     })
     .from(memberships)
     .innerJoin(nodes, eq(nodes.id, memberships.nodeId))

@@ -87,6 +87,7 @@ describe('graph', () => {
       bridges: [],
       inclusions: [],
       appearance: defaultEdgeAppearance,
+      outlineVersion: 1,
     });
 
     const missing = await call('GET', `/api/nodes/${randomUUID()}`);
@@ -286,9 +287,10 @@ describe('graph', () => {
     });
 
     const link = await call('POST', `/api/collections/${collectionB.id}/members`, { nodeId: nodeA.id });
-    expect(link.statusCode).toBe(204);
+    expect(link.statusCode).toBe(200);
     const linkAgain = await call('POST', `/api/collections/${collectionB.id}/members`, { nodeId: nodeA.id });
-    expect(linkAgain.statusCode).toBe(204);
+    expect(linkAgain.statusCode).toBe(200);
+    expect(linkAgain.json()).toMatchObject({ status: 'exists' });
 
     const graphB = await call('GET', `/api/collections/${collectionB.id}/graph`);
     const graphBBody = graphB.json() as { nodes: { id: string }[]; edges: { id: string }[] };
@@ -312,12 +314,17 @@ describe('graph', () => {
     const byName = await call('GET', `/api/search?q=${encodeURIComponent(`点乙${token}`)}`);
     expect(byName.statusCode).toBe(200);
     const nameHits = byName.json() as {
-      hits: { nodeId: string; name: string; collectionId: string; snippet: string }[];
+      hits: { nodeId: string; title: string; collectionId: string; snippet: string }[];
+      nextCursor: string | null;
     };
+    expect(nameHits.nextCursor).toBeNull();
     expect(nameHits.hits).toEqual([
       expect.objectContaining({
+        kind: 'node',
+        id: nodeB.id,
         nodeId: nodeB.id,
-        name: nodeB.name,
+        title: nodeB.name,
+        field: 'name',
         collectionId: collectionA.id,
         snippet: nodeB.name,
       }),
@@ -326,25 +333,30 @@ describe('graph', () => {
     const byCard = await call('GET', `/api/search?q=${encodeURIComponent(bodyToken)}`);
     expect(byCard.statusCode).toBe(200);
     const cardHits = byCard.json() as {
-      hits: { nodeId: string; collectionId: string; snippet: string }[];
+      hits: { kind: string; nodeId: string; cardId: string | null; collectionId: string; snippet: string }[];
     };
     expect(cardHits.hits).toHaveLength(1);
-    expect(cardHits.hits[0]).toMatchObject({ nodeId: nodeA.id, collectionId: collectionA.id });
+    expect(cardHits.hits[0]).toMatchObject({
+      kind: 'card',
+      nodeId: nodeA.id,
+      cardId: nodeCardIds[0],
+      collectionId: collectionA.id,
+    });
     expect(cardHits.hits[0]?.snippet).toContain(bodyToken);
 
     const emptyQuery = await call('GET', '/api/search?q=%20%20');
-    expect(emptyQuery.json()).toEqual({ hits: [] });
+    expect(emptyQuery.json()).toEqual({ hits: [], nextCursor: null });
 
     const detachA = await call('DELETE', `/api/collections/${collectionA.id}/members/${nodeA.id}`);
     const detachB = await call('DELETE', `/api/collections/${collectionB.id}/members/${nodeA.id}`);
-    expect(detachA.statusCode).toBe(204);
-    expect(detachB.statusCode).toBe(204);
+    expect(detachA.statusCode).toBe(200);
+    expect(detachB.statusCode).toBe(200);
     const detached = await call('GET', `/api/search?q=${encodeURIComponent(`点甲${token}`)}`);
     const detachedHits = detached.json() as {
-      hits: { nodeId: string; collectionId: string; collectionTitle: string }[];
+      hits: { nodeId: string; collectionId: string | null; collectionTitle: string | null }[];
     };
     const detachedA = detachedHits.hits.find((hit) => hit.nodeId === nodeA.id);
-    expect(detachedA).toMatchObject({ collectionId: '', collectionTitle: '' });
+    expect(detachedA).toMatchObject({ collectionId: null, collectionTitle: null });
 
     expect((await call('DELETE', `/api/nodes/${nodeA.id}`)).statusCode).toBe(204);
     expect((await call('DELETE', `/api/nodes/${nodeB.id}`)).statusCode).toBe(204);

@@ -1,5 +1,5 @@
 import { observer, useService } from '@rabjs/react';
-import { defaultEdgeAppearance } from '@unfold/dto';
+import { defaultEdgeAppearance, type CreateNodeResult } from '@unfold/dto';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { BoardCanvas } from '../board/board-canvas.js';
@@ -7,10 +7,16 @@ import { imageDropSpots, imageFileIssue } from '../board/image-intake.js';
 import { isFiniteNumber, layoutBoard, nextPlacementZ } from '../board/board-layout.js';
 import { collapsedOrigin, inclusionChildId, inclusionItemId, projectCollection } from '../board/inclusion-view.js';
 import { snapPoint } from '../board/snap.js';
+import { readCollectionView, writeCollectionView, type CollectionViewMode } from '../outline/collection-view.js';
+import { CreateNoticeBanner, OutlineView, type CreateNotice } from '../outline/outline-view.js';
+import { useOutlineSession } from '../outline/outline-session.js';
 import { InclusionDialog } from './inclusion-dialog.js';
 import { apiSend, errorMessage } from '../library/api.js';
 import { LibraryService } from '../library/library.service.js';
+import { SaveService } from '../save/save.service.js';
 import { SessionService } from '../session/session.service.js';
+import { USegmented } from '../../shared/ui/segmented/segmented.js';
+import { UConfirm } from '../../shared/ui/modal/modal.js';
 import { EdgePanel } from './edge-panel.js';
 import { NodePanel } from './node-panel.js';
 import { NodePeek } from './node-peek.js';
@@ -22,13 +28,26 @@ type UploadSpot = { id: string; label: string; x: number; y: number; z: number; 
 export const CollectionPage = observer(function CollectionPage() {
   const library = useService(LibraryService);
   const session = useService(SessionService);
+  const save = useService(SaveService);
   const { id } = useParams();
   const [params] = useSearchParams();
   const nodeQuery = params.get('node') ?? '';
   const edgeQuery = params.get('edge') ?? '';
+  const cardQuery = params.get('card') ?? '';
+  const outlineSession = useOutlineSession(id);
+  const outlineRef = useRef(outlineSession);
+  outlineRef.current = outlineSession;
   const [ready, setReady] = useState(false);
   const [missing, setMissing] = useState(false);
   const [selection, setSelection] = useState<Selection>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [mode, setMode] = useState<CollectionViewMode>(() => (id ? readCollectionView(id) : 'board'));
+  const [entry, setEntry] = useState<'open' | 'switch'>('open');
+  const [focus, setFocus] = useState<{ id: string; tick: number } | null>(null);
+  const [memberAsk, setMemberAsk] = useState<string | null>(null);
+  const [createNotice, setCreateNotice] = useState<CreateNotice | null>(null);
+  const [structure, setStructure] = useState(false);
+  const [adding, setAdding] = useState<string | null | undefined>(undefined);
   const [seenId, setSeenId] = useState(id);
   const [uploads, setUploads] = useState<UploadSpot[]>([]);
   const [insertAt, setInsertAt] = useState<{ x: number; y: number } | null>(null);
@@ -44,6 +63,14 @@ export const CollectionPage = observer(function CollectionPage() {
     setReady(false);
     setMissing(false);
     setSelection(null);
+    setSelectedId(null);
+    setMode(id ? readCollectionView(id) : 'board');
+    setEntry('open');
+    setFocus(null);
+    setMemberAsk(null);
+    setCreateNotice(null);
+    setStructure(false);
+    setAdding(undefined);
     setInsertAt(null);
     if (uploadsRef.current.length > 0) {
       uploadsRef.current = [];
@@ -66,6 +93,7 @@ export const CollectionPage = observer(function CollectionPage() {
         return;
       }
       if (nodeQuery !== '') {
+        locateNode(nodeQuery);
         setSelection({ kind: 'node', id: nodeQuery });
         void library.loadNode(nodeQuery);
       } else if (edgeQuery !== '') {
@@ -125,6 +153,22 @@ export const CollectionPage = observer(function CollectionPage() {
     });
     return () => library.watchView(null);
   }, [id, library, selection]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+      if (event.key.toLowerCase() !== 'z') return;
+      if (isTypingTarget(event.target)) return;
+      if (document.querySelector('.modal-wrap, .overlay, .addm-overlay')) return;
+      event.preventDefault();
+      const current = outlineRef.current;
+      if (current.phase === 'saving') return;
+      if (event.shiftKey) void current.redo();
+      else void current.undo();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   if (!id || missing) {
     return (
@@ -284,9 +328,180 @@ export const CollectionPage = observer(function CollectionPage() {
     else if (placementError !== '') library.error = placementError;
   }
 
+  function chooseMode(next: CollectionViewMode) {
+    if (!id || next === mode) return;
+    writeCollectionView(id, next);
+    setEntry('switch');
+    setMode(next);
+    if (next === 'board') {
+      setStructure(false);
+      setAdding(undefined);
+    }
+  }
+
+  function locateNode(nodeId: string) {
+    setSelectedId(nodeId);
+    setFocus({ id: nodeId, tick: Date.now() });
+  }
+
+  function noteCreated(created: CreateNodeResult) {
+    setCreateNotice(
+      created.duplicates.length > 0 ? { name: created.name, duplicates: created.duplicates } : null,
+    );
+  }
+
+  // 大纲结构操作走 outlineSession.phase，画板编辑走全局保存总线；按紧急程度合并两路状态。
+  const savePhase =
+    outlineSession.phase === 'saving' || save.phase === 'saving'
+      ? 'saving'
+      : outlineSession.phase === 'failed' || save.phase === 'failed'
+        ? 'failed'
+        : save.phase === 'dirty'
+          ? 'dirty'
+          : outlineSession.phase === 'saved' || save.phase === 'saved'
+            ? 'saved'
+            : 'idle';
+  const saveText =
+    savePhase === 'saving'
+      ? '保存中'
+      : savePhase === 'failed'
+        ? '保存失败'
+        : savePhase === 'saved'
+          ? '已保存'
+          : savePhase === 'dirty'
+            ? '未保存'
+            : '';
+
   return (
     <div className="board-stage">
+      <div className="collection-bar">
+        <div className="toolbar-pill">
+          <USegmented
+            ariaLabel="视图切换"
+            options={[
+              { value: 'outline', label: '大纲' },
+              { value: 'board', label: '画板' },
+            ]}
+            value={mode}
+            onChange={(next) => chooseMode(next as CollectionViewMode)}
+          />
+          <span className="toolbar-divider" />
+          <button
+            type="button"
+            className="tbtn"
+            title="撤销 ⌘Z"
+            aria-label="撤销"
+            disabled={!outlineSession.canUndo || outlineSession.phase === 'saving'}
+            onClick={() => void outlineSession.undo()}
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M3 6.5h6a3.5 3.5 0 0 1 0 7H6" />
+              <path d="M5.5 3.5 2.5 6.5l3 3" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="tbtn"
+            title="重做 ⇧⌘Z"
+            aria-label="重做"
+            disabled={!outlineSession.canRedo || outlineSession.phase === 'saving'}
+            onClick={() => void outlineSession.redo()}
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M13 6.5H7a3.5 3.5 0 0 0 0 7h3" />
+              <path d="M10.5 3.5l3 3-3 3" />
+            </svg>
+          </button>
+          {mode === 'outline' ? (
+            <>
+              <span className="toolbar-divider" />
+              <button
+                type="button"
+                className={structure ? 'tbtn pressed' : 'tbtn'}
+                title="调整结构"
+                aria-label="调整结构"
+                aria-pressed={structure}
+                disabled={!ready}
+                onClick={() => setStructure((on) => !on)}
+              >
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M2.5 4.5h11M2.5 8h11M5.5 11.5h8" />
+                </svg>
+              </button>
+              {structure ? null : (
+                <button
+                  type="button"
+                  className="tbtn"
+                  title="加入已有点"
+                  aria-label="加入已有点"
+                  disabled={!ready}
+                  onClick={() => setAdding(null)}
+                >
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M8 3v10M3 8h10" />
+                  </svg>
+                </button>
+              )}
+            </>
+          ) : null}
+        </div>
+        {mode === 'board' && createNotice ? (
+          <CreateNoticeBanner notice={createNotice} onLocate={locateNode} onClose={() => setCreateNotice(null)} />
+        ) : null}
+      </div>
+      <div className="save-corner">
+        {saveText !== '' ? (
+          <span className="save-chip" data-phase={savePhase} role="status">
+            <span className="save-dot" />
+            {saveText}
+          </span>
+        ) : null}
+        {outlineSession.conflict ? (
+          <span className="save-chip warn" role="alert">
+            <span className="save-dot" />
+            {outlineSession.conflictText}
+            <button type="button" onClick={() => void outlineSession.reload()}>
+              刷新
+            </button>
+          </span>
+        ) : null}
+        {mode === 'outline' && library.error !== '' && !outlineSession.conflict ? (
+          <span className="save-chip warn" role="alert">
+            {library.error}
+          </span>
+        ) : null}
+      </div>
       <div className="board-frame">
+        {mode === 'outline' && !ready ? (
+          <div className="board-canvas">
+            <p className="muted board-wait">正在读取…</p>
+          </div>
+        ) : null}
+        {mode === 'outline' && ready ? (
+          <OutlineView
+            key={pageId}
+            collectionId={pageId}
+            selectedId={selectedId}
+            revealId={nodeQuery !== '' ? nodeQuery : entry === 'switch' ? selectedId : null}
+            focus={focus}
+            entry={entry}
+            session={outlineSession}
+            structure={structure}
+            onStructureChange={setStructure}
+            adding={adding}
+            onAddingChange={setAdding}
+            createNotice={mode === 'outline' ? createNotice : null}
+            onDismissNotice={() => setCreateNotice(null)}
+            onSelect={setSelectedId}
+            onOpen={(nodeId) => {
+              setSelectedId(nodeId);
+              setSelection({ kind: 'node', id: nodeId });
+              void library.loadNode(nodeId);
+            }}
+            onAskRemove={setMemberAsk}
+          />
+        ) : null}
+        {mode === 'board' ? (
         <div className="board-canvas">
           {!ready ? <p className="muted board-wait">正在读取…</p> : null}
           {ready ? (
@@ -306,11 +521,8 @@ export const CollectionPage = observer(function CollectionPage() {
               ]}
               links={projected.links}
               groups={projected.groups}
-              selectedId={selection?.kind === 'inclusion' ? inclusionItemId(selection.id) : (selection?.id ?? null)}
+              selectedId={selection?.kind === 'inclusion' ? inclusionItemId(selection.id) : selectedId}
               createPlaceholder="点的名字"
-              onGrowBlocked={(message) => {
-                library.error = message;
-              }}
               onGrowNode={(draft) => {
                 void (async () => {
                   if (!id || pageIdRef.current !== id) return;
@@ -318,6 +530,7 @@ export const CollectionPage = observer(function CollectionPage() {
                   const collectionId = draft.groupId ?? pageId;
                   const created = await library.createNode(collectionId, draft.name);
                   if (!created || pageIdRef.current !== pageId) return;
+                  noteCreated(created);
                   placeTried.current.add(`${pageId}:node:${created.id}`);
                   const local = toLocal(draft.groupId, draft.x, draft.y);
                   const z = nextPlacementZ(zOf(collectionId));
@@ -325,19 +538,14 @@ export const CollectionPage = observer(function CollectionPage() {
                     { nodeId: created.id, x: local.x, y: local.y, z },
                   ]);
                   const placementError = saved ? '' : library.error;
-                  let linkError = '';
-                  if (draft.fromId && draft.label && pageIdRef.current === pageId) {
-                    const linked = await library.createEdge(draft.fromId, created.id, draft.label);
-                    if (!linked && pageIdRef.current === pageId) linkError = library.error;
-                  }
                   if (pageIdRef.current !== pageId) return;
                   await refresh();
                   if (pageIdRef.current !== pageId) return;
+                  setSelectedId(created.id);
                   setSelection({ kind: 'node', id: created.id });
                   await library.loadNode(created.id);
                   if (pageIdRef.current !== pageId) return;
                   if (placementError !== '') library.error = placementError;
-                  else if (linkError !== '') library.error = linkError;
                 })();
               }}
               onCreate={(name, at, groupId) => {
@@ -345,6 +553,7 @@ export const CollectionPage = observer(function CollectionPage() {
                   const homeId = groupId ?? id;
                   const created = await library.createNode(homeId, name);
                   if (!created) return;
+                  noteCreated(created);
                   placeTried.current.add(`${id}:node:${created.id}`);
                   const local = toLocal(groupId, at.x - 84, at.y - 28);
                   const z = nextPlacementZ(zOf(homeId));
@@ -353,6 +562,7 @@ export const CollectionPage = observer(function CollectionPage() {
                   ]);
                   const placementError = saved ? '' : library.error;
                   await refresh();
+                  setSelectedId(created.id);
                   setSelection({ kind: 'node', id: created.id });
                   await library.loadNode(created.id);
                   if (placementError !== '') library.error = placementError;
@@ -479,12 +689,7 @@ export const CollectionPage = observer(function CollectionPage() {
               }}
               onRemoveItem={(nodeId) => {
                 if (!id || nodeId.startsWith('uploading:') || inclusionChildId(nodeId) !== null) return;
-                void (async () => {
-                  const home = homeOf(nodeId);
-                  const ok = await library.removeMember(home.collectionId, nodeId);
-                  if (!ok) return;
-                  leave();
-                })();
+                setMemberAsk(nodeId);
               }}
               onMoveInclusion={(childId, x, y) => library.updateInclusion(id, childId, { x, y })}
               onToggleInclusion={(childId) => {
@@ -504,6 +709,7 @@ export const CollectionPage = observer(function CollectionPage() {
               onAskRemoveItem={(nodeId) => {
                 if (nodeId.startsWith('uploading:') || inclusionChildId(nodeId) !== null) return;
                 removeToken.current += 1;
+                setSelectedId(nodeId);
                 setSelection({ kind: 'node', id: nodeId });
                 void library.loadNode(nodeId);
                 setRemoveAsk({ kind: 'node', id: nodeId, token: removeToken.current });
@@ -514,15 +720,20 @@ export const CollectionPage = observer(function CollectionPage() {
                 void library.loadEdge(edgeId);
                 setRemoveAsk({ kind: 'edge', id: edgeId, token: removeToken.current });
               }}
-              onEscape={() => setSelection(null)}
+              onEscape={() => {
+                setSelectedId(null);
+                setSelection(null);
+              }}
               onSelectItem={(nodeId) => {
                 if (nodeId.startsWith('uploading:')) return;
                 const childId = inclusionChildId(nodeId);
                 setRemoveAsk(null);
                 if (childId) {
+                  setSelectedId(null);
                   setSelection({ kind: 'inclusion', id: childId });
                   return;
                 }
+                setSelectedId(nodeId);
                 setSelection({ kind: 'node', id: nodeId });
                 void library.loadNode(nodeId);
               }}
@@ -540,7 +751,7 @@ export const CollectionPage = observer(function CollectionPage() {
           ) : null}
           {ready && nodes.length <= 2 && inclusions.length === 0 ? (
             <p className="canvas-hint">
-              双击空白添加文字 · 拖入图片 · 拖动点 · 从圆点拖线或按 L 连线 · 选中点后 Tab 建下级、Enter 建同级 · 工具栏或右键可插入子集合
+              双击空白添加文字 · 拖入图片 · 拖动点 · 从圆点拖线或按 L 连线 · 选中点后 Tab 在旁边新建、Enter 在下方新建 · 工具栏或右键可插入子集合
             </p>
           ) : null}
           {session.canvasError !== '' || library.error !== '' ? (
@@ -549,11 +760,15 @@ export const CollectionPage = observer(function CollectionPage() {
             </p>
           ) : null}
         </div>
+        ) : null}
         {selection?.kind === 'node' ? (
           <NodePanel
             collectionId={id}
             nodeId={selection.id}
+            focusCardId={cardQuery || null}
             askRemove={removeAsk?.kind === 'node' && removeAsk.id === selection.id ? removeAsk.token : 0}
+            onAskRemove={() => setMemberAsk(selection.id)}
+            onLocated={locateNode}
             onLeave={leave}
             onTouched={() => void refresh()}
           />
@@ -561,12 +776,40 @@ export const CollectionPage = observer(function CollectionPage() {
         {selection?.kind === 'edge' ? (
           <EdgePanel
             edgeId={selection.id}
+            focusCardId={cardQuery || null}
             askRemove={removeAsk?.kind === 'edge' && removeAsk.id === selection.id ? removeAsk.token : 0}
             onLeave={leave}
             onTouched={() => void refresh()}
           />
         ) : null}
       </div>
+      {memberAsk ? (
+        <UConfirm
+          title="移出当前合集"
+          body="只移出这个合集。它下面的项会升到同一级，点和关系都还在。"
+          confirmLabel="移出"
+          onCancel={() => setMemberAsk(null)}
+          onConfirm={() => {
+            const nodeId = memberAsk;
+            setMemberAsk(null);
+            void (async () => {
+              const direct = library.graphId === pageId && library.graph.nodes.some((node) => node.id === nodeId);
+              let ok = false;
+              if (direct) {
+                ok = await outlineSession.removeDirect(nodeId);
+              } else {
+                const home = homeOf(nodeId);
+                const result = await library.removeMember(home.collectionId, nodeId);
+                ok = result.ok;
+                if (ok) await refresh();
+              }
+              if (!ok) return;
+              setSelectedId((current) => (current === nodeId ? null : current));
+              setSelection((current) => (current?.kind === 'node' && current.id === nodeId ? null : current));
+            })();
+          }}
+        />
+      ) : null}
       {insertAt ? (
         <InclusionDialog
           collectionId={id}
@@ -600,6 +843,17 @@ async function postCollectionImage(collectionId: string, file: File, x: number, 
   } catch {
     return { ok: false, message: '图片没有放进去' };
   }
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  if (
+    target instanceof HTMLElement &&
+    (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+  ) {
+    return true;
+  }
+  return target.closest('input, textarea, .tiptap, [contenteditable="true"]') !== null;
 }
 
 function createdNodeId(data: unknown): string | null {

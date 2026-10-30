@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, isNull, max } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
+import { insertMemberAt } from '../collections/outline.js';
 import { assets, memberships, nodes } from '../db/schema.js';
 import { activeCollection, type Database } from '../graph/db.js';
 import {
@@ -48,11 +49,16 @@ export function registerAssetRoutes(app: FastifyInstance, db: Database, session:
         const node = inserted[0];
         if (!node) return null;
         const placed = upload.placement;
-        await tx.insert(memberships).values({
-          collectionId: collection.id,
-          nodeId: node.id,
-          ...(placed ? { x: placed.x, y: placed.y, z: await nextPlacementZ(tx, collection.id) } : {}),
-        });
+        const slot = await insertMemberAt(
+          tx,
+          user.id,
+          collection.id,
+          node.id,
+          null,
+          undefined,
+          placed ? { x: placed.x, y: placed.y, z: await nextPlacementZ(tx, collection.id) } : undefined,
+        );
+        if (typeof slot !== 'object') throw new Error('outline membership failed');
         await tx.insert(assets).values({
           id: assetId,
           userId: user.id,

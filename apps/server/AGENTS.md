@@ -33,7 +33,7 @@
 - **HTTP 与错误契约**：
   - 请求体统一使用 `@unfold/dto` 的 schema 做 `safeParse`，校验失败通过 `http.ts` 的 `invalidBody(bodyMessage(parsed.error))` 返回 `400 invalid_body`。
   - 自环返回 `400`（「不能连到自己」）；重复有效边捕获唯一索引冲突或预检后返回 `409 conflict`（「这条关系已经有了」）。
-  - 状态码约定：创建 `201`，读取/更新 `200`，删除/成员变更 `204`（重复加入成员幂等返回 `204`）。
+  - 状态码约定：创建 `201`，读取/更新 `200`。删除合集、点、边、卡片仍是 `204`。大纲的加入、移出和结构写入返回 `200` 与 `outlineVersion`；重复加入返回 `200`，`status` 为 `exists`，不改顺序。
 - **数据库迁移**：新增或修改表结构需保持 `drizzle/meta/_journal.json` 顺序一致，确保 `pnpm --filter @unfold/server migrate` 具备幂等性（可连续执行两次）。
 
 ## 指令文件双向同步

@@ -1,0 +1,39 @@
+/* ============================================================
+   分段控件：灰底槽 + 白色滑块
+   ============================================================ */
+.useg {
+  position: relative;
+  display: flex;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  padding: 2px;
+}
+.useg-thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  background: var(--card);
+  border-radius: 6px;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.12),
+    0 0 0 0.5px rgba(0, 0, 0, 0.04);
+  transition: transform 0.22s var(--ease-out);
+}
+.useg button {
+  position: relative;
+  z-index: 1;
+  padding: 3px 14px;
+  font-size: 13px;
+  color: #55555a;
+  border-radius: 6px;
+  transition: color 0.18s;
+}
+.useg button.on {
+  color: var(--ink);
+  font-weight: 500;
+}
+.useg button:disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}

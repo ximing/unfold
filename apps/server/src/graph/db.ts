@@ -1,6 +1,7 @@
 import type { Card, CardType, OwnerKind } from '@unfold/dto';
 import { and, asc, eq, inArray, isNull, max, or } from 'drizzle-orm';
 import { removeAssetFiles } from '../assets/files.js';
+import { promoteMembershipsOfNode } from '../collections/outline.js';
 import type { createDb } from '../db/client.js';
 import { assets, cards, collectionEdges, collectionInclusions, collections, edges, memberships, nodes } from '../db/schema.js';
 
@@ -172,6 +173,7 @@ export async function removeNode(db: Database, userId: string, id: string) {
       .where(and(eq(nodes.id, id), eq(nodes.userId, userId), isNull(nodes.deletedAt)))
       .returning({ id: nodes.id });
     if (!updated[0]) return null;
+    await promoteMembershipsOfNode(tx, userId, id);
 
     const linked = await tx
       .select({ id: edges.id })

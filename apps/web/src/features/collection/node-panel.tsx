@@ -1,6 +1,7 @@
 import { observer, useService } from '@rabjs/react';
-import type { CardType } from '@unfold/dto';
+import type { CardType, RichDoc } from '@unfold/dto';
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { Link } from 'react-router';
 import { PanelShell } from '../../shared/panel/panel-shell.js';
 import { createHandoff } from '../../shared/save/handoff.js';
 import { noteDraft } from '../../shared/save/save-bus.js';
@@ -12,10 +13,13 @@ import { UTextArea } from '../../shared/ui/field/field.js';
 import { useAskDelete } from '../../shared/ui/modal/delete-key.js';
 import { UConfirm } from '../../shared/ui/modal/modal.js';
 import { USelect } from '../../shared/ui/select/select.js';
+import { IconPlus } from '../../shared/ui/icons/icons.js';
 import { toast } from '../../shared/ui/toast/toast.js';
-import { CARD_TYPES } from '../cards/card-meta.js';
+import { CARD_TYPES, cardMeta } from '../cards/card-meta.js';
 import { CardStack } from '../cards/card-stack.js';
 import { emptyCard } from '../cards/empty-card.js';
+import { EXPLAIN_TEMPLATES, TEMPLATE_HINTS, explainTemplateDoc, type ExplainTemplateId } from '../cards/explain-template.js';
+import { AddMemberDialog } from '../outline/add-member-dialog.js';
 import { imageFileIssue } from '../board/image-intake.js';
 import { apiSend, errorMessage } from '../library/api.js';
 import { LibraryService } from '../library/library.service.js';
@@ -27,6 +31,7 @@ import {
   applyPanelWidth,
   readPanelWidth,
 } from './panel-width.js';
+import './node-panel.css';
 
 function readStoredWidth(): number {
   try {
@@ -122,11 +127,18 @@ function useNodePanelWidth() {
   return { rootRef, width: applyPanelWidth(preferred, frameWidth), onResizePointerDown };
 }
 
+const MORE_TYPES = CARD_TYPES.filter((type) => type !== 'rich');
+
 export const NodePanel = observer(function NodePanel(props: {
-  collectionId: string;
+  collectionId: string | null;
   nodeId: string;
   onLeave: () => void;
   onTouched: () => void;
+  focusCardId?: string | null;
+  /** 移出当前合集。没有合集时不显示 */
+  onAskRemove?: () => void;
+  /** 加入已有点之后，让大纲展开祖先并选中，不改结构 */
+  onLocated?: (nodeId: string) => void;
   /** 非 0 时打开删除确认。右键菜单和检查器共用这一条 */
   askRemove?: number;
 }) {
@@ -135,6 +147,8 @@ export const NodePanel = observer(function NodePanel(props: {
   const faceFileRef = useRef<HTMLInputElement>(null);
   const [targetCollection, setTargetCollection] = useState('');
   const [confirm, setConfirm] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const detail = library.nodeDetail?.id === props.nodeId ? library.nodeDetail : null;
   useAskDelete(() => setConfirm(true));
   useEffect(() => {
@@ -202,8 +216,24 @@ export const NodePanel = observer(function NodePanel(props: {
       library.error = await errorMessage(res, '图片没有换上');
       return;
     }
-    await library.loadGraph(props.collectionId);
+    if (props.collectionId) await library.loadGraph(props.collectionId);
     await library.loadNode(props.nodeId);
+  }
+
+  async function addCard(type: CardType, doc?: RichDoc) {
+    if (!detail) return;
+    const created = await library.createCard(
+      doc
+        ? { ownerKind: 'node', ownerId: detail.id, type: 'rich', content: { doc } }
+        : emptyCard('node', detail.id, type),
+    );
+    if (!created) return;
+    await library.loadNode(detail.id);
+    props.onTouched();
+  }
+
+  function addTemplate(id: ExplainTemplateId) {
+    void addCard('rich', explainTemplateDoc(id));
   }
 
   return (
@@ -276,16 +306,54 @@ export const NodePanel = observer(function NodePanel(props: {
               />
             </div>
           ) : null}
+          <div className="panel-block">
+            <button type="button" className="record-btn" onClick={() => void addCard('rich')}>
+              <IconPlus size={15} />
+              记录
+            </button>
+            <button
+              type="button"
+              className={moreOpen ? 'more-toggle open' : 'more-toggle'}
+              aria-expanded={moreOpen}
+              onClick={() => setMoreOpen((open) => !open)}
+            >
+              <span className="tri" aria-hidden="true">
+                ▶
+              </span>
+              更多类型
+            </button>
+            {moreOpen ? (
+              <div className="type-grid">
+                {MORE_TYPES.map((type) => {
+                  const meta = cardMeta(type);
+                  return (
+                    <button key={type} type="button" className="type-cell" onClick={() => void addCard(type)}>
+                      <i style={{ background: meta.hue }}>{meta.glyph}</i>
+                      {meta.label}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+          <div className="panel-block">
+            <p className="panel-h">解释模板</p>
+            <div className="tpl-grid tpl-inset">
+              {EXPLAIN_TEMPLATES.map((item) => (
+                <button key={item.id} type="button" className="tpl" onClick={() => addTemplate(item.id)}>
+                  <b>{item.title}</b>
+                  <span>{TEMPLATE_HINTS[item.id]}</span>
+                </button>
+              ))}
+            </div>
+          </div>
           <CardStack
+            hideAdd
+            focusCardId={props.focusCardId}
             types={CARD_TYPES}
             cards={detail.cards}
             onCreate={(type: CardType) => {
-              void (async () => {
-                const created = await library.createCard(emptyCard('node', detail.id, type));
-                if (!created) return;
-                await library.loadNode(detail.id);
-                props.onTouched();
-              })();
+              void addCard(type);
             }}
             onUpdate={(cardId, content) => library.updateCard(cardId, content)}
             onDelete={(cardId) => {
@@ -296,11 +364,35 @@ export const NodePanel = observer(function NodePanel(props: {
             }}
           />
           <div className="panel-block">
+            <p className="panel-h">已加入</p>
+            {detail.collections.length === 0 ? (
+              <p className="muted">还没有放进合集</p>
+            ) : (
+              <div className="member-list">
+                {detail.collections.map((item) =>
+                  item.id === props.collectionId ? (
+                    <div key={item.id} className="member">
+                      {item.title}
+                      <span className="here">当前</span>
+                    </div>
+                  ) : (
+                    <Link key={item.id} className="member" to={`/c/${item.id}?node=${detail.id}`}>
+                      {item.title}
+                      <span className="row-go" aria-hidden="true">
+                        ›
+                      </span>
+                    </Link>
+                  ),
+                )}
+              </div>
+            )}
+          </div>
+          <div className="panel-block">
             <p className="panel-h">也放入</p>
             {others.length === 0 ? (
               <p className="muted">已经在所有合集里</p>
             ) : (
-              <div className="connect-row">
+              <div className="put-row">
                 <USelect
                   ariaLabel="放入哪个合集"
                   placeholder="选择合集"
@@ -312,8 +404,8 @@ export const NodePanel = observer(function NodePanel(props: {
                   disabled={targetCollection === ''}
                   onClick={() => {
                     void (async () => {
-                      const ok = await library.addMember(targetCollection, detail.id);
-                      if (!ok) return;
+                      const result = await library.addMember(targetCollection, detail.id);
+                      if (!result) return;
                       setTargetCollection('');
                       toast('已放入');
                       await library.loadNode(detail.id);
@@ -325,27 +417,27 @@ export const NodePanel = observer(function NodePanel(props: {
               </div>
             )}
           </div>
-          <div className="panel-actions">
-            <UButton
-              onClick={() => {
-                void (async () => {
-                  const ok = await library.removeMember(props.collectionId, detail.id);
-                  if (ok) props.onLeave();
-                })();
-              }}
-            >
-              移出这个合集
-            </UButton>
-            <UButton variant="danger" onClick={() => setConfirm(true)}>
+          <div className="insp-danger">
+            {props.collectionId ? (
+              <button type="button" onClick={() => setAdding(true)}>
+                加入已有点
+              </button>
+            ) : null}
+            {props.collectionId && props.onAskRemove ? (
+              <button type="button" onClick={props.onAskRemove}>
+                移出当前合集
+              </button>
+            ) : null}
+            <button type="button" className="danger" onClick={() => setConfirm(true)}>
               删除这个点
-            </UButton>
+            </button>
           </div>
         </>
       ) : null}
-      {confirm ? (
+      {confirm && detail ? (
         <UConfirm
           title="删除这个点"
-          body="这个点会去掉，连着它的关系也会去掉。"
+          body={deleteBody(detail.collections.map((item) => item.title))}
           confirmLabel="删除"
           danger
           onCancel={() => setConfirm(false)}
@@ -358,6 +450,25 @@ export const NodePanel = observer(function NodePanel(props: {
           }}
         />
       ) : null}
+      {adding && props.collectionId && detail ? (
+        <AddMemberDialog
+          collectionId={props.collectionId}
+          parentId={
+            library.graphId === props.collectionId && library.graph.nodes.some((node) => node.id === detail.id)
+              ? detail.id
+              : null
+          }
+          onClose={() => setAdding(false)}
+          onDone={(_status, nodeId) => {
+            props.onLocated?.(nodeId);
+          }}
+        />
+      ) : null}
     </PanelShell>
   );
 });
+
+function deleteBody(titles: string[]): string {
+  const where = titles.length > 0 ? `它会从这些合集去掉：${titles.join('、')}。` : '它现在不在任何合集里。';
+  return `这个点会去掉，连着它的关系也会去掉。${where}`;
+}

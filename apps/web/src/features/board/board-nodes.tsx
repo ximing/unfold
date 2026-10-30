@@ -240,15 +240,17 @@ const TextNode = memo(function TextNode(props: {
   const cy = box.y + box.h / 2;
   const nameY = desc !== '' ? box.y + 15 : types.length > 0 ? cy - 4 : cy;
   const dotsY = desc !== '' ? box.y + box.h - 8 : box.y + box.h - 7;
+  // 改名时节点框就是编辑容器，即使选中态还没跟上也要画上编辑描边。
+  const editing = selected || renaming;
   return (
     <g
-      className={selected ? 'node bnode on' : 'node bnode'}
+      className={editing ? 'node bnode on' : 'node bnode'}
       data-node-id={item.id}
       role="button"
       aria-label={item.label}
       {...nodeEvents(apiRef, item.id)}
     >
-      <NodeChrome x={box.x} y={box.y} w={box.w} h={box.h} selected={selected} />
+      <NodeChrome x={box.x} y={box.y} w={box.w} h={box.h} selected={editing} />
       {!renaming ? (
         <text className="bnode-name" x={box.x + box.w / 2} y={nameY} textAnchor="middle">
           {shortLabel(item.label)}
@@ -323,9 +325,10 @@ const ImageNode = memo(function ImageNode(props: {
   const dotsY = box.y + pictureH - 6;
   const assetId = item.assetId ? item.assetId : '';
   const clipId = `bimg-${item.id}`;
+  const editing = selected || renaming;
   return (
     <g
-      className={selected ? 'node bnode bnode-image on' : 'node bnode bnode-image'}
+      className={editing ? 'node bnode bnode-image on' : 'node bnode bnode-image'}
       data-node-id={item.id}
       role="button"
       aria-label={item.label}
@@ -336,7 +339,7 @@ const ImageNode = memo(function ImageNode(props: {
           <rect x={box.x} y={box.y} width={box.w} height={pictureH} rx={11} />
         </clipPath>
       ) : null}
-      <NodeChrome x={box.x} y={box.y} w={box.w} h={box.h} selected={selected} />
+      <NodeChrome x={box.x} y={box.y} w={box.w} h={box.h} selected={editing} />
       {item.uploading ? (
         <text className="bnode-upload" x={box.x + box.w / 2} y={box.y + pictureH / 2} textAnchor="middle">
           正在上传

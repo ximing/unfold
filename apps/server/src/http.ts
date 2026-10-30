@@ -51,6 +51,7 @@ export const nodeNotFound = { error: { code: 'not_found' as const, message: '点
 export const edgeNotFound = { error: { code: 'not_found' as const, message: '关系没有找到' } };
 export const cardNotFound = { error: { code: 'not_found' as const, message: '卡片没有找到' } };
 export const edgeConflict = { error: { code: 'conflict' as const, message: '这条关系已经有了' } };
+export const outlineConflict = { error: { code: 'conflict' as const, message: '大纲已经在别处改过，请刷新' } };
 export const inclusionSelf = { error: { code: 'invalid_body' as const, message: '不能把合集放进自己' } };
 export const inclusionCycle = { error: { code: 'invalid_body' as const, message: '这样放会绕回自己' } };
 export const inclusionExists = { error: { code: 'conflict' as const, message: '这个合集已经在里面了' } };

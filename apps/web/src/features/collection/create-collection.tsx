@@ -1,6 +1,7 @@
 import { useService } from '@rabjs/react';
 import { useState, type FormEvent } from 'react';
 import { LibraryService } from '../library/library.service.js';
+import { writeCollectionView } from '../outline/collection-view.js';
 import { UButton } from '../../shared/ui/button/button.js';
 import { UField, UTextInput } from '../../shared/ui/field/field.js';
 import { UModal } from '../../shared/ui/modal/modal.js';
@@ -16,6 +17,7 @@ export function CreateCollectionDialog(props: { onClose: () => void; onCreated: 
     const created = await library.createCollection(title);
     setBusy(false);
     if (!created) return;
+    writeCollectionView(created.id, 'outline');
     props.onCreated(created.id);
     props.onClose();
   }

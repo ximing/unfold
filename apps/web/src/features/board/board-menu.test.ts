@@ -67,11 +67,11 @@ describe('boardMenu', () => {
     );
     expect(items.map((item) => item.label)).toEqual([
       '改名',
-      '建下级',
-      '建同级',
+      '在旁边新建',
+      '在下方新建',
       '从这里连线',
       '',
-      '移出这个合集',
+      '移出当前合集',
       '删除这个点',
     ]);
     expect(items.find((item) => item.label === '删除这个点')).toMatchObject({ danger: true, hint: 'Delete' });

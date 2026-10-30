@@ -1,14 +1,17 @@
 import type {
   Collection,
-  Node,
+  CreateNodeResult,
+  MemberResult,
 } from '@unfold/dto';
 import {
   collectionListSchema,
   collectionSchema,
-  nodeSchema,
+  createNodeResultSchema,
+  memberResultSchema,
 } from '@unfold/dto';
 import type { LibraryState } from './library.service.js';
 import { apiSend, apiRead, apiDone } from './api.js';
+import { adoptCreatedNode } from './outline.js';
 
 export async function loadCollections(state: LibraryState): Promise<boolean> {
   state.error = '';
@@ -89,45 +92,63 @@ export async function deleteCollection(state: LibraryState, id: string): Promise
   return true;
 }
 
-export async function createNode(state: LibraryState, collectionId: string, name: string): Promise<Node | null> {
+export async function createNode(
+  state: LibraryState,
+  collectionId: string,
+  name: string,
+  place?: { parentId?: string | null; afterNodeId?: string },
+): Promise<CreateNodeResult | null> {
   state.error = '';
+  const body: { name: string; parentId?: string | null; afterNodeId?: string } = { name };
+  if (place && 'parentId' in place) body.parentId = place.parentId;
+  if (place?.afterNodeId) body.afterNodeId = place.afterNodeId;
   const res = await apiSend(`/api/collections/${collectionId}/nodes`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(body),
   });
   if (!res) {
     state.error = '网络没有连上';
     return null;
   }
-  return apiRead(state, res, (data) => nodeSchema.parse(data), '点没有建成');
+  const created = await apiRead(state, res, (data) => createNodeResultSchema.parse(data), '点没有建成');
+  if (!created) return null;
+  adoptCreatedNode(state, collectionId, created);
+  state.collections = state.collections.map((item) =>
+    item.id === collectionId ? { ...item, nodeCount: item.nodeCount + 1 } : item,
+  );
+  return created;
 }
 
-export async function addMember(state: LibraryState, collectionId: string, nodeId: string): Promise<boolean> {
+export async function addMember(
+  state: LibraryState,
+  collectionId: string,
+  nodeId: string,
+  parentId?: string | null,
+): Promise<MemberResult | null> {
   state.error = '';
+  const body: { nodeId: string; parentId?: string | null } = { nodeId };
+  if (parentId !== undefined) body.parentId = parentId;
   const res = await apiSend(`/api/collections/${collectionId}/members`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ nodeId }),
+    body: JSON.stringify(body),
   });
   if (!res) {
     state.error = '网络没有连上';
-    return false;
+    return null;
   }
-  return apiDone(state, res, '没有放进去');
-}
-
-export async function removeMember(state: LibraryState, collectionId: string, nodeId: string): Promise<boolean> {
-  state.error = '';
-  const res = await apiSend(`/api/collections/${collectionId}/members/${nodeId}`, {
-    method: 'DELETE',
-    credentials: 'include',
-  });
-  if (!res) {
-    state.error = '网络没有连上';
-    return false;
+  const joined = await apiRead(state, res, (data) => memberResultSchema.parse(data), '没有放进去');
+  if (!joined) return null;
+  if (state.graphId === collectionId) {
+    state.graph = { ...state.graph, outlineVersion: joined.outlineVersion };
   }
-  return apiDone(state, res, '没有移出');
+  if (joined.status === 'joined') {
+    state.collections = state.collections.map((item) =>
+      item.id === collectionId ? { ...item, nodeCount: item.nodeCount + 1 } : item,
+    );
+  }
+  return joined;
 }
