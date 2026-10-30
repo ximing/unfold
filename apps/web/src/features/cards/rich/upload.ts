@@ -29,7 +29,7 @@ export function filesFromTransfer(data: DataTransfer | null): File[] {
   return files;
 }
 
-function altFrom(name: string): string | undefined {
+export function altFrom(name: string): string | undefined {
   const base = name.split(/[/\\]/).pop() ?? '';
   const dot = base.lastIndexOf('.');
   const stem = (dot > 0 ? base.slice(0, dot) : base).trim();
@@ -47,7 +47,7 @@ async function failureMessage(response: Response): Promise<string> {
   return FAIL_MESSAGE;
 }
 
-async function uploadCardImage(cardId: string, file: File): Promise<string> {
+export async function uploadCardImage(cardId: string, file: File): Promise<string> {
   if (file.type !== '' && !ALLOWED.has(file.type)) throw new Error(FORMAT_MESSAGE);
   if (file.size > MAX_BYTES) throw new Error(SIZE_MESSAGE);
   const body = new FormData();

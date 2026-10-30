@@ -10,6 +10,8 @@ export function PanelShell(props: {
   style?: CSSProperties;
   rootRef?: Ref<HTMLElement>;
   onResizePointerDown?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  /** 不随面板内容滚动，贴在检查器底部。 */
+  footer?: ReactNode;
 }) {
   const className = props.className ? `board-panel ${props.className}` : 'board-panel';
   return (
@@ -34,6 +36,7 @@ export function PanelShell(props: {
         </button>
       </div>
       <div className="panel-scroll">{props.children}</div>
+      {props.footer ? <div className="panel-foot">{props.footer}</div> : null}
     </aside>
   );
 }
