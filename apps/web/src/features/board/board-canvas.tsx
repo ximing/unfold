@@ -14,6 +14,7 @@ import type { UMenuEntry } from '../../shared/ui/context-menu/context-menu.js';
 import { BoardEdges } from './board-edges.js';
 import { anchorOnBorder, edgeDraw, edgeLanes } from './edge-geometry.js';
 import { EDGE_STROKE, EDGE_WIDTH } from './edge-style.js';
+import { applyMarquee, applyPick, moveDelta, nodesInRect, normalizeRect, pickModeFromKeys, stackOrder } from './selection.js';
 import { snapPoint, snapTextOrigin } from './snap.js';
 import { isFiniteNumber, layoutBoard, layoutPlaced, nextPlacementZ, NODE_H, NODE_W, textNodeHeight } from './board-layout.js';
 import { GROW_H, GROW_W, planGrow } from './grow.js';
@@ -89,18 +90,28 @@ type FrameDrag = {
   moved: boolean;
 };
 
+type DragMember = { id: string; originX: number; originY: number };
+
 type DragGesture = {
   serial: number;
   pointerId: number;
-  id: string;
+  anchorId: string;
+  members: DragMember[];
   startClientX: number;
   startClientY: number;
   startWorldX: number;
   startWorldY: number;
-  originX: number;
-  originY: number;
-  x: number;
-  y: number;
+  dx: number;
+  dy: number;
+  moved: boolean;
+};
+
+type MarqueeGesture = {
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startWorldX: number;
+  startWorldY: number;
   moved: boolean;
 };
 
@@ -210,6 +221,9 @@ export function BoardCanvas(props: {
   items: BoardCanvasItem[];
   links: BoardCanvasLink[];
   selectedId: string | null;
+  /** 合集画布上同时选中的点。和 onSelectIds 一起用 */
+  selectedIds?: readonly string[];
+  onSelectIds?: (ids: string[]) => void;
   onSelectItem: (id: string) => void;
   onSelectLink: (id: string) => void;
   /** 双击节点打开（合集）。与 onRenameItem 二选一 */
@@ -223,6 +237,8 @@ export function BoardCanvas(props: {
   onCreate?: (name: string, at: Pt, groupId: string | null) => void;
   /** 松手时写入左上角。返回 false 表示失败，点回到按下时的位置 */
   onMove?: (id: string, x: number, y: number, z: number) => boolean | Promise<boolean>;
+  /** 一次写下多个点。同一个合集应合成一次请求 */
+  onMoveItems?: (items: { id: string; x: number; y: number; z: number }[]) => boolean | Promise<boolean>;
   /** 松手时写入图片宽度。返回 false 或抛错时回到按下时的宽度 */
   onResizeImage?: (id: string, imageWidth: number) => boolean | Promise<boolean>;
   /** 已有部分坐标时，把还没有 x 的点放到当前视野中心 */
@@ -283,7 +299,14 @@ export function BoardCanvas(props: {
   const applyPeekRef = useRef<() => boolean>(() => false);
   const dragRef = useRef<DragGesture | null>(null);
   const dragSerial = useRef(0);
-  const [dragBox, setDragBox] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [dragPlaces, setDragPlaces] = useState<Record<string, { x: number; y: number }> | null>(null);
+  const marqueeRef = useRef<MarqueeGesture | null>(null);
+  const [marqueeRect, setMarqueeRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const selectedIdsRef = useRef<readonly string[]>([]);
+  const onSelectIdsRef = useRef(props.onSelectIds);
+  const onMoveItemsRef = useRef(props.onMoveItems);
+  const boxesRef = useRef<{ id: string; x: number; y: number; w: number; h: number }[]>([]);
+  const spaceRef = useRef(false);
   const frameDragRef = useRef<FrameDrag | null>(null);
   const frameSerial = useRef(0);
   const [frameShift, setFrameShift] = useState<FrameShift | null>(null);
@@ -313,6 +336,9 @@ export function BoardCanvas(props: {
   itemsRef.current = props.items;
   linksRef.current = props.links;
   onMoveRef.current = props.onMove;
+  onMoveItemsRef.current = props.onMoveItems;
+  onSelectIdsRef.current = props.onSelectIds;
+  selectedIdsRef.current = props.selectedIds ?? [];
   onResizeRef.current = props.onResizeImage;
   onPlaceRef.current = props.onPlaceUnpositioned;
   onInsertRef.current = props.onInsertImages;
@@ -322,6 +348,7 @@ export function BoardCanvas(props: {
   linkDragRef.current = linkDrag;
 
   const toolsOn = props.enableTools === true;
+  const multiOn = toolsOn && props.onSelectIds !== undefined;
   const selectTool = !toolsOn || tool === 'select';
   const appearance = props.appearance ?? defaultEdgeAppearance;
   const canvas = props.canvas ?? defaultCanvasPrefs;
@@ -345,8 +372,11 @@ export function BoardCanvas(props: {
     : layoutBoard(props.items, props.links);
   const placedIds = new Set(props.items.filter((item) => isFiniteNumber(item.x)).map((item) => item.id));
   const visible = hasSaved && spot === null ? laid.filter((box) => placedIds.has(box.id)) : laid;
-  const moved = dragBox
-    ? visible.map((box) => (box.id === dragBox.id ? { ...box, x: dragBox.x, y: dragBox.y } : box))
+  const moved = dragPlaces
+    ? visible.map((box) => {
+        const at = dragPlaces[box.id];
+        return at ? { ...box, x: at.x, y: at.y } : box;
+      })
     : visible;
   const itemById = new Map(props.items.map((item) => [item.id, item]));
   const imageHeights = new Map<string, number>();
@@ -373,6 +403,7 @@ export function BoardCanvas(props: {
     return { ...at, w: frame.w, h: frame.h };
   });
   const boxOf = new Map(boxes.map((box) => [box.id, box]));
+  boxesRef.current = boxes;
   const frames: InclusionFrameView[] = [];
   for (const group of groups) {
     if (group.collapsed) continue;
@@ -408,8 +439,11 @@ export function BoardCanvas(props: {
         (left, right) => (isFiniteNumber(left.z) ? left.z : 0) - (isFiniteNumber(right.z) ? right.z : 0),
       )
     : props.items;
-  const paintItems = dragBox
-    ? [...drawItems.filter((item) => item.id !== dragBox.id), ...drawItems.filter((item) => item.id === dragBox.id)]
+  const paintItems = dragPlaces
+    ? [
+        ...drawItems.filter((item) => dragPlaces[item.id] === undefined),
+        ...drawItems.filter((item) => dragPlaces[item.id] !== undefined),
+      ]
     : drawItems;
 
   function toWorld(clientX: number, clientY: number): Pt {
@@ -502,9 +536,14 @@ export function BoardCanvas(props: {
   }
 
   function cancelForDrop() {
+    if (dragRef.current || marqueeRef.current) releaseDragChrome();
     if (dragRef.current) {
       dragRef.current = null;
-      setDragBox(null);
+      setDragPlaces(null);
+    }
+    if (marqueeRef.current) {
+      marqueeRef.current = null;
+      setMarqueeRect(null);
     }
     if (frameDragRef.current) {
       frameDragRef.current = null;
@@ -535,7 +574,8 @@ export function BoardCanvas(props: {
       dragRef.current !== null ||
       frameDragRef.current !== null ||
       resizeRef.current !== null ||
-      linkDragRef.current !== null
+      linkDragRef.current !== null ||
+      marqueeRef.current !== null
     );
   }
 
@@ -610,6 +650,31 @@ export function BoardCanvas(props: {
   /** click 紧跟 pointerup 到达；拖动刚结束的那一次不算单击 */
   function clickFollowsDrag(): boolean {
     return dragEndAtRef.current !== 0 && performance.now() - dragEndAtRef.current < 350;
+  }
+
+  function publishSelection(ids: string[]) {
+    if (onSelectIdsRef.current) {
+      onSelectIdsRef.current(ids);
+      return;
+    }
+    const only = ids[0];
+    if (only) props.onSelectItem(only);
+    else props.onEscape?.();
+  }
+
+  function selectNode(id: string, event: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) {
+    if (isUploading(id)) return;
+    if (toolsOn && toolRef.current === 'connect') return;
+    if (multiOn && (event.metaKey || event.ctrlKey || event.shiftKey)) {
+      if (clickFollowsDrag()) return;
+      publishSelection(applyPick(selectedIdsRef.current, id, pickModeFromKeys(event)));
+      return;
+    }
+    selectOnSingleClick(() => {
+      disarmPeek();
+      if (multiOn) publishSelection([id]);
+      else props.onSelectItem(id);
+    });
   }
 
   function selectOnSingleClick(select: () => void) {
@@ -749,7 +814,9 @@ export function BoardCanvas(props: {
   function contextItems(hit: ViewportMenuHit): UMenuEntry[] {
     if (hit.kind === 'node' && isUploading(hit.id)) return [];
     disarmPeek();
-    if (hit.kind === 'node') props.onSelectItem(hit.id);
+    if (hit.kind === 'node' && !(props.onSelectIds && selectedIdsRef.current.includes(hit.id))) {
+      publishSelection([hit.id]);
+    }
     if (hit.kind === 'edge') props.onSelectLink(hit.id);
     const collapsed = hit.kind === 'node' ? inclusionCollapsed(hit.id) : null;
     const entries =
@@ -790,6 +857,19 @@ export function BoardCanvas(props: {
   /* ---------- 键盘：工具快捷键、方向键、Enter、Esc ---------- */
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'a') {
+        if (!multiOn || isFieldTarget(event.target)) return;
+        if (document.querySelector('.modal-wrap, .overlay, .ctx-menu')) return;
+        if (
+          event.target instanceof Element &&
+          event.target.closest('.panel, .collection-bar, .dock, .unassigned-pane, .outline-shell')
+        ) {
+          return;
+        }
+        event.preventDefault();
+        onSelectIdsRef.current?.(boxesRef.current.map((box) => box.id));
+        return;
+      }
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (isFieldTarget(event.target)) return;
       if (document.querySelector('.modal-wrap, .overlay, .ctx-menu')) return;
@@ -812,10 +892,16 @@ export function BoardCanvas(props: {
           frameDragRef.current !== null ||
           resizeRef.current !== null ||
           linkDragRef.current !== null ||
+          marqueeRef.current !== null ||
           editingRef.current !== null;
         if (dragRef.current) {
           dragRef.current = null;
-          setDragBox(null);
+          setDragPlaces(null);
+          releaseDragChrome();
+        }
+        if (marqueeRef.current) {
+          marqueeRef.current = null;
+          setMarqueeRect(null);
           releaseDragChrome();
         }
         if (frameDragRef.current) {
@@ -886,7 +972,7 @@ export function BoardCanvas(props: {
         const current = props.selectedId ? navBoxes.find((box) => box.id === props.selectedId) : undefined;
         if (!current) {
           const first = props.items.find((item) => !item.uploading);
-          if (first) props.onSelectItem(first.id);
+          if (first) publishSelection([first.id]);
           return;
         }
         const cx = current.x + current.w / 2;
@@ -902,7 +988,12 @@ export function BoardCanvas(props: {
           const score = primary + cross * 2.5;
           if (!best || score < best.score) best = { id: box.id, score };
         }
-        if (best) props.onSelectItem(best.id);
+        if (best) publishSelection([best.id]);
+        return;
+      }
+      const many = (props.selectedIds?.length ?? 0) > 1;
+      if (many && (event.key === 'Tab' || event.key === 'Enter')) {
+        event.preventDefault();
         return;
       }
       const selectedChild = props.selectedId ? inclusionChildId(props.selectedId) : null;
@@ -1142,14 +1233,42 @@ export function BoardCanvas(props: {
     };
   }, [toolsOn, props.onConnect !== undefined]);
 
-  /* ---------- 拖动节点：超过 4 个屏幕像素才算移动 ---------- */
+  useEffect(() => {
+    if (!multiOn) return;
+    const down = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' || event.repeat) return;
+      if (isFieldTarget(event.target)) return;
+      if (event.target instanceof Element && event.target.closest('button, select')) return;
+      spaceRef.current = true;
+    };
+    const up = (event: KeyboardEvent) => {
+      if (event.code !== 'Space') return;
+      spaceRef.current = false;
+    };
+    const blur = () => {
+      spaceRef.current = false;
+    };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    window.addEventListener('blur', blur);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', blur);
+      spaceRef.current = false;
+    };
+  }, [multiOn]);
+
+  /* ---------- 拖动节点：超过 4 个屏幕像素才算移动。选中的点共用一段位移 ---------- */
   function beginDrag(event: ReactPointerEvent, nodeId: string) {
+    if (spaceRef.current || event.metaKey || event.ctrlKey || event.shiftKey) return;
     if (
       onMoveRef.current === undefined ||
       editingRef.current ||
       linkDragRef.current ||
       resizeRef.current ||
-      frameDragRef.current
+      frameDragRef.current ||
+      marqueeRef.current
     ) {
       return;
     }
@@ -1161,19 +1280,25 @@ export function BoardCanvas(props: {
     event.stopPropagation();
     disarmPeek();
     engageDragChrome();
+    const current = selectedIdsRef.current;
+    const ids = multiOn && current.includes(nodeId) ? current.filter((id) => boxOf.has(id)) : [nodeId];
+    if (multiOn && !current.includes(nodeId)) publishSelection([nodeId]);
     const start = toWorld(event.clientX, event.clientY);
+    const members = ids.flatMap((id) => {
+      const at = boxOf.get(id);
+      return at ? [{ id, originX: at.x, originY: at.y }] : [];
+    });
     dragRef.current = {
       serial: (dragSerial.current += 1),
       pointerId: event.pointerId,
-      id: nodeId,
+      anchorId: nodeId,
+      members,
       startClientX: event.clientX,
       startClientY: event.clientY,
       startWorldX: start.x,
       startWorldY: start.y,
-      originX: box.x,
-      originY: box.y,
-      x: box.x,
-      y: box.y,
+      dx: 0,
+      dy: 0,
       moved: false,
     };
   }
@@ -1190,18 +1315,24 @@ export function BoardCanvas(props: {
         window.getSelection()?.removeAllRanges();
       }
       const now = toWorld(event.clientX, event.clientY);
-      const next = snapPoint(
-        {
-          x: drag.originX + (now.x - drag.startWorldX),
-          y: drag.originY + (now.y - drag.startWorldY),
-        },
+      const anchor = drag.members.find((member) => member.id === drag.anchorId) ?? drag.members[0];
+      if (!anchor) return;
+      const delta = moveDelta(
+        { x: anchor.originX, y: anchor.originY },
+        { x: drag.startWorldX, y: drag.startWorldY },
+        now,
         snapRef.current,
       );
-      drag.x = next.x;
-      drag.y = next.y;
-      setDragBox({ id: drag.id, x: drag.x, y: drag.y });
+      drag.dx = delta.dx;
+      drag.dy = delta.dy;
+      const places: Record<string, { x: number; y: number }> = {};
+      for (const member of drag.members) {
+        const at = { x: member.originX + delta.dx, y: member.originY + delta.dy };
+        places[member.id] = at;
+        if (member.id.startsWith('uploading:')) onMoveRef.current?.(member.id, at.x, at.y, 0);
+      }
+      setDragPlaces(places);
       window.getSelection()?.removeAllRanges();
-      if (drag.id.startsWith('uploading:')) onMoveRef.current?.(drag.id, drag.x, drag.y, 0);
     };
     const finish = (event: PointerEvent, commit: boolean) => {
       const drag = dragRef.current;
@@ -1211,23 +1342,39 @@ export function BoardCanvas(props: {
       if (drag.moved) dragEndAtRef.current = performance.now();
       const serial = drag.serial;
       if (!commit || !drag.moved) {
-        if (dragSerial.current === serial) setDragBox(null);
+        if (dragSerial.current === serial) setDragPlaces(null);
         return;
       }
-      const move = onMoveRef.current;
-      if (!move) {
-        if (dragSerial.current === serial) setDragBox(null);
-        return;
-      }
-      const z = nextPlacementZ(itemsRef.current.map((item) => item.z));
+      const ordered = stackOrder(
+        drag.members.map((member) => member.id),
+        drag.anchorId,
+      );
+      const base = nextPlacementZ(itemsRef.current.map((item) => item.z));
+      const payload = ordered.flatMap((id, index) => {
+        const member = drag.members.find((item) => item.id === id);
+        if (!member) return [];
+        return [
+          {
+            id,
+            x: member.originX + drag.dx,
+            y: member.originY + drag.dy,
+            z: id.startsWith('uploading:') ? 0 : base + index,
+          },
+        ];
+      });
+      const moveItems = onMoveItemsRef.current;
+      const moveOne = onMoveRef.current;
       void (async () => {
         try {
-          await move(drag.id, drag.x, drag.y, z);
+          if (moveItems) await moveItems(payload);
+          else if (moveOne) {
+            for (const item of payload) await moveOne(item.id, item.x, item.y, item.z);
+          }
         } catch {
-          // 失败时下面清掉位移，点回到按下时的坐标
+          // 失败时清掉位移，点回到按下时的坐标
         }
         if (dragSerial.current !== serial) return;
-        setDragBox(null);
+        setDragPlaces(null);
       })();
     };
     const onPointerUp = (event: PointerEvent) => finish(event, true);
@@ -1243,12 +1390,70 @@ export function BoardCanvas(props: {
     };
   }, [props.onMove !== undefined]);
 
+  function beginMarquee(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0 || !multiOn || !selectTool || spaceRef.current) return;
+    if (editingRef.current || linkDragRef.current || resizeRef.current || frameDragRef.current || dragRef.current) return;
+    const start = toWorld(event.clientX, event.clientY);
+    marqueeRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startWorldX: start.x,
+      startWorldY: start.y,
+      moved: false,
+    };
+    disarmPeek();
+    engageDragChrome();
+  }
+
+  useEffect(() => {
+    if (!multiOn) return;
+    const onPointerMove = (event: PointerEvent) => {
+      const marquee = marqueeRef.current;
+      if (!marquee || marquee.pointerId !== event.pointerId) return;
+      if (!marquee.moved) {
+        if (Math.hypot(event.clientX - marquee.startClientX, event.clientY - marquee.startClientY) <= 4) return;
+        marquee.moved = true;
+        window.getSelection()?.removeAllRanges();
+      }
+      const now = toWorld(event.clientX, event.clientY);
+      setMarqueeRect(normalizeRect({ x: marquee.startWorldX, y: marquee.startWorldY }, now));
+    };
+    const finish = (event: PointerEvent) => {
+      const marquee = marqueeRef.current;
+      if (!marquee || marquee.pointerId !== event.pointerId) return;
+      marqueeRef.current = null;
+      setMarqueeRect(null);
+      releaseDragChrome();
+      const choose = onSelectIdsRef.current;
+      if (!choose) return;
+      if (!marquee.moved) {
+        if (!event.shiftKey && !event.metaKey && !event.ctrlKey) choose([]);
+        return;
+      }
+      dragEndAtRef.current = performance.now();
+      const now = toWorld(event.clientX, event.clientY);
+      const rect = normalizeRect({ x: marquee.startWorldX, y: marquee.startWorldY }, now);
+      const hits = nodesInRect(boxesRef.current, rect);
+      const additive = event.shiftKey || event.metaKey || event.ctrlKey;
+      choose(applyMarquee(selectedIdsRef.current, hits, additive));
+    };
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', finish);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+    };
+  }, [multiOn]);
+
   /* ---------- 拖动展开的子集合：只改锚点，成员跟着边框走 ---------- */
   function beginFrameDrag(event: ReactPointerEvent, frame: InclusionFrameView) {
     if (onMoveInclusionRef.current === undefined || editingRef.current || linkDragRef.current || resizeRef.current) return;
     if (dragRef.current) return;
     if (props.enableTools && toolRef.current !== 'select') return;
-    if (event.button !== 0) return;
+    if (event.button !== 0 || spaceRef.current || event.metaKey || event.ctrlKey || event.shiftKey) return;
     event.stopPropagation();
     disarmPeek();
     engageDragChrome();
@@ -1465,7 +1670,7 @@ export function BoardCanvas(props: {
 
   useEffect(() => {
     const stopSelect = (event: Event) => {
-      if (dragRef.current || resizeRef.current) event.preventDefault();
+      if (dragRef.current || resizeRef.current || marqueeRef.current) event.preventDefault();
     };
     window.addEventListener('selectstart', stopSelect);
     return () => window.removeEventListener('selectstart', stopSelect);
@@ -1538,7 +1743,8 @@ export function BoardCanvas(props: {
     };
   }, [peekId, peekBox?.x, peekBox?.y, peekBox?.w, peekBox?.h]);
 
-  const canvasClass = !toolsOn ? undefined : tool === 'text' ? 'tool-text' : tool === 'connect' ? 'tool-connect' : undefined;
+  const canvasClass = !toolsOn ? undefined : tool === 'text' ? 'tool-text' : tool === 'connect' ? 'tool-connect' : 'tool-select';
+  const chosenIds = multiOn ? (props.selectedIds ?? []) : undefined;
 
   return (
     <div className="board-intake" onDragOver={onCanvasDragOver} onDrop={onCanvasDrop}>
@@ -1567,6 +1773,11 @@ export function BoardCanvas(props: {
         }
         grid={canvas.grid}
         contextItems={contextItems}
+        blankDrag={multiOn && selectTool ? 'marquee' : 'pan'}
+        onBlankPointerDown={beginMarquee}
+        onPanSettled={(moved) => {
+          if (moved) dragEndAtRef.current = performance.now();
+        }}
         onViewChange={() => {
           applyPeekRef.current();
         }}
@@ -1588,7 +1799,9 @@ export function BoardCanvas(props: {
               {boxes.map((box) => (
                 <rect
                   key={box.id}
-                  className={props.selectedId === box.id ? 'mm-node focus' : 'mm-node'}
+                  className={
+                    (chosenIds ? chosenIds.includes(box.id) : props.selectedId === box.id) ? 'mm-node focus' : 'mm-node'
+                  }
                   x={box.x}
                   y={box.y}
                   width={box.w}
@@ -1604,8 +1817,9 @@ export function BoardCanvas(props: {
           <InclusionFrames
             frames={frames}
             selectedId={props.selectedId}
+            selectedIds={chosenIds}
             layer="back"
-            onSelect={props.onSelectItem}
+            onSelect={selectNode}
             onActivate={() => undefined}
             onPointerDown={beginFrameDrag}
           />
@@ -1637,15 +1851,9 @@ export function BoardCanvas(props: {
             items={paintItems}
             boxOf={boxOf}
             selectedId={props.selectedId}
+            selectedIds={chosenIds}
             renamingId={editing?.kind === 'rename' ? editing.id : null}
-            onSelect={(id) => {
-              if (isUploading(id)) return;
-              if (toolsOn && toolRef.current === 'connect') return;
-              selectOnSingleClick(() => {
-                disarmPeek();
-                props.onSelectItem(id);
-              });
-            }}
+            onSelect={selectNode}
             onActivate={(id) => {
               cancelPendingClick();
               disarmPeek();
@@ -1679,13 +1887,9 @@ export function BoardCanvas(props: {
           <InclusionFrames
             frames={frames}
             selectedId={props.selectedId}
+            selectedIds={chosenIds}
             layer="front"
-            onSelect={(id) => {
-              selectOnSingleClick(() => {
-                disarmPeek();
-                props.onSelectItem(id);
-              });
-            }}
+            onSelect={selectNode}
             onActivate={(id) => {
               cancelPendingClick();
               const childId = inclusionChildId(id);
@@ -1870,6 +2074,9 @@ export function BoardCanvas(props: {
                 );
               })()
             : null}
+          {marqueeRect ? (
+            <rect className="marquee" x={marqueeRect.x} y={marqueeRect.y} width={marqueeRect.w} height={marqueeRect.h} />
+          ) : null}
         </g>
       </GraphViewport>
       {toolsOn ? (

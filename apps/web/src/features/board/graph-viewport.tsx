@@ -13,6 +13,21 @@ function clamp(value: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, value));
 }
 
+function skipsSpacePan(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  if (
+    target instanceof HTMLElement &&
+    (target.isContentEditable ||
+      target.tagName === 'INPUT' ||
+      target.tagName === 'TEXTAREA' ||
+      target.tagName === 'SELECT' ||
+      target.tagName === 'BUTTON')
+  ) {
+    return true;
+  }
+  return target.closest('input, textarea, select, button, .tiptap, [contenteditable="true"], .binput') !== null;
+}
+
 function zoomAt(t: Transform, px: number, py: number, factor: number): Transform {
   const k = clamp(t.k * factor, MIN_K, MAX_K);
   const ratio = k / t.k;
@@ -48,6 +63,12 @@ export type GraphViewportProps = {
   contextItems?: (hit: ViewportMenuHit) => UMenuEntry[];
   /** 平移或缩放之后。调用方只改视口上的浮层，不要因此重绘世界坐标 */
   onViewChange?: () => void;
+  /** 选择工具下空白拖动交给画布框选。默认拖空白平移 */
+  blankDrag?: 'pan' | 'marquee';
+  /** 框选模式下，空白处按下左键。空格或中键仍由视口平移 */
+  onBlankPointerDown?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  /** 平移松手。moved 为真时，调用方吞掉紧跟着的单击 */
+  onPanSettled?: (moved: boolean) => void;
 };
 
 export function GraphViewport(props: GraphViewportProps) {
@@ -56,8 +77,19 @@ export function GraphViewport(props: GraphViewportProps) {
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [t, setT] = useState<Transform>({ k: 1, tx: 0, ty: 0 });
   const [panning, setPanning] = useState(false);
+  const [space, setSpace] = useState(false);
+  const spaceRef = useRef(false);
   const [menu, setMenu] = useState<{ x: number; y: number; items: UMenuEntry[] } | null>(null);
-  const dragRef = useRef<{ pointerId: number; lastX: number; lastY: number } | null>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    lastX: number;
+    lastY: number;
+    startX: number;
+    startY: number;
+    moved: boolean;
+  } | null>(null);
+  const onPanSettledRef = useRef(props.onPanSettled);
+  onPanSettledRef.current = props.onPanSettled;
   const initRef = useRef('');
   const onViewChangeRef = useRef(props.onViewChange);
   onViewChangeRef.current = props.onViewChange;
@@ -117,11 +149,55 @@ export function GraphViewport(props: GraphViewportProps) {
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
+  useEffect(() => {
+    const down = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' || event.repeat) return;
+      if (skipsSpacePan(event.target)) return;
+      spaceRef.current = true;
+      setSpace(true);
+      if (props.blankDrag === 'marquee' && (event.target === document.body || event.target === document.documentElement)) {
+        event.preventDefault();
+      }
+    };
+    const up = (event: KeyboardEvent) => {
+      if (event.code !== 'Space') return;
+      spaceRef.current = false;
+      setSpace(false);
+    };
+    const blur = () => {
+      spaceRef.current = false;
+      setSpace(false);
+    };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    window.addEventListener('blur', blur);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', blur);
+    };
+  }, [props.blankDrag]);
+
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.button !== 0) return;
-    // 这些都在视口里面。这里若开始平移，指针捕获会吃掉它们自己的点击。
-    if (event.target instanceof Element && event.target.closest('.node, .bpeek, .ctx-menu, .gvp-tools, .gvp-minimap')) return;
-    dragRef.current = { pointerId: event.pointerId, lastX: event.clientX, lastY: event.clientY };
+    const hand = event.button === 1 || (event.button === 0 && spaceRef.current);
+    if (event.button !== 0 && !hand) return;
+    const blocked =
+      event.target instanceof Element &&
+      event.target.closest('.node, .bpeek, .binput, .ctx-menu, .gvp-tools, .gvp-minimap') !== null;
+    if (blocked && !hand) return;
+    if (event.button === 0 && props.blankDrag === 'marquee' && !spaceRef.current) {
+      props.onBlankPointerDown?.(event);
+      return;
+    }
+    if (event.button === 1) event.preventDefault();
+    dragRef.current = {
+      pointerId: event.pointerId,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+    };
     event.currentTarget.setPointerCapture(event.pointerId);
     setPanning(true);
   }
@@ -129,6 +205,7 @@ export function GraphViewport(props: GraphViewportProps) {
   function onPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
+    if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 4) drag.moved = true;
     const dx = event.clientX - drag.lastX;
     const dy = event.clientY - drag.lastY;
     drag.lastX = event.clientX;
@@ -137,9 +214,11 @@ export function GraphViewport(props: GraphViewportProps) {
   }
 
   function endDrag(event: ReactPointerEvent<HTMLDivElement>) {
-    if (dragRef.current?.pointerId !== event.pointerId) return;
+    const drag = dragRef.current;
+    if (drag?.pointerId !== event.pointerId) return;
     dragRef.current = null;
     setPanning(false);
+    onPanSettledRef.current?.(drag.moved);
   }
 
   function zoomButton(factor: number) {
@@ -233,7 +312,7 @@ export function GraphViewport(props: GraphViewportProps) {
         />
       ) : null}
       <svg
-        className={`gvp-canvas ${props.className ?? ''} ${panning ? 'panning' : ''}`.trim()}
+        className={`gvp-canvas ${props.className ?? ''} ${panning ? 'panning' : ''} ${space ? 'is-space' : ''}`.trim()}
         role="img"
         aria-label="可缩放的图"
       >

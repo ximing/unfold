@@ -1,4 +1,4 @@
-import type { PointerEvent as ReactPointerEvent } from 'react';
+import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { INCLUSION_TITLE } from '@unfold/dto';
 import { inclusionItemId } from './inclusion-view.js';
 import { shortLabel } from './label.js';
@@ -19,8 +19,9 @@ export type InclusionFrameView = {
 export function InclusionFrames(props: {
   frames: InclusionFrameView[];
   selectedId: string | null;
+  selectedIds?: readonly string[];
   layer: 'back' | 'front';
-  onSelect: (id: string) => void;
+  onSelect: (id: string, event: ReactMouseEvent) => void;
   onActivate: (id: string) => void;
   onPointerDown: (event: ReactPointerEvent, frame: InclusionFrameView) => void;
 }) {
@@ -47,7 +48,7 @@ export function InclusionFrames(props: {
     <>
       {props.frames.map((frame) => {
         const id = inclusionItemId(frame.childId);
-        const selected = props.selectedId === id;
+        const selected = props.selectedIds ? props.selectedIds.includes(id) : props.selectedId === id;
         return (
           <g
             key={frame.childId}
@@ -55,7 +56,7 @@ export function InclusionFrames(props: {
             data-node-id={id}
             role="button"
             aria-label={`子集合 ${frame.title}`}
-            onClick={() => props.onSelect(id)}
+            onClick={(event) => props.onSelect(id, event)}
             onDoubleClick={(event) => {
               event.stopPropagation();
               props.onActivate(id);

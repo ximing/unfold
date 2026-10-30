@@ -58,7 +58,7 @@ function LinkHandles(props: {
 }
 
 type NodeHandlers = {
-  onSelect: (id: string) => void;
+  onSelect: (id: string, event: ReactMouseEvent) => void;
   onActivate: (id: string) => void;
   onPointerEnter: (id: string) => void;
   onPointerLeave: () => void;
@@ -100,7 +100,7 @@ function sameFace(left: BoardCanvasItem, right: BoardCanvasItem): boolean {
 
 function nodeEvents(apiRef: RefObject<NodeApi | null>, id: string) {
   return {
-    onClick: () => apiRef.current?.handlers.onSelect(id),
+    onClick: (event: ReactMouseEvent) => apiRef.current?.handlers.onSelect(id, event),
     onDoubleClick: (event: ReactMouseEvent) => {
       event.stopPropagation();
       apiRef.current?.handlers.onActivate(id);
@@ -120,8 +120,9 @@ export function BoardNodes(props: {
   boxOf: Map<string, BoardBox>;
   imageHeights: ReadonlyMap<string, number>;
   selectedId: string | null;
+  selectedIds?: readonly string[];
   renamingId: string | null;
-  onSelect: (id: string) => void;
+  onSelect: (id: string, event: ReactMouseEvent) => void;
   onActivate: (id: string) => void;
   onPointerEnter: (id: string) => void;
   onPointerLeave: () => void;
@@ -152,7 +153,7 @@ export function BoardNodes(props: {
       {props.items.map((item) => {
         const box = props.boxOf.get(item.id);
         if (!box) return null;
-        const selected = props.selectedId === item.id;
+        const selected = props.selectedIds ? props.selectedIds.includes(item.id) : props.selectedId === item.id;
         const renaming = props.renamingId === item.id;
         const showHandles = hoveredId === item.id && props.onBeginLink !== undefined;
         if (item.face === 'inclusion') {

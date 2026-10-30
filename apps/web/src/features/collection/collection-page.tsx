@@ -41,6 +41,7 @@ export const CollectionPage = observer(function CollectionPage() {
   const [missing, setMissing] = useState(false);
   const [selection, setSelection] = useState<Selection>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [nodeIds, setNodeIds] = useState<string[]>([]);
   const [mode, setMode] = useState<CollectionViewMode>(() => (id ? readCollectionView(id) : 'board'));
   const [entry, setEntry] = useState<'open' | 'switch'>('open');
   const [focus, setFocus] = useState<{ id: string; tick: number } | null>(null);
@@ -64,6 +65,7 @@ export const CollectionPage = observer(function CollectionPage() {
     setMissing(false);
     setSelection(null);
     setSelectedId(null);
+    setNodeIds([]);
     setMode(id ? readCollectionView(id) : 'board');
     setEntry('open');
     setFocus(null);
@@ -97,6 +99,7 @@ export const CollectionPage = observer(function CollectionPage() {
         setSelection({ kind: 'node', id: nodeQuery });
         void library.loadNode(nodeQuery);
       } else if (edgeQuery !== '') {
+        setNodeIds([]);
         setSelection({ kind: 'edge', id: edgeQuery });
         void library.loadEdge(edgeQuery);
       }
@@ -202,6 +205,83 @@ export const CollectionPage = observer(function CollectionPage() {
     return { x: x - inclusion.x, y: y - inclusion.y };
   }
 
+  function pickNodes(ids: string[]) {
+    setRemoveAsk(null);
+    setNodeIds(ids);
+    if (ids.length !== 1) {
+      setSelection(null);
+      const last = [...ids].reverse().find((nodeId) => !nodeId.startsWith('uploading:') && inclusionChildId(nodeId) === null);
+      setSelectedId(last ?? null);
+      return;
+    }
+    const only = ids[0];
+    if (!only || only.startsWith('uploading:')) {
+      setSelectedId(null);
+      setSelection(null);
+      return;
+    }
+    const childId = inclusionChildId(only);
+    if (childId) {
+      setSelectedId(null);
+      setSelection({ kind: 'inclusion', id: childId });
+      return;
+    }
+    setSelectedId(only);
+    setSelection({ kind: 'node', id: only });
+    void library.loadNode(only);
+  }
+
+  function movePlaced(items: { id: string; x: number; y: number; z: number }[]): boolean | Promise<boolean> {
+    let sawUpload = false;
+    const rest: { id: string; x: number; y: number; z: number }[] = [];
+    for (const item of items) {
+      if (item.id.startsWith('uploading:')) {
+        sawUpload = true;
+        uploadsRef.current = uploadsRef.current.map((entry) =>
+          entry.id === item.id ? { ...entry, x: item.x, y: item.y } : entry,
+        );
+        continue;
+      }
+      rest.push(item);
+    }
+    if (sawUpload) setUploads(uploadsRef.current);
+    if (rest.length === 0) return true;
+    if (!id) return false;
+    const inclusions: { childId: string; x: number; y: number }[] = [];
+    const batches = new Map<string, { nodeId: string; x: number; y: number; z: number }[]>();
+    for (const item of rest) {
+      const childId = inclusionChildId(item.id);
+      if (childId) {
+        const inclusion = liveInclusions().find((entry) => entry.childId === childId);
+        if (!inclusion) return false;
+        const origin = collapsedOrigin(inclusion);
+        inclusions.push({
+          childId,
+          x: inclusion.x + (item.x - origin.x),
+          y: inclusion.y + (item.y - origin.y),
+        });
+        continue;
+      }
+      const home = homeOf(item.id);
+      const local = toLocal(home.groupId, item.x, item.y);
+      const list = batches.get(home.collectionId) ?? [];
+      list.push({ nodeId: item.id, x: local.x, y: local.y, z: item.z });
+      batches.set(home.collectionId, list);
+    }
+    return (async () => {
+      let ok = true;
+      for (const [collectionId, placements] of batches) {
+        const saved = await library.savePlacements(collectionId, placements);
+        if (!saved) ok = false;
+      }
+      for (const inclusion of inclusions) {
+        const saved = await library.updateInclusion(id, inclusion.childId, { x: inclusion.x, y: inclusion.y });
+        if (!saved) ok = false;
+      }
+      return ok;
+    })();
+  }
+
   function homeOf(nodeId: string) {
     const liveNodes = library.graphId === id ? library.graph.nodes : [];
     if (liveNodes.some((node) => node.id === nodeId)) return { collectionId: pageId, groupId: null as string | null };
@@ -246,6 +326,7 @@ export const CollectionPage = observer(function CollectionPage() {
 
   function leave() {
     setSelection(null);
+    setNodeIds([]);
     void refresh();
   }
 
@@ -336,11 +417,15 @@ export const CollectionPage = observer(function CollectionPage() {
     if (next === 'board') {
       setStructure(false);
       setAdding(undefined);
+      if (selection?.kind === 'edge') setNodeIds([]);
+      else if (selection?.kind === 'inclusion') setNodeIds([inclusionItemId(selection.id)]);
+      else if (selectedId) setNodeIds([selectedId]);
     }
   }
 
   function locateNode(nodeId: string) {
     setSelectedId(nodeId);
+    setNodeIds([nodeId]);
     setFocus({ id: nodeId, tick: Date.now() });
   }
 
@@ -492,9 +577,13 @@ export const CollectionPage = observer(function CollectionPage() {
             onAddingChange={setAdding}
             createNotice={mode === 'outline' ? createNotice : null}
             onDismissNotice={() => setCreateNotice(null)}
-            onSelect={setSelectedId}
+            onSelect={(nodeId) => {
+              setSelectedId(nodeId);
+              setNodeIds([nodeId]);
+            }}
             onOpen={(nodeId) => {
               setSelectedId(nodeId);
+              setNodeIds([nodeId]);
               setSelection({ kind: 'node', id: nodeId });
               void library.loadNode(nodeId);
             }}
@@ -521,7 +610,17 @@ export const CollectionPage = observer(function CollectionPage() {
               ]}
               links={projected.links}
               groups={projected.groups}
-              selectedId={selection?.kind === 'inclusion' ? inclusionItemId(selection.id) : selectedId}
+              selectedId={
+                selection?.kind === 'inclusion'
+                  ? inclusionItemId(selection.id)
+                  : selection?.kind === 'edge'
+                    ? selection.id
+                    : selection?.kind === 'node'
+                      ? selection.id
+                      : (nodeIds[nodeIds.length - 1] ?? null)
+              }
+              selectedIds={nodeIds}
+              onSelectIds={pickNodes}
               createPlaceholder="点的名字"
               onGrowNode={(draft) => {
                 void (async () => {
@@ -542,6 +641,7 @@ export const CollectionPage = observer(function CollectionPage() {
                   await refresh();
                   if (pageIdRef.current !== pageId) return;
                   setSelectedId(created.id);
+                  setNodeIds([created.id]);
                   setSelection({ kind: 'node', id: created.id });
                   await library.loadNode(created.id);
                   if (pageIdRef.current !== pageId) return;
@@ -563,6 +663,7 @@ export const CollectionPage = observer(function CollectionPage() {
                   const placementError = saved ? '' : library.error;
                   await refresh();
                   setSelectedId(created.id);
+                  setNodeIds([created.id]);
                   setSelection({ kind: 'node', id: created.id });
                   await library.loadNode(created.id);
                   if (placementError !== '') library.error = placementError;
@@ -575,28 +676,8 @@ export const CollectionPage = observer(function CollectionPage() {
                   () => undefined,
                 );
               }}
-              onMove={(nodeId, x, y, z) => {
-                if (nodeId.startsWith('uploading:')) {
-                  uploadsRef.current = uploadsRef.current.map((item) =>
-                    item.id === nodeId ? { ...item, x, y } : item,
-                  );
-                  setUploads(uploadsRef.current);
-                  return true;
-                }
-                const childId = inclusionChildId(nodeId);
-                if (childId) {
-                  const inclusion = liveInclusions().find((item) => item.childId === childId);
-                  if (!inclusion) return false;
-                  const origin = collapsedOrigin(inclusion);
-                  return library.updateInclusion(id, childId, {
-                    x: inclusion.x + (x - origin.x),
-                    y: inclusion.y + (y - origin.y),
-                  });
-                }
-                const home = homeOf(nodeId);
-                const local = toLocal(home.groupId, x, y);
-                return library.savePlacements(home.collectionId, [{ nodeId, x: local.x, y: local.y, z }]);
-              }}
+              onMove={(nodeId, x, y, z) => movePlaced([{ id: nodeId, x, y, z }])}
+              onMoveItems={movePlaced}
               onResizeImage={(nodeId, imageWidth) => {
                 if (nodeId.startsWith('uploading:')) return false;
                 const direct = library.graphId === id ? library.graph.nodes.find((entry) => entry.id === nodeId) : undefined;
@@ -665,6 +746,7 @@ export const CollectionPage = observer(function CollectionPage() {
                   const created = await library.createEdge(fromId, toId, label);
                   if (!created) return;
                   await refresh();
+                  setNodeIds([]);
                   setSelection({ kind: 'edge', id: created.id });
                   await library.loadEdge(created.id);
                 })();
@@ -702,6 +784,7 @@ export const CollectionPage = observer(function CollectionPage() {
                   const ok = await library.removeInclusion(id, childId);
                   if (!ok) return;
                   if (selection?.kind === 'inclusion' && selection.id === childId) setSelection(null);
+                  setNodeIds((current) => current.filter((nodeId) => nodeId !== inclusionItemId(childId)));
                   await refresh();
                 })();
               }}
@@ -710,34 +793,26 @@ export const CollectionPage = observer(function CollectionPage() {
                 if (nodeId.startsWith('uploading:') || inclusionChildId(nodeId) !== null) return;
                 removeToken.current += 1;
                 setSelectedId(nodeId);
+                setNodeIds([nodeId]);
                 setSelection({ kind: 'node', id: nodeId });
                 void library.loadNode(nodeId);
                 setRemoveAsk({ kind: 'node', id: nodeId, token: removeToken.current });
               }}
               onAskRemoveLink={(edgeId) => {
                 removeToken.current += 1;
+                setNodeIds([]);
                 setSelection({ kind: 'edge', id: edgeId });
                 void library.loadEdge(edgeId);
                 setRemoveAsk({ kind: 'edge', id: edgeId, token: removeToken.current });
               }}
               onEscape={() => {
                 setSelectedId(null);
+                setNodeIds([]);
                 setSelection(null);
               }}
-              onSelectItem={(nodeId) => {
-                if (nodeId.startsWith('uploading:')) return;
-                const childId = inclusionChildId(nodeId);
-                setRemoveAsk(null);
-                if (childId) {
-                  setSelectedId(null);
-                  setSelection({ kind: 'inclusion', id: childId });
-                  return;
-                }
-                setSelectedId(nodeId);
-                setSelection({ kind: 'node', id: nodeId });
-                void library.loadNode(nodeId);
-              }}
+              onSelectItem={(nodeId) => pickNodes([nodeId])}
               onSelectLink={(edgeId) => {
+                setNodeIds([]);
                 setRemoveAsk(null);
                 setSelection({ kind: 'edge', id: edgeId });
                 void library.loadEdge(edgeId);
@@ -751,7 +826,7 @@ export const CollectionPage = observer(function CollectionPage() {
           ) : null}
           {ready && nodes.length <= 2 && inclusions.length === 0 ? (
             <p className="canvas-hint">
-              双击空白添加文字 · 拖入图片 · 拖动点 · 从圆点拖线或按 L 连线 · 选中点后 Tab 在旁边新建、Enter 在下方新建 · 工具栏或右键可插入子集合
+              双击空白添加文字 · 拖入图片 · 拖动点 · 拖空白框选 · ⌘ 或 Ctrl 点选多个 · 从圆点拖线或按 L 连线 · 选中一个点后 Tab 在旁边新建、Enter 在下方新建 · 工具栏或右键可插入子集合
             </p>
           ) : null}
           {session.canvasError !== '' || library.error !== '' ? (
@@ -805,6 +880,7 @@ export const CollectionPage = observer(function CollectionPage() {
               }
               if (!ok) return;
               setSelectedId((current) => (current === nodeId ? null : current));
+              setNodeIds((current) => current.filter((item) => item !== nodeId));
               setSelection((current) => (current?.kind === 'node' && current.id === nodeId ? null : current));
             })();
           }}

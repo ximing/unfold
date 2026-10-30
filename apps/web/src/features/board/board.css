@@ -49,6 +49,13 @@
 
 /* 节点。阴影和选中光晕是实色图形：SVG 上的 filter 在平移、缩放、拖点时不会擦掉上一帧。 */
 .bnode { cursor: pointer; }
+.marquee {
+  fill: rgba(10, 102, 255, 0.08);
+  stroke: var(--accent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
 .bnode-shade {
   fill: rgba(0, 0, 0, 0.05);
   stroke: none;
