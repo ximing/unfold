@@ -85,7 +85,7 @@ describe('edgeDraw', () => {
     expect(cross / handle).toBeLessThan(Math.sin((24 * Math.PI) / 180));
   });
 
-  it('斜向曲线弯向目标所在的上下一侧', () => {
+  it('斜向曲线右上向左上，下方往外凸', () => {
     const side = (target: { x: number; y: number; w: number; h: number }) => {
       const curve = edgeDraw(from, target, 0, 1, false, 'curve');
       const ends = edgeGeometry(from, target, 0, 1, false);
@@ -104,10 +104,10 @@ describe('edgeDraw', () => {
     expect(upRight.bowX).toBeLessThan(0);
     expect(upLeft.bowY).toBeLessThan(0);
     expect(upLeft.bowX).toBeGreaterThan(0);
-    expect(downRight.bowY).toBeGreaterThan(0);
-    expect(downRight.bowX).toBeLessThan(0);
-    expect(downLeft.bowY).toBeGreaterThan(0);
-    expect(downLeft.bowX).toBeGreaterThan(0);
+    expect(downRight.bowX).toBeGreaterThan(0);
+    expect(downRight.bowY).toBeLessThan(0);
+    expect(downLeft.bowX).toBeLessThan(0);
+    expect(downLeft.bowY).toBeLessThan(0);
     expect(Math.sign(upRight.dy)).toBe(-1);
     expect(Math.sign(downLeft.dx)).toBe(-1);
   });

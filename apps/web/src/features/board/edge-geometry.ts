@@ -139,11 +139,13 @@ function smoothstep(value: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** 弯向目标的上下一侧。右上向左上，左上向右上，下面两个方向向下。 */
+/** 右上向左上，左上向右上。右下、左下往外凸，不往竖轴里凹。 */
 function curveNormal(dir: { x: number; y: number }): { x: number; y: number } {
   let x = -dir.y;
   let y = dir.x;
-  if (y * dir.y < 0) {
+  const upward = dir.y < 0;
+  const inward = upward ? y * dir.y < 0 : x * dir.x < 0;
+  if (inward) {
     x = -x;
     y = -y;
   }
