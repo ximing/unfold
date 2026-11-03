@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { noteDraft } from '../../shared/save/save-bus.js';
 import { useSaveDraft } from '../../shared/save/use-save-draft.js';
 
@@ -18,6 +18,7 @@ export function InlineInput(props: {
   onCancel: () => void;
 }) {
   const ref = useRef<HTMLInputElement>(null);
+  const stackRef = useRef<HTMLDivElement>(null);
   const valueRef = useRef(props.initial ?? '');
   const committed = useRef(false);
   useEffect(() => {
@@ -42,16 +43,28 @@ export function InlineInput(props: {
 
   const picks = (props.suggestions ?? []).slice(0, 8);
   const pop = props.variant !== 'node' && picks.length > 0;
-  const extra = pop ? 66 : 0;
+  /* foreignObject 高度固定，建议标签行数不定：实测卡片高度回填，避免标签被截断。
+     ResizeObserver 的 contentRect 是布局尺寸，不受画布缩放影响。 */
+  const [popHeight, setPopHeight] = useState(0);
+  useEffect(() => {
+    const stack = stackRef.current;
+    if (!stack || !pop) return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) setPopHeight(Math.ceil(entry.contentRect.height));
+    });
+    observer.observe(stack);
+    return () => observer.disconnect();
+  }, [pop]);
   return (
     <foreignObject
       x={props.x}
       y={props.y}
       width={Math.max(props.w, pop ? 240 : props.w)}
-      height={props.h + extra}
+      height={pop ? Math.max(popHeight, props.h + 66) : props.h}
       className={props.variant === 'node' ? 'binput binput-node' : 'binput'}
     >
-      <div className={pop ? 'binput-stack binput-pop' : 'binput-stack'}>
+      <div ref={stackRef} className={pop ? 'binput-stack binput-pop' : 'binput-stack'}>
         <input
           ref={ref}
           defaultValue={props.initial ?? ''}

@@ -6,6 +6,7 @@ function target(patch: Partial<BoardMenuTarget> & Pick<BoardMenuTarget, 'kind'>)
     tools: false,
     canCreate: false,
     canImage: false,
+    canInspect: false,
     canRename: false,
     canOpen: false,
     canGrow: false,
@@ -53,11 +54,12 @@ describe('boardMenu', () => {
     expect(inclusionMenu(false).map((item) => item.label)).toEqual(['收起', '', '移出这个合集']);
   });
 
-  it('合集的点有改名、生长、连线和删除', () => {
+  it('合集的点有详情、改名、生长、连线和删除', () => {
     const items = boardMenu(
       target({
         kind: 'node',
         tools: true,
+        canInspect: true,
         canRename: true,
         canGrow: true,
         canConnect: true,
@@ -66,6 +68,7 @@ describe('boardMenu', () => {
       }),
     );
     expect(items.map((item) => item.label)).toEqual([
+      '查看详情',
       '改名',
       '在旁边新建',
       '在下方新建',
@@ -84,8 +87,12 @@ describe('boardMenu', () => {
     expect(items.find((item) => item.action === 'delete-item')?.hint).toBeUndefined();
   });
 
-  it('合集的边是改标签和删除', () => {
-    expect(labels({ kind: 'edge', canRelabel: true, canDeleteLink: true })).toEqual(['改标签', '删除关系']);
+  it('合集的边是详情、改标签和删除', () => {
+    expect(labels({ kind: 'edge', canInspect: true, canRelabel: true, canDeleteLink: true })).toEqual([
+      '查看详情',
+      '改标签',
+      '删除关系',
+    ]);
   });
 
   it('全貌的边只删除', () => {

@@ -40,6 +40,8 @@ export const CollectionPage = observer(function CollectionPage() {
   const [ready, setReady] = useState(false);
   const [missing, setMissing] = useState(false);
   const [selection, setSelection] = useState<Selection>(null);
+  /** 右侧详情面板的内容。单击只改 selection（画布高亮），再点一次或右键「查看详情」才打开 */
+  const [detail, setDetail] = useState<Selection>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [nodeIds, setNodeIds] = useState<string[]>([]);
   const [mode, setMode] = useState<CollectionViewMode>(() => (id ? readCollectionView(id) : 'board'));
@@ -64,6 +66,7 @@ export const CollectionPage = observer(function CollectionPage() {
     setReady(false);
     setMissing(false);
     setSelection(null);
+    setDetail(null);
     setSelectedId(null);
     setNodeIds([]);
     setMode(id ? readCollectionView(id) : 'board');
@@ -86,6 +89,7 @@ export const CollectionPage = observer(function CollectionPage() {
     setReady(false);
     setMissing(false);
     setSelection(null);
+    setDetail(null);
     void (async () => {
       const ok = await library.loadGraph(id);
       if (!alive) return;
@@ -96,11 +100,12 @@ export const CollectionPage = observer(function CollectionPage() {
       }
       if (nodeQuery !== '') {
         locateNode(nodeQuery);
-        setSelection({ kind: 'node', id: nodeQuery });
+        setDetail({ kind: 'node', id: nodeQuery });
         void library.loadNode(nodeQuery);
       } else if (edgeQuery !== '') {
         setNodeIds([]);
         setSelection({ kind: 'edge', id: edgeQuery });
+        setDetail({ kind: 'edge', id: edgeQuery });
         void library.loadEdge(edgeQuery);
       }
     })();
@@ -227,8 +232,12 @@ export const CollectionPage = observer(function CollectionPage() {
       return;
     }
     setSelectedId(only);
-    setSelection({ kind: 'node', id: only });
-    void library.loadNode(only);
+    setSelection(null);
+    /* 面板打开期间点击其他点，内容跟随切换；没打开就只选中 */
+    if (detail) {
+      setDetail({ kind: 'node', id: only });
+      void library.loadNode(only);
+    }
   }
 
   function movePlaced(items: { id: string; x: number; y: number; z: number }[]): boolean | Promise<boolean> {
@@ -324,9 +333,9 @@ export const CollectionPage = observer(function CollectionPage() {
     await Promise.all([library.loadGraph(id as string), library.loadCollections()]);
   }
 
+  /** 关闭详情面板：保留画布上的选中，只收面板 */
   function leave() {
-    setSelection(null);
-    setNodeIds([]);
+    setDetail(null);
     void refresh();
   }
 
@@ -584,7 +593,7 @@ export const CollectionPage = observer(function CollectionPage() {
             onOpen={(nodeId) => {
               setSelectedId(nodeId);
               setNodeIds([nodeId]);
-              setSelection({ kind: 'node', id: nodeId });
+              setDetail({ kind: 'node', id: nodeId });
               void library.loadNode(nodeId);
             }}
             onAskRemove={setMemberAsk}
@@ -642,7 +651,7 @@ export const CollectionPage = observer(function CollectionPage() {
                   if (pageIdRef.current !== pageId) return;
                   setSelectedId(created.id);
                   setNodeIds([created.id]);
-                  setSelection({ kind: 'node', id: created.id });
+                  setDetail({ kind: 'node', id: created.id });
                   await library.loadNode(created.id);
                   if (pageIdRef.current !== pageId) return;
                   if (placementError !== '') library.error = placementError;
@@ -664,7 +673,7 @@ export const CollectionPage = observer(function CollectionPage() {
                   await refresh();
                   setSelectedId(created.id);
                   setNodeIds([created.id]);
-                  setSelection({ kind: 'node', id: created.id });
+                  setDetail({ kind: 'node', id: created.id });
                   await library.loadNode(created.id);
                   if (placementError !== '') library.error = placementError;
                 })();
@@ -748,6 +757,7 @@ export const CollectionPage = observer(function CollectionPage() {
                   await refresh();
                   setNodeIds([]);
                   setSelection({ kind: 'edge', id: created.id });
+                  setDetail({ kind: 'edge', id: created.id });
                   await library.loadEdge(created.id);
                 })();
               }}
@@ -794,7 +804,7 @@ export const CollectionPage = observer(function CollectionPage() {
                 removeToken.current += 1;
                 setSelectedId(nodeId);
                 setNodeIds([nodeId]);
-                setSelection({ kind: 'node', id: nodeId });
+                setDetail({ kind: 'node', id: nodeId });
                 void library.loadNode(nodeId);
                 setRemoveAsk({ kind: 'node', id: nodeId, token: removeToken.current });
               }}
@@ -802,6 +812,7 @@ export const CollectionPage = observer(function CollectionPage() {
                 removeToken.current += 1;
                 setNodeIds([]);
                 setSelection({ kind: 'edge', id: edgeId });
+                setDetail({ kind: 'edge', id: edgeId });
                 void library.loadEdge(edgeId);
                 setRemoveAsk({ kind: 'edge', id: edgeId, token: removeToken.current });
               }}
@@ -809,12 +820,25 @@ export const CollectionPage = observer(function CollectionPage() {
                 setSelectedId(null);
                 setNodeIds([]);
                 setSelection(null);
+                setDetail(null);
               }}
               onSelectItem={(nodeId) => pickNodes([nodeId])}
               onSelectLink={(edgeId) => {
                 setNodeIds([]);
                 setRemoveAsk(null);
                 setSelection({ kind: 'edge', id: edgeId });
+                if (detail) {
+                  setDetail({ kind: 'edge', id: edgeId });
+                  void library.loadEdge(edgeId);
+                }
+              }}
+              onInspectItem={(nodeId) => {
+                if (nodeId.startsWith('uploading:') || inclusionChildId(nodeId) !== null) return;
+                setDetail({ kind: 'node', id: nodeId });
+                void library.loadNode(nodeId);
+              }}
+              onInspectLink={(edgeId) => {
+                setDetail({ kind: 'edge', id: edgeId });
                 void library.loadEdge(edgeId);
               }}
             />
@@ -836,23 +860,23 @@ export const CollectionPage = observer(function CollectionPage() {
           ) : null}
         </div>
         ) : null}
-        {selection?.kind === 'node' ? (
+        {detail?.kind === 'node' ? (
           <NodePanel
             collectionId={id}
-            nodeId={selection.id}
+            nodeId={detail.id}
             focusCardId={cardQuery || null}
-            askRemove={removeAsk?.kind === 'node' && removeAsk.id === selection.id ? removeAsk.token : 0}
-            onAskRemove={() => setMemberAsk(selection.id)}
+            askRemove={removeAsk?.kind === 'node' && removeAsk.id === detail.id ? removeAsk.token : 0}
+            onAskRemove={() => setMemberAsk(detail.id)}
             onLocated={locateNode}
             onLeave={leave}
             onTouched={() => void refresh()}
           />
         ) : null}
-        {selection?.kind === 'edge' ? (
+        {detail?.kind === 'edge' ? (
           <EdgePanel
-            edgeId={selection.id}
+            edgeId={detail.id}
             focusCardId={cardQuery || null}
-            askRemove={removeAsk?.kind === 'edge' && removeAsk.id === selection.id ? removeAsk.token : 0}
+            askRemove={removeAsk?.kind === 'edge' && removeAsk.id === detail.id ? removeAsk.token : 0}
             onLeave={leave}
             onTouched={() => void refresh()}
           />
@@ -882,6 +906,7 @@ export const CollectionPage = observer(function CollectionPage() {
               setSelectedId((current) => (current === nodeId ? null : current));
               setNodeIds((current) => current.filter((item) => item !== nodeId));
               setSelection((current) => (current?.kind === 'node' && current.id === nodeId ? null : current));
+              setDetail((current) => (current?.kind === 'node' && current.id === nodeId ? null : current));
             })();
           }}
         />

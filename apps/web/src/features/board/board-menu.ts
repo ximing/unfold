@@ -1,6 +1,7 @@
 export type BoardMenuAction =
   | 'create'
   | 'image'
+  | 'inspect'
   | 'rename'
   | 'open'
   | 'grow-child'
@@ -28,6 +29,8 @@ export type BoardMenuTarget = {
   tools: boolean;
   canCreate: boolean;
   canImage: boolean;
+  /** 右键「查看详情」，合集画布的点和边用 */
+  canInspect: boolean;
   canRename: boolean;
   canOpen: boolean;
   canGrow: boolean;
@@ -54,6 +57,7 @@ export function boardMenu(target: BoardMenuTarget): BoardMenuEntry[] {
 
   if (target.kind === 'node') {
     const items: BoardMenuEntry[] = [];
+    if (target.canInspect) items.push({ action: 'inspect', label: '查看详情' });
     if (target.canOpen) items.push({ action: 'open', label: '打开', hint: '双击' });
     if (target.canRename) items.push({ action: 'rename', label: '改名', hint: '双击' });
     if (target.canGrow) {
@@ -76,6 +80,7 @@ export function boardMenu(target: BoardMenuTarget): BoardMenuEntry[] {
   }
 
   const items: BoardMenuEntry[] = [];
+  if (target.canInspect) items.push({ action: 'inspect', label: '查看详情' });
   if (target.canRelabel) items.push({ action: 'relabel', label: '改标签', hint: '双击' });
   if (target.canDeleteLink) {
     if (items.length > 0) items.push({ separator: true, label: '' });

@@ -226,6 +226,10 @@ export function BoardCanvas(props: {
   onSelectIds?: (ids: string[]) => void;
   onSelectItem: (id: string) => void;
   onSelectLink: (id: string) => void;
+  /** 再点一次已选中的点，或右键「查看详情」。不给则单击只选中 */
+  onInspectItem?: (id: string) => void;
+  /** 再点一次已选中的边，或右键「查看详情」 */
+  onInspectLink?: (id: string) => void;
   /** 双击节点打开（合集）。与 onRenameItem 二选一 */
   onOpenItem?: (id: string) => void;
   /** 双击节点内联改名 */
@@ -672,8 +676,12 @@ export function BoardCanvas(props: {
     }
     selectOnSingleClick(() => {
       disarmPeek();
+      const sole = multiOn
+        ? selectedIdsRef.current.length === 1 && selectedIdsRef.current[0] === id
+        : props.selectedId === id;
       if (multiOn) publishSelection([id]);
       else props.onSelectItem(id);
+      if (sole) props.onInspectItem?.(id);
     });
   }
 
@@ -784,6 +792,11 @@ export function BoardCanvas(props: {
   }
 
   function runMenuAction(action: BoardMenuAction, hit: ViewportMenuHit) {
+    if (action === 'inspect') {
+      if (hit.kind === 'edge') props.onInspectLink?.(hit.id);
+      else props.onInspectItem?.(hit.id);
+      return;
+    }
     if (action === 'insert-inclusion') {
       askInsert({ x: hit.worldX, y: hit.worldY });
       return;
@@ -826,6 +839,7 @@ export function BoardCanvas(props: {
             tools: toolsOn,
             canCreate: props.onCreate !== undefined && props.createPlaceholder !== undefined,
             canImage: toolsOn && props.onInsertImages !== undefined,
+            canInspect: hit.kind === 'edge' ? props.onInspectLink !== undefined : props.onInspectItem !== undefined,
             canRename: props.onRenameItem !== undefined,
             canOpen: props.onOpenItem !== undefined,
             canGrow: props.onGrowNode !== undefined,
@@ -1835,7 +1849,9 @@ export function BoardCanvas(props: {
             onSelect={(id) => {
               selectOnSingleClick(() => {
                 disarmPeek();
+                const sole = props.selectedId === id;
                 props.onSelectLink(id);
+                if (sole) props.onInspectLink?.(id);
               });
             }}
             onActivate={(id) => {
