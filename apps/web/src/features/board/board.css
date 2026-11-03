@@ -27,17 +27,6 @@
 }
 .canvas-hint .kbd { margin: 0 2px; }
 .binput-stack { display: flex; flex-direction: column; gap: 4px; }
-.blink-picks { display: flex; flex-wrap: wrap; gap: 4px; }
-.blink-picks button {
-  font: inherit;
-  font-size: 12px;
-  line-height: 1.4;
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--ink);
-  border-radius: 999px;
-  padding: 1px 8px;
-}
 .canvas-error {
   position: absolute;
   top: 12px;
@@ -284,6 +273,41 @@ html.board-dragging * {
   outline: none;
   box-shadow: 0 0 0 3px var(--accent-soft), var(--sh-raise);
 }
+/* 带建议标签的关系输入：输入框与标签合成一张浮层卡片，
+   输入框不再单独描边，标签收进卡片下半区。 */
+.binput-pop {
+  gap: 0;
+  background: var(--card);
+  border: 1.5px solid var(--accent);
+  border-radius: var(--r-m);
+  box-shadow: 0 0 0 3px var(--accent-soft), var(--sh-float);
+}
+.binput-pop input {
+  height: 34px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.blink-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 7px 8px 8px;
+  border-top: 1px solid var(--line-soft);
+}
+.blink-picks button {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  border: 0;
+  border-radius: 999px;
+  padding: 1px 9px;
+  background: var(--line-soft);
+  color: var(--mute);
+  cursor: pointer;
+}
+.blink-picks button:hover { background: var(--accent-soft); color: var(--accent); }
 /* 节点内的行内编辑：节点框（NodeChrome）就是编辑容器，输入框完全融入，只留文字与光标。
    文字居中与 .bnode-name 的 textAnchor=middle 对齐；栈撑满 foreignObject，输入框 height:100% 才生效。 */
 .binput-node .binput-stack { height: 100%; }

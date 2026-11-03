@@ -40,17 +40,18 @@ export function InlineInput(props: {
     false,
   );
 
-  const picks = props.suggestions ?? [];
-  const extra = picks.length > 0 ? 44 : 0;
+  const picks = (props.suggestions ?? []).slice(0, 8);
+  const pop = props.variant !== 'node' && picks.length > 0;
+  const extra = pop ? 66 : 0;
   return (
     <foreignObject
       x={props.x}
       y={props.y}
-      width={Math.max(props.w, picks.length > 0 ? 220 : props.w)}
+      width={Math.max(props.w, pop ? 240 : props.w)}
       height={props.h + extra}
       className={props.variant === 'node' ? 'binput binput-node' : 'binput'}
     >
-      <div className="binput-stack">
+      <div className={pop ? 'binput-stack binput-pop' : 'binput-stack'}>
         <input
           ref={ref}
           defaultValue={props.initial ?? ''}
@@ -76,7 +77,7 @@ export function InlineInput(props: {
           }}
           onBlur={(event) => finish(event.currentTarget.value)}
         />
-        {picks.length > 0 ? (
+        {pop ? (
           <div className="blink-picks" role="group" aria-label="最近的标签">
             {picks.map((label) => (
               <button
