@@ -303,6 +303,9 @@ export function BoardCanvas(props: {
   const applyPeekRef = useRef<() => boolean>(() => false);
   const dragRef = useRef<DragGesture | null>(null);
   const dragSerial = useRef(0);
+  /* pointerdown 时该点是否已是唯一选中。拖动一按下就会先发布选中，click 时再查必然为真，
+     「再点一次出详情」必须在按下时记录。 */
+  const downSoleRef = useRef(false);
   const [dragPlaces, setDragPlaces] = useState<Record<string, { x: number; y: number }> | null>(null);
   const marqueeRef = useRef<MarqueeGesture | null>(null);
   const [marqueeRect, setMarqueeRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -676,12 +679,10 @@ export function BoardCanvas(props: {
     }
     selectOnSingleClick(() => {
       disarmPeek();
-      const sole = multiOn
-        ? selectedIdsRef.current.length === 1 && selectedIdsRef.current[0] === id
-        : props.selectedId === id;
+      const wasSole = downSoleRef.current;
       if (multiOn) publishSelection([id]);
       else props.onSelectItem(id);
-      if (sole) props.onInspectItem?.(id);
+      if (wasSole) props.onInspectItem?.(id);
     });
   }
 
@@ -1275,6 +1276,9 @@ export function BoardCanvas(props: {
 
   /* ---------- 拖动节点：超过 4 个屏幕像素才算移动。选中的点共用一段位移 ---------- */
   function beginDrag(event: ReactPointerEvent, nodeId: string) {
+    downSoleRef.current = multiOn
+      ? selectedIdsRef.current.length === 1 && selectedIdsRef.current[0] === nodeId
+      : props.selectedId === nodeId;
     if (spaceRef.current || event.metaKey || event.ctrlKey || event.shiftKey) return;
     if (
       onMoveRef.current === undefined ||
@@ -1464,6 +1468,10 @@ export function BoardCanvas(props: {
 
   /* ---------- 拖动展开的子集合：只改锚点，成员跟着边框走 ---------- */
   function beginFrameDrag(event: ReactPointerEvent, frame: InclusionFrameView) {
+    const frameId = inclusionItemId(frame.childId);
+    downSoleRef.current = multiOn
+      ? selectedIdsRef.current.length === 1 && selectedIdsRef.current[0] === frameId
+      : props.selectedId === frameId;
     if (onMoveInclusionRef.current === undefined || editingRef.current || linkDragRef.current || resizeRef.current) return;
     if (dragRef.current) return;
     if (props.enableTools && toolRef.current !== 'select') return;
@@ -1893,7 +1901,7 @@ export function BoardCanvas(props: {
               cancelPendingClick();
               disarmPeek();
             }}
-            onDragPointerDown={props.onMove && selectTool ? beginDrag : undefined}
+            onDragPointerDown={props.onMove ? beginDrag : undefined}
             onBeginLink={props.onConnect && selectTool ? beginLink : undefined}
             imageHeights={imageHeights}
             onImageLoad={rememberImageRatio}
