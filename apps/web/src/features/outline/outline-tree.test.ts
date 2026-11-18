@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { expandedWithAncestors, type OutlineNodeRef } from './outline-tree.js';
+import { captureRemoval, expandedWithAncestors, type OutlineNodeRef, type RemovalNode } from './outline-tree.js';
 
 function node(id: string, parentId: string | null, outlineOrder = 0): OutlineNodeRef {
   return { id, parentId, outlineOrder };
@@ -37,6 +37,23 @@ describe('expandedWithAncestors', () => {
     expect(next.has('root')).toBe(true);
     expect(next.has('kept')).toBe(true);
     expect(next.has('parent')).toBe(true);
+  });
+
+  it('移出前抄下 layoutSide', () => {
+    const rows: RemovalNode[] = [
+      { id: 'root', parentId: null, outlineOrder: 0, x: 4, y: 5, z: 1, imageWidth: null, layoutSide: null },
+      { id: 'parent', parentId: 'root', outlineOrder: 0, x: null, y: null, z: null, imageWidth: null, layoutSide: 'left' },
+      { id: 'child', parentId: 'parent', outlineOrder: 0, x: null, y: null, z: null, imageWidth: 160, layoutSide: null },
+    ];
+    expect(captureRemoval(rows, 'parent')).toEqual({
+      nodeId: 'parent',
+      parentId: 'root',
+      order: 0,
+      placement: { x: null, y: null, z: null, imageWidth: null },
+      layoutSide: 'left',
+      children: [{ nodeId: 'child', parentId: 'parent', order: 0 }],
+    });
+    expect(captureRemoval(rows, 'missing')).toBeNull();
   });
 
   it('节点不在图里时集合不变', () => {

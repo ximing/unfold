@@ -9,6 +9,7 @@ export function shouldPublish(method: string, url: string, status: number): bool
   if (!path.startsWith('/api/')) return false;
   if (path === '/api/login' || path === '/api/logout' || path === '/api/register') return false;
   if (path === '/api/me' || path.startsWith('/api/me/')) return false;
+  if (/^\/api\/collections\/[^/]+\/mindmap-(?:adopt|commit)$/.test(path)) return false;
   return true;
 }
 

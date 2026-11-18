@@ -17,6 +17,7 @@ type MemberRow = {
   imageWidth: number | null;
   parentId: string | null;
   outlineOrder: number;
+  layoutSide: string | null;
 };
 
 type EdgeRow = { id: string; fromId: string; toId: string; label: string };
@@ -64,6 +65,7 @@ function toNode(row: MemberRow, stat: CardStat | undefined, assetId: string | nu
     cardTypes: stat?.types ?? [],
     parentId: row.parentId,
     outlineOrder: row.outlineOrder,
+    layoutSide: row.layoutSide,
   };
 }
 
@@ -112,6 +114,7 @@ export async function assembleCollectionGraph(
       imageWidth: memberships.imageWidth,
       parentId: memberships.parentNodeId,
       outlineOrder: memberships.outlineOrder,
+      layoutSide: memberships.layoutSide,
     })
     .from(memberships)
     .innerJoin(nodes, eq(nodes.id, memberships.nodeId))
@@ -206,6 +209,14 @@ export async function assembleCollectionGraph(
           .from(assets)
           .where(and(eq(assets.userId, userId), eq(assets.ownerKind, 'node'), inArray(assets.ownerId, nodeIds)));
   const assetByNode = new Map(assetRows.map((row) => [row.ownerId, row.id]));
+  const directionRows = await db
+    .select({
+      layoutDirection: collections.layoutDirection,
+      mindmapAnchored: collections.mindmapAnchored,
+    })
+    .from(collections)
+    .where(and(eq(collections.id, collectionId), eq(collections.userId, userId), isNull(collections.deletedAt)))
+    .limit(1);
 
   return {
     nodes: parentMembers.map((row) => toNode(row, nodeStats.get(row.id), assetByNode.get(row.id) ?? null)),
@@ -224,5 +235,7 @@ export async function assembleCollectionGraph(
       edges: (childEdges.get(row.childId) ?? []).map((edge) => toEdge(edge, edgeStats.get(edge.id))),
     })),
     appearance,
+    layoutDirection: directionRows[0]?.layoutDirection ?? 'right',
+    mindmapAnchored: directionRows[0]?.mindmapAnchored ?? false,
   };
 }

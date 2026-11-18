@@ -143,6 +143,8 @@ export const NodePanel = observer(function NodePanel(props: {
   onLocated?: (nodeId: string) => void;
   /** 非 0 时打开删除确认。右键菜单和检查器共用这一条 */
   askRemove?: number;
+  /** 描述已经写入。合集画板用来重排脑图，不在输入过程中调用。 */
+  onDescribed?: () => void | Promise<void>;
 }) {
   const library = useService(LibraryService);
   const panel = useNodePanelWidth();
@@ -192,7 +194,12 @@ export const NodePanel = observer(function NodePanel(props: {
   function commitDescription() {
     if (!detail) return;
     const next = descRef.current.trim();
-    return hand.send(next, savedDesc.current, () => library.describeNode(detail.id, next));
+    const nodeId = detail.id;
+    return hand.send(next, savedDesc.current, async () => {
+      const ok = await library.describeNode(nodeId, next);
+      if (ok) await props.onDescribed?.();
+      return ok;
+    });
   }
 
   useSaveDraft(

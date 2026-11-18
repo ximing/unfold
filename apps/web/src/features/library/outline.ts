@@ -1,5 +1,5 @@
-import type { CreateNodeResult, GraphNode, OutlineItem, RestoreOutlineBody } from '@unfold/dto';
-import { outlineVersionSchema, promoteOnRemove } from '@unfold/dto';
+import type { CreateNodeResult, GraphNode, InsertParentBody, InsertParentResult, OutlineItem, RestoreOutlineBody } from '@unfold/dto';
+import { insertParentResultSchema, outlineVersionSchema, promoteOnRemove } from '@unfold/dto';
 import type { LibraryState } from './library.service.js';
 import { apiRead, apiSend, errorMessage } from './api.js';
 
@@ -37,6 +37,7 @@ export function adoptCreatedNode(state: LibraryState, collectionId: string, crea
     cardTypes: [],
     parentId: created.parentId,
     outlineOrder: created.outlineOrder,
+    layoutSide: null,
   };
   state.graph = { ...state.graph, outlineVersion: created.outlineVersion, nodes: [...nodes, fresh] };
 }
@@ -91,6 +92,53 @@ async function readVersion(state: LibraryState, res: Response | null, fallback: 
   const body = await apiRead(state, res, (data) => outlineVersionSchema.parse(data), fallback);
   if (!body) return { ok: false, conflict: false, offline: false };
   return { ok: true, outlineVersion: body.outlineVersion };
+}
+
+function adoptInsertedParent(state: LibraryState, collectionId: string, created: InsertParentResult): void {
+  if (state.graphId !== collectionId) return;
+  const nodes = state.graph.nodes.map((node) =>
+    node.id === created.childId ? { ...node, parentId: created.id, outlineOrder: 0 } : node,
+  );
+  const fresh: GraphNode = {
+    id: created.id,
+    name: created.name,
+    description: '',
+    kind: 'text',
+    x: null,
+    y: null,
+    z: null,
+    imageWidth: null,
+    assetId: null,
+    cardCount: 0,
+    cardTypes: [],
+    parentId: created.parentId,
+    outlineOrder: created.outlineOrder,
+    layoutSide: null,
+  };
+  state.graph = { ...state.graph, outlineVersion: created.outlineVersion, nodes: [...nodes, fresh] };
+}
+
+export async function insertParent(
+  state: LibraryState,
+  collectionId: string,
+  body: InsertParentBody,
+): Promise<InsertParentResult | null> {
+  state.error = '';
+  const res = await apiSend(`/api/collections/${collectionId}/outline/parent`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res) {
+    state.error = '网络没有连上';
+    return null;
+  }
+  const created = await apiRead(state, res, (data) => insertParentResultSchema.parse(data), '父主题没有建成');
+  if (!created) return null;
+  adoptInsertedParent(state, collectionId, created);
+  bumpCount(state, collectionId, 1);
+  return created;
 }
 
 export async function putOutline(

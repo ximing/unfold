@@ -1,15 +1,38 @@
 import { observer, useService } from '@rabjs/react';
-import { defaultEdgeAppearance, type CreateNodeResult } from '@unfold/dto';
+import {
+  defaultEdgeAppearance,
+  hasOutlineCycle,
+  moveSibling,
+  type CreateNodeResult,
+  type GraphInclusion,
+  type GraphNode,
+  type LayoutDirection,
+} from '@unfold/dto';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { BoardCanvas } from '../board/board-canvas.js';
 import { imageDropSpots, imageFileIssue } from '../board/image-intake.js';
-import { isFiniteNumber, layoutBoard, nextPlacementZ } from '../board/board-layout.js';
-import { collapsedOrigin, inclusionChildId, inclusionItemId, projectCollection } from '../board/inclusion-view.js';
+import { NODE_H, NODE_W, isFiniteNumber, layoutBoard, nextPlacementZ, textNodeHeight } from '../board/board-layout.js';
+import { imageFrame } from '../board/image-frame.js';
+import { collapsedOrigin, inclusionChildId, inclusionFrameRect, inclusionItemId, projectCollection } from '../board/inclusion-view.js';
+import { branchFold, directChildCount, foldSide, linksForFold, toggleFold } from '../board/board-fold.js';
+import {
+  MINDMAP_LEVEL_GAP,
+  MINDMAP_ORIGIN_X,
+  MINDMAP_ORIGIN_Y,
+  MINDMAP_ROOT_GAP,
+  MINDMAP_SIBLING_GAP,
+  layoutMindmap,
+  separateFromObstacles,
+} from '../board/mindmap-layout.js';
+import type { MindmapBox, ObstacleRect } from '../board/mindmap-layout.js';
+import { branchLevelExtra } from '../board/label.js';
+import { anchorForRootDrop, anchorFromDrop, mindmapPlacements, treeAnchor } from '../board/mindmap-place.js';
 import { snapPoint } from '../board/snap.js';
 import { readCollectionView, writeCollectionView, type CollectionViewMode } from '../outline/collection-view.js';
 import { CreateNoticeBanner, OutlineView, type CreateNotice } from '../outline/outline-view.js';
 import { useOutlineSession } from '../outline/outline-session.js';
+import { captureRemoval } from '../outline/outline-tree.js';
 import { InclusionDialog } from './inclusion-dialog.js';
 import { apiSend, errorMessage } from '../library/api.js';
 import { LibraryService } from '../library/library.service.js';
@@ -25,6 +48,30 @@ type Selection = { kind: 'node' | 'edge' | 'inclusion'; id: string } | null;
 
 type UploadSpot = { id: string; label: string; x: number; y: number; z: number; homeId: string };
 
+type MindmapPersist = {
+  anchors?: ReadonlyMap<string, { x: number; y: number }>;
+  folded?: ReadonlySet<string>;
+  separate?: boolean;
+};
+
+function outlineMoved(
+  before: readonly { nodeId: string; parentId: string | null; order: number }[],
+  after: readonly { nodeId: string; parentId: string | null; order: number }[],
+  nodeId: string,
+): boolean {
+  const indexOf = (items: readonly { nodeId: string; parentId: string | null; order: number }[]) => {
+    const current = items.find((item) => item.nodeId === nodeId);
+    if (!current) return -1;
+    return items
+      .filter((item) => item.parentId === current.parentId)
+      .sort(
+        (left, right) => left.order - right.order || (left.nodeId < right.nodeId ? -1 : left.nodeId > right.nodeId ? 1 : 0),
+      )
+      .findIndex((item) => item.nodeId === nodeId);
+  };
+  return indexOf(before) !== indexOf(after);
+}
+
 export const CollectionPage = observer(function CollectionPage() {
   const library = useService(LibraryService);
   const session = useService(SessionService);
@@ -37,6 +84,8 @@ export const CollectionPage = observer(function CollectionPage() {
   const outlineSession = useOutlineSession(id);
   const outlineRef = useRef(outlineSession);
   outlineRef.current = outlineSession;
+  const libraryRef = useRef(library);
+  libraryRef.current = library;
   const [ready, setReady] = useState(false);
   const [missing, setMissing] = useState(false);
   const [selection, setSelection] = useState<Selection>(null);
@@ -52,16 +101,29 @@ export const CollectionPage = observer(function CollectionPage() {
   const [structure, setStructure] = useState(false);
   const [adding, setAdding] = useState<string | null | undefined>(undefined);
   const [seenId, setSeenId] = useState(id);
+  const [boardFold, setBoardFold] = useState<Set<string>>(() => (id ? readBoardFold(id) : new Set()));
   const [uploads, setUploads] = useState<UploadSpot[]>([]);
   const [insertAt, setInsertAt] = useState<{ x: number; y: number } | null>(null);
   const uploadsRef = useRef<UploadSpot[]>([]);
   const pageIdRef = useRef(id);
+  const layoutEpoch = useRef(0);
+  const modeRef = useRef(mode);
+  const nodeIdsRef = useRef(nodeIds);
+  const foldRef = useRef(boardFold);
+  const commitFoldRef = useRef<(next: readonly string[]) => void>(() => undefined);
   const intakeQueue = useRef(Promise.resolve());
   const placeTried = useRef(new Set<string>());
+  const mindmapBoot = useRef<string | null>(null);
+  const persistRef = useRef<(pageId: string, request?: MindmapPersist) => Promise<boolean>>(async () => false);
   const removeToken = useRef(0);
   const [removeAsk, setRemoveAsk] = useState<{ kind: 'node' | 'edge'; id: string; token: number } | null>(null);
   pageIdRef.current = id;
+  modeRef.current = mode;
+  nodeIdsRef.current = nodeIds;
   if (id !== seenId) {
+    const nextFold = id ? readBoardFold(id) : new Set<string>();
+    foldRef.current = nextFold;
+    setBoardFold(nextFold);
     setSeenId(id);
     setReady(false);
     setMissing(false);
@@ -81,6 +143,179 @@ export const CollectionPage = observer(function CollectionPage() {
       uploadsRef.current = [];
       setUploads([]);
     }
+  } else {
+    foldRef.current = boardFold;
+  }
+  commitFoldRef.current = (next) => {
+    const pageId = pageIdRef.current;
+    if (!pageId) return;
+    const folded = new Set(next);
+    foldRef.current = folded;
+    writeBoardFold(pageId, next);
+    setBoardFold(folded);
+  };
+
+  async function persistMindmap(pageId: string, request?: MindmapPersist): Promise<boolean> {
+    if (pageIdRef.current !== pageId || library.graphId !== pageId) return false;
+    const nodes = library.graph.nodes;
+    if (nodes.length === 0) return true;
+    const folded = request?.folded ?? readBoardFold(pageId);
+    const anchors = request?.anchors ?? storedAnchors(nodes);
+    let boxes = layoutDirect(nodes, library.graph.layoutDirection, anchors, folded, library.graph.edges);
+    if (request?.separate) {
+      boxes = separateFromObstacles(
+        boxes,
+        inclusionObstacles(library.graph.inclusions, new Set(nodes.map((node) => node.id))),
+      );
+    }
+    if (boxes.length === 0) return false;
+    const writes = mindmapPlacements(
+      nodes.map((node) => ({ id: node.id, parentId: node.parentId, x: node.x, y: node.y, z: node.z })),
+      boxes,
+    );
+    if (writes.length === 0) return true;
+    return library.savePlacements(pageId, writes);
+  }
+  persistRef.current = persistMindmap;
+  outlineSession.bindAnchorPersist((pageId) => persistRef.current(pageId));
+
+  async function bootMindmap(pageId: string): Promise<{ ok: true } | null> {
+    if (pageIdRef.current !== pageId) return { ok: true };
+    const adopted = await library.adoptMindmap(pageId);
+    if (pageIdRef.current !== pageId) return { ok: true };
+    if (!adopted) return null;
+    if (adopted.mindmapAnchored) {
+      if (library.graphId === pageId) await library.loadGraph(pageId);
+      return { ok: true };
+    }
+    const saved = await persistMindmap(pageId, { anchors: new Map(), folded: new Set(), separate: true });
+    if (pageIdRef.current !== pageId) return { ok: true };
+    if (!saved) return null;
+    const first = await library.commitMindmap(pageId);
+    if (first === 'ok') return { ok: true };
+    if (first !== 'conflict' || pageIdRef.current !== pageId) return null;
+    const again = await library.adoptMindmap(pageId);
+    if (pageIdRef.current !== pageId) return { ok: true };
+    if (!again) return null;
+    if (again.mindmapAnchored) {
+      if (library.graphId === pageId) await library.loadGraph(pageId);
+      return { ok: true };
+    }
+    const second = await library.commitMindmap(pageId);
+    return second === 'ok' ? { ok: true } : null;
+  }
+
+  function trackPersist(pageId: string, request?: MindmapPersist): Promise<boolean> {
+    return outlineRef.current
+      .track(async () => {
+        const ok = await persistRef.current(pageId, request);
+        return ok ? { ok: true as const } : null;
+      })
+      .then((value) => value !== null);
+  }
+
+  function trackDrop(
+    pageId: string,
+    drop: { rootId: string; x: number; y: number } | null,
+    recordAnchor = false,
+  ): Promise<boolean> {
+    return outlineRef.current
+      .track(async () => {
+        const lib = libraryRef.current;
+        if (lib.graphId !== pageId) return null;
+        let request: MindmapPersist | undefined;
+        let anchorNote: { before: { id: string; x: number; y: number }; after: { id: string; x: number; y: number } } | null =
+          null;
+        if (drop) {
+          const nodes = lib.graph.nodes;
+          const folded = readBoardFold(pageId);
+          const anchors = storedAnchors(nodes);
+          const stored = anchors.get(drop.rootId);
+          let before = stored ?? null;
+          if (!before) {
+            const laid = layoutDirect(nodes, lib.graph.layoutDirection, anchors, folded, lib.graph.edges);
+            const box = laid.find((item) => item.id === drop.rootId);
+            if (box) before = { x: box.x, y: box.y };
+          }
+          const trial = new Map(anchors);
+          trial.set(drop.rootId, { x: drop.x, y: drop.y });
+          const boxes = layoutDirect(nodes, lib.graph.layoutDirection, trial, folded, lib.graph.edges);
+          const rootBox = boxes.find((box) => box.id === drop.rootId);
+          if (!rootBox) return null;
+          const next = anchorFromDrop({ x: drop.x, y: drop.y }, rootBox, { x: drop.x, y: drop.y });
+          anchors.set(drop.rootId, next);
+          request = { anchors };
+          if (recordAnchor && before && (before.x !== next.x || before.y !== next.y)) {
+            anchorNote = {
+              before: { id: drop.rootId, x: before.x, y: before.y },
+              after: { id: drop.rootId, x: next.x, y: next.y },
+            };
+          }
+        }
+        const ok = await persistRef.current(pageId, request);
+        if (!ok) return null;
+        if (anchorNote) {
+          outlineRef.current.note({ type: 'anchors', before: [anchorNote.before], after: [anchorNote.after] });
+        }
+        return { ok: true as const };
+      })
+      .then((value) => value !== null);
+  }
+
+  function trackShift(pageId: string, moves: { id: string; x: number; y: number }[]): Promise<boolean> {
+    return outlineRef.current
+      .track(async () => {
+        const lib = libraryRef.current;
+        if (lib.graphId !== pageId) return null;
+        const nodes = lib.graph.nodes;
+        const folded = readBoardFold(pageId);
+        const anchors = storedAnchors(nodes);
+        const boxes = layoutDirect(nodes, lib.graph.layoutDirection, anchors, folded, lib.graph.edges);
+        const first = moves[0];
+        const visual = first ? boxes.find((box) => box.id === first.id) : undefined;
+        if (!first || !visual) return null;
+        const dx = first.x - visual.x;
+        const dy = first.y - visual.y;
+        const shifts: { id: string; x: number; y: number; nextX: number; nextY: number }[] = [];
+        for (const move of moves) {
+          const node = nodes.find((item) => item.id === move.id);
+          const base =
+            node && isFiniteNumber(node.x) && isFiniteNumber(node.y)
+              ? { x: node.x, y: node.y }
+              : treeAnchor(move.id, nodes, boxes);
+          if (!base) continue;
+          const nextX = base.x + dx;
+          const nextY = base.y + dy;
+          anchors.set(move.id, { x: nextX, y: nextY });
+          if (nextX !== base.x || nextY !== base.y) shifts.push({ id: move.id, x: base.x, y: base.y, nextX, nextY });
+        }
+        const ok = await persistRef.current(pageId, { anchors });
+        if (!ok) return null;
+        if (shifts.length > 0) {
+          outlineRef.current.note({
+            type: 'anchors',
+            before: shifts.map((item) => ({ id: item.id, x: item.x, y: item.y })),
+            after: shifts.map((item) => ({ id: item.id, x: item.nextX, y: item.nextY })),
+          });
+        }
+        return { ok: true as const };
+      })
+      .then((value) => value !== null);
+  }
+
+  function runHistory(redo: boolean) {
+    const current = outlineRef.current;
+    if (current.phase === 'saving') return;
+    const pageId = pageIdRef.current;
+    const lib = libraryRef.current;
+    const version = pageId && lib.graphId === pageId ? lib.graph.outlineVersion : null;
+    void (async () => {
+      if (redo) await current.redo();
+      else await current.undo();
+      if (!pageId || version === null || pageIdRef.current !== pageId) return;
+      if (lib.graphId !== pageId || lib.graph.outlineVersion === version) return;
+      await trackPersist(pageId);
+    })();
   }
 
   useEffect(() => {
@@ -116,21 +351,6 @@ export const CollectionPage = observer(function CollectionPage() {
 
   useEffect(() => {
     if (!ready || !id || library.graphId !== id) return;
-    const nodes = library.graph.nodes;
-    if (nodes.length > 0 && nodes.every((node) => !isFiniteNumber(node.x))) {
-      const key = `${id}:all`;
-      if (!placeTried.current.has(key)) {
-        placeTried.current.add(key);
-        const boxes = layoutBoard(
-          nodes.map((node) => ({ id: node.id })),
-          library.graph.edges.map((edge) => ({ fromId: edge.fromId, toId: edge.toId })),
-        );
-        void library.savePlacements(
-          id,
-          boxes.map((box, index) => ({ nodeId: box.id, x: box.x, y: box.y, z: index })),
-        );
-      }
-    }
     for (const inclusion of library.graph.inclusions) {
       if (inclusion.collapsed) continue;
       if (inclusion.nodes.length === 0 || inclusion.nodes.some((node) => isFiniteNumber(node.x))) continue;
@@ -146,6 +366,10 @@ export const CollectionPage = observer(function CollectionPage() {
         boxes.map((box, index) => ({ nodeId: box.id, x: box.x, y: box.y, z: index })),
       );
     }
+    if (library.graph.mindmapAnchored || mindmapBoot.current === id) return;
+    mindmapBoot.current = id;
+    const pageId = id;
+    void outlineRef.current.track(() => bootMindmap(pageId));
   }, [ready, id, library, library.graph, library.graphId]);
 
   useEffect(() => {
@@ -171,8 +395,51 @@ export const CollectionPage = observer(function CollectionPage() {
       event.preventDefault();
       const current = outlineRef.current;
       if (current.phase === 'saving') return;
-      if (event.shiftKey) void current.redo();
-      else void current.undo();
+      const pageId = pageIdRef.current;
+      const lib = libraryRef.current;
+      const version = pageId && lib.graphId === pageId ? lib.graph.outlineVersion : null;
+      const redo = event.shiftKey;
+      void (async () => {
+        if (redo) await current.redo();
+        else await current.undo();
+        if (!pageId || version === null || pageIdRef.current !== pageId) return;
+        if (lib.graphId !== pageId || lib.graph.outlineVersion === version) return;
+        await current.track(async () => {
+          const ok = await persistRef.current(pageId);
+          return ok ? { ok: true as const } : null;
+        });
+      })();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (modeRef.current !== 'board') return;
+      if (event.repeat || event.isComposing) return;
+      const slash = event.code === 'Slash' || event.key === '/' || event.key === '?';
+      if (!slash) return;
+      const toggleSelf = (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.key === '/';
+      const toggleBranch =
+        (event.metaKey && event.shiftKey && !event.altKey && !event.ctrlKey) ||
+        (event.ctrlKey && event.altKey && !event.shiftKey && !event.metaKey);
+      if (!toggleSelf && !toggleBranch) return;
+      if (isTypingTarget(event.target)) return;
+      if (event.target instanceof Element && event.target.closest('.usel') !== null) return;
+      if (document.querySelector('.modal-wrap, .overlay, .addm-overlay, .ctx-menu')) return;
+      const ids = nodeIdsRef.current;
+      if (ids.length !== 1) return;
+      const nodeId = ids[0];
+      if (!nodeId) return;
+      const pageId = pageIdRef.current;
+      const lib = libraryRef.current;
+      if (!pageId || lib.graphId !== pageId) return;
+      if (!lib.graph.nodes.some((node) => node.id === nodeId)) return;
+      event.preventDefault();
+      const members = lib.graph.nodes.map((node) => ({ id: node.id, parentId: node.parentId }));
+      const next = toggleBranch ? branchFold(foldRef.current, nodeId, members) : toggleFold(foldRef.current, nodeId);
+      commitFoldRef.current(next);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -198,6 +465,17 @@ export const CollectionPage = observer(function CollectionPage() {
     bridges: current ? library.graph.bridges : [],
     inclusions,
   });
+  const mindAt = new Map<string, { x: number; y: number }>();
+  if (current) {
+    const boxes = layoutDirect(
+      nodes,
+      library.graph.layoutDirection,
+      storedAnchors(nodes),
+      boardFold,
+      edges,
+    );
+    for (const box of boxes) mindAt.set(box.id, { x: box.x, y: box.y });
+  }
 
   function liveInclusions() {
     return library.graphId === id ? library.graph.inclusions : [];
@@ -257,6 +535,7 @@ export const CollectionPage = observer(function CollectionPage() {
     if (rest.length === 0) return true;
     if (!id) return false;
     const inclusions: { childId: string; x: number; y: number }[] = [];
+    const rootMoves: { id: string; x: number; y: number }[] = [];
     const batches = new Map<string, { nodeId: string; x: number; y: number; z: number }[]>();
     for (const item of rest) {
       const childId = inclusionChildId(item.id);
@@ -272,11 +551,20 @@ export const CollectionPage = observer(function CollectionPage() {
         continue;
       }
       const home = homeOf(item.id);
+      if (home.groupId === null) {
+        const node = library.graphId === id ? library.graph.nodes.find((entry) => entry.id === item.id) : undefined;
+        if (node?.parentId === null) {
+          rootMoves.push({ id: item.id, x: item.x, y: item.y });
+          continue;
+        }
+        if (node) continue;
+      }
       const local = toLocal(home.groupId, item.x, item.y);
       const list = batches.get(home.collectionId) ?? [];
       list.push({ nodeId: item.id, x: local.x, y: local.y, z: item.z });
       batches.set(home.collectionId, list);
     }
+    const pageId = id;
     return (async () => {
       let ok = true;
       for (const [collectionId, placements] of batches) {
@@ -284,7 +572,17 @@ export const CollectionPage = observer(function CollectionPage() {
         if (!saved) ok = false;
       }
       for (const inclusion of inclusions) {
-        const saved = await library.updateInclusion(id, inclusion.childId, { x: inclusion.x, y: inclusion.y });
+        const saved = await library.updateInclusion(pageId, inclusion.childId, { x: inclusion.x, y: inclusion.y });
+        if (!saved) ok = false;
+      }
+      if (rootMoves.length === 1) {
+        const spot = rootMoves[0];
+        if (spot) {
+          const saved = await trackDrop(pageId, { rootId: spot.id, x: spot.x, y: spot.y }, true);
+          if (!saved) ok = false;
+        }
+      } else if (rootMoves.length > 1) {
+        const saved = await trackShift(pageId, rootMoves);
         if (!saved) ok = false;
       }
       return ok;
@@ -486,7 +784,7 @@ export const CollectionPage = observer(function CollectionPage() {
             title="撤销 ⌘Z"
             aria-label="撤销"
             disabled={!outlineSession.canUndo || outlineSession.phase === 'saving'}
-            onClick={() => void outlineSession.undo()}
+            onClick={() => runHistory(false)}
           >
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M3 6.5h6a3.5 3.5 0 0 1 0 7H6" />
@@ -499,7 +797,7 @@ export const CollectionPage = observer(function CollectionPage() {
             title="重做 ⇧⌘Z"
             aria-label="重做"
             disabled={!outlineSession.canRedo || outlineSession.phase === 'saving'}
-            onClick={() => void outlineSession.redo()}
+            onClick={() => runHistory(true)}
           >
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M13 6.5H7a3.5 3.5 0 0 0 0 7h3" />
@@ -605,8 +903,26 @@ export const CollectionPage = observer(function CollectionPage() {
           {ready ? (
             <BoardCanvas
               fitKey={id}
+              mindmap
               items={[
-                ...projected.items,
+                ...projected.items.map((item) => {
+                  const outlineOrder = nodes.find((node) => node.id === item.id)?.outlineOrder;
+                  const withOrder = outlineOrder === undefined ? item : { ...item, outlineOrder };
+                  if (item.groupId != null || item.face === 'inclusion') return withOrder;
+                  const box = mindAt.get(item.id);
+                  const placed = box ? { ...withOrder, x: box.x, y: box.y } : { ...withOrder, x: null, y: null };
+                  if (!box) return placed;
+                  const count = directChildCount(item.id, nodes);
+                  if (count === 0) return placed;
+                  return {
+                    ...placed,
+                    fold: {
+                      side: foldSide(current ? library.graph.layoutDirection : 'right', item.id, nodes),
+                      collapsed: boardFold.has(item.id),
+                      count,
+                    },
+                  };
+                }),
                 ...uploads.map((item) => ({
                   id: item.id,
                   label: item.label,
@@ -617,7 +933,8 @@ export const CollectionPage = observer(function CollectionPage() {
                   uploading: true,
                 })),
               ]}
-              links={projected.links}
+              links={linksForFold(projected.links, boardFold, nodes)}
+              onToggleFold={(nodeId) => commitFoldRef.current(toggleFold(foldRef.current, nodeId))}
               groups={projected.groups}
               selectedId={
                 selection?.kind === 'inclusion'
@@ -631,35 +948,101 @@ export const CollectionPage = observer(function CollectionPage() {
               selectedIds={nodeIds}
               onSelectIds={pickNodes}
               createPlaceholder="点的名字"
-              onGrowNode={(draft) => {
-                void (async () => {
-                  if (!id || pageIdRef.current !== id) return;
-                  const pageId = id;
-                  const collectionId = draft.groupId ?? pageId;
-                  const created = await library.createNode(collectionId, draft.name);
-                  if (!created || pageIdRef.current !== pageId) return;
-                  noteCreated(created);
-                  placeTried.current.add(`${pageId}:node:${created.id}`);
-                  const local = toLocal(draft.groupId, draft.x, draft.y);
-                  const z = nextPlacementZ(zOf(collectionId));
-                  const saved = await library.savePlacements(collectionId, [
-                    { nodeId: created.id, x: local.x, y: local.y, z },
-                  ]);
-                  const placementError = saved ? '' : library.error;
-                  if (pageIdRef.current !== pageId) return;
+              onGrowNode={async (draft) => {
+                if (!id || pageIdRef.current !== id || library.graphId !== id) return false;
+                const pageId = id;
+                const name = draft.name.trim();
+                if (name === '') return false;
+                const source = library.graph.nodes.find((node) => node.id === draft.nodeId);
+                if ((draft.role === 'after' || draft.role === 'before') && !source) return false;
+                const created = await outlineRef.current.track(async () => {
+                  const node =
+                    draft.role === 'parent'
+                      ? await library.insertParent(pageId, {
+                          expectedVersion: library.graph.outlineVersion,
+                          nodeId: draft.nodeId,
+                          name,
+                        })
+                      : await library.createNode(draft.groupId ?? pageId, name, {
+                          parentId: draft.role === 'child' ? draft.nodeId : (source?.parentId ?? null),
+                          ...(draft.role === 'before' ? { beforeNodeId: draft.nodeId } : {}),
+                          ...(draft.role === 'after' ? { afterNodeId: draft.nodeId } : {}),
+                        });
+                  if (!node) return null;
+                  if (pageIdRef.current !== pageId) return node;
                   await refresh();
-                  if (pageIdRef.current !== pageId) return;
-                  setSelectedId(created.id);
-                  setNodeIds([created.id]);
-                  setDetail({ kind: 'node', id: created.id });
-                  await library.loadNode(created.id);
-                  if (pageIdRef.current !== pageId) return;
-                  if (placementError !== '') library.error = placementError;
-                })();
+                  if (pageIdRef.current !== pageId || library.graphId !== pageId) return node;
+                  const restore = captureRemoval(library.graph.nodes, node.id);
+                  if (restore) outlineRef.current.note({ type: 'create', restore });
+                  return node;
+                });
+                if (!created) return false;
+                if (pageIdRef.current !== pageId) return true;
+                noteCreated(created);
+                await trackPersist(pageId);
+                if (pageIdRef.current !== pageId) return true;
+                setSelectedId(created.id);
+                setNodeIds([created.id]);
+                setDetail({ kind: 'node', id: created.id });
+                await library.loadNode(created.id);
+                return true;
+              }}
+              onMoveSibling={(nodeId, direction) => {
+                if (!id || library.graphId !== id) return;
+                const items = library.graph.nodes.map((node) => ({
+                  nodeId: node.id,
+                  parentId: node.parentId,
+                  order: node.outlineOrder,
+                }));
+                const next = moveSibling(items, nodeId, direction);
+                if (!outlineMoved(items, next, nodeId)) return;
+                void library.putOutline(id, library.graph.outlineVersion, next);
               }}
               onCreate={(name, at, groupId) => {
                 void (async () => {
                   const homeId = groupId ?? id;
+                  if (groupId === null) {
+                    if (!id) return;
+                    const pageId = id;
+                    const drop = { x: at.x - NODE_W / 2, y: at.y - NODE_H / 2 };
+                    const created = await outlineRef.current.track(async () => {
+                      const node = await library.createNode(pageId, name);
+                      if (!node) return null;
+                      if (pageIdRef.current !== pageId || library.graphId !== pageId) return node;
+                      const folded = readBoardFold(pageId);
+                      const anchors = anchorForRootDrop(
+                        storedAnchors(library.graph.nodes),
+                        node.id,
+                        drop,
+                        (trial) =>
+                          layoutDirect(library.graph.nodes, library.graph.layoutDirection, trial, folded, library.graph.edges),
+                      );
+                      const point = anchors?.get(node.id);
+                      if (point) {
+                        // 锚点必须赶在第一次绘制前写上。先刷新会按未锚定位置画一帧；
+                        // 本地坐标对齐后 persistMindmap 会跳过写入，所以直接保存这一处。
+                        library.graph = {
+                          ...library.graph,
+                          nodes: library.graph.nodes.map((item) =>
+                            item.id === node.id ? { ...item, x: point.x, y: point.y, z: 0 } : item,
+                          ),
+                        };
+                        await library.savePlacements(pageId, [{ nodeId: node.id, x: point.x, y: point.y, z: 0 }]);
+                      }
+                      if (pageIdRef.current !== pageId || library.graphId !== pageId) return node;
+                      const restore = captureRemoval(library.graph.nodes, node.id);
+                      if (restore) outlineRef.current.note({ type: 'create', restore });
+                      return node;
+                    });
+                    if (!created || pageIdRef.current !== pageId) return;
+                    noteCreated(created);
+                    if (pageIdRef.current !== pageId) return;
+                    setSelectedId(created.id);
+                    setNodeIds([created.id]);
+                    setDetail({ kind: 'node', id: created.id });
+                    await library.loadNode(created.id);
+                    return;
+                  }
                   const created = await library.createNode(homeId, name);
                   if (!created) return;
                   noteCreated(created);
@@ -687,13 +1070,39 @@ export const CollectionPage = observer(function CollectionPage() {
               }}
               onMove={(nodeId, x, y, z) => movePlaced([{ id: nodeId, x, y, z }])}
               onMoveItems={movePlaced}
+              onMindmapDrop={(input) => {
+                if (!id || library.graphId !== id) return false;
+                if (hasOutlineCycle(input.items)) return false;
+                const pageId = id;
+                const session = outlineRef.current;
+                return (async () => {
+                  const ok = await session.applyStructure(input.items);
+                  if (!ok || pageIdRef.current !== pageId) return ok;
+                  const drop = input.anchor
+                    ? { rootId: input.nodeId, x: input.anchor.x, y: input.anchor.y }
+                    : null;
+                  return trackDrop(pageId, drop);
+                })();
+              }}
               onResizeImage={(nodeId, imageWidth) => {
                 if (nodeId.startsWith('uploading:')) return false;
                 const direct = library.graphId === id ? library.graph.nodes.find((entry) => entry.id === nodeId) : undefined;
-                if (direct && isFiniteNumber(direct.x) && isFiniteNumber(direct.y)) {
-                  return library.savePlacements(id, [
-                    { nodeId, x: direct.x, y: direct.y, z: isFiniteNumber(direct.z) ? direct.z : 0, imageWidth },
-                  ]);
+                if (direct) {
+                  const anchors = storedAnchors(library.graph.nodes);
+                  return (async () => {
+                    const saved = await library.savePlacements(id, [
+                      {
+                        nodeId,
+                        x: isFiniteNumber(direct.x) ? direct.x : 0,
+                        y: isFiniteNumber(direct.y) ? direct.y : 0,
+                        z: isFiniteNumber(direct.z) ? direct.z : 0,
+                        imageWidth,
+                      },
+                    ]);
+                    if (!saved || pageIdRef.current !== id) return saved;
+                    await trackPersist(id, { anchors });
+                    return true;
+                  })();
                 }
                 for (const inclusion of liveInclusions()) {
                   const node = inclusion.nodes.find((entry) => entry.id === nodeId);
@@ -709,7 +1118,7 @@ export const CollectionPage = observer(function CollectionPage() {
                   if (inclusionChildId(spot.id) !== null) return false;
                   if (placeTried.current.has(`${id}:node:${spot.id}`)) return false;
                   const home = homeOf(spot.id);
-                  if (home.groupId === null) return true;
+                  if (home.groupId === null) return false;
                   const inclusion = liveInclusions().find((item) => item.childId === home.groupId);
                   if (!inclusion) return true;
                   return inclusion.nodes.some((node) => isFiniteNumber(node.x));
@@ -749,12 +1158,50 @@ export const CollectionPage = observer(function CollectionPage() {
               onCanvas={(patch) => {
                 void session.updateCanvas(patch);
               }}
+              layoutDirection={current ? library.graph.layoutDirection : 'right'}
+              onLayoutDirection={(direction) => {
+                if (!id || pageIdRef.current !== id || library.graphId !== id) return;
+                if (direction === library.graph.layoutDirection) return;
+                const pageId = id;
+                const epoch = ++layoutEpoch.current;
+                void (async () => {
+                  const ok = await library.updateLayout(pageId, direction);
+                  if (!ok || epoch !== layoutEpoch.current || pageIdRef.current !== pageId) return;
+                  const loaded = await library.loadGraph(pageId);
+                  if (!loaded || epoch !== layoutEpoch.current || pageIdRef.current !== pageId) return;
+                  await trackPersist(pageId);
+                })();
+              }}
+              onFlipSide={(nodeId) => {
+                if (!id || pageIdRef.current !== id || library.graphId !== id) return;
+                if (library.graph.layoutDirection !== 'both') return;
+                const nodes = library.graph.nodes;
+                const node = nodes.find((item) => item.id === nodeId);
+                if (!node?.parentId) return;
+                const parent = nodes.find((item) => item.id === node.parentId);
+                if (!parent || parent.parentId !== null) return;
+                const pageId = id;
+                const side = foldSide(library.graph.layoutDirection, nodeId, nodes) === 'left' ? 'right' : 'left';
+                void (async () => {
+                  const ok = await library.updateMemberSide(pageId, nodeId, side);
+                  if (!ok || pageIdRef.current !== pageId || library.graphId !== pageId) return;
+                  await trackPersist(pageId);
+                })();
+              }}
               onConnect={(fromId, toId, label) => {
                 if (fromId.startsWith('uploading:') || toId.startsWith('uploading:')) return;
                 void (async () => {
-                  const created = await library.createEdge(fromId, toId, label);
+                  const created = await outlineRef.current.track(async () => {
+                    const edge = await library.createEdge(fromId, toId, label);
+                    if (!edge) return null;
+                    outlineRef.current.note({
+                      type: 'edge-create',
+                      edge: { edgeId: edge.id, fromId: edge.fromId, toId: edge.toId, label: edge.label },
+                    });
+                    await refresh();
+                    return edge;
+                  });
                   if (!created) return;
-                  await refresh();
                   setNodeIds([]);
                   setSelection({ kind: 'edge', id: created.id });
                   setDetail({ kind: 'edge', id: created.id });
@@ -850,7 +1297,7 @@ export const CollectionPage = observer(function CollectionPage() {
           ) : null}
           {ready && nodes.length <= 2 && inclusions.length === 0 ? (
             <p className="canvas-hint">
-              双击空白添加文字 · 拖入图片 · 拖动点 · 拖空白框选 · ⌘ 或 Ctrl 点选多个 · 从圆点拖线或按 L 连线 · 选中一个点后 Tab 在旁边新建、Enter 在下方新建 · 工具栏或右键可插入子集合
+              双击空白新建根主题 · 拖入图片 · 拖动点 · 拖空白框选 · ⌘ 或 Ctrl 点选多个 · 从圆点拖线或按 L 连线 · 选中一个点后 Tab 建子主题、Enter 建同级 · 工具栏或右键可插入子集合
             </p>
           ) : null}
           {session.canvasError !== '' || library.error !== '' ? (
@@ -870,6 +1317,9 @@ export const CollectionPage = observer(function CollectionPage() {
             onLocated={locateNode}
             onLeave={leave}
             onTouched={() => void refresh()}
+            onDescribed={async () => {
+              await trackPersist(pageId);
+            }}
           />
         ) : null}
         {detail?.kind === 'edge' ? (
@@ -961,4 +1411,114 @@ function createdNodeId(data: unknown): string | null {
   if (typeof data !== 'object' || data === null || !('id' in data)) return null;
   const id = data.id;
   return typeof id === 'string' && id !== '' ? id : null;
+}
+
+function writeBoardFold(collectionId: string, ids: readonly string[]) {
+  try {
+    sessionStorage.setItem(`unfold.board-fold.v1:${collectionId}`, JSON.stringify(ids));
+  } catch {
+    // 写不进去时只保留这一帧的状态
+  }
+}
+
+function readBoardFold(collectionId: string): Set<string> {
+  try {
+    const raw = sessionStorage.getItem(`unfold.board-fold.v1:${collectionId}`);
+    if (raw === null) return new Set();
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((item): item is string => typeof item === 'string'));
+  } catch {
+    return new Set();
+  }
+}
+
+function mindmapNodes(nodes: readonly GraphNode[]) {
+  return nodes.map((node) => {
+    const frame = node.kind === 'image' ? imageFrame(node.imageWidth, 1) : null;
+    return {
+      id: node.id,
+      parentId: node.parentId,
+      order: node.outlineOrder,
+      side: node.layoutSide,
+      w: frame ? frame.w : NODE_W,
+      h: frame ? frame.h : textNodeHeight(node.description),
+    };
+  });
+}
+
+function storedAnchors(nodes: readonly GraphNode[]): Map<string, { x: number; y: number }> {
+  const anchors = new Map<string, { x: number; y: number }>();
+  for (const node of nodes) {
+    if (node.parentId !== null) continue;
+    if (!isFiniteNumber(node.x) || !isFiniteNumber(node.y)) continue;
+    anchors.set(node.id, { x: node.x, y: node.y });
+  }
+  return anchors;
+}
+
+function layoutDirect(
+  nodes: readonly GraphNode[],
+  direction: LayoutDirection,
+  anchors: ReadonlyMap<string, { x: number; y: number }>,
+  folded: ReadonlySet<string>,
+  links: readonly { fromId: string; toId: string; label: string }[],
+): MindmapBox[] {
+  const shaped = mindmapNodes(nodes);
+  return layoutMindmap({
+    nodes: shaped,
+    folded,
+    direction,
+    anchors,
+    rootGap: MINDMAP_ROOT_GAP,
+    levelGap: MINDMAP_LEVEL_GAP,
+    siblingGap: MINDMAP_SIBLING_GAP,
+    originX: MINDMAP_ORIGIN_X,
+    originY: MINDMAP_ORIGIN_Y,
+    levelExtra: branchLevelExtra(shaped, links),
+  });
+}
+
+function inclusionObstacles(inclusions: readonly GraphInclusion[], directIds: ReadonlySet<string>): ObstacleRect[] {
+  const obstacles: ObstacleRect[] = [];
+  for (const inclusion of inclusions) {
+    if (inclusion.collapsed) {
+      const origin = collapsedOrigin(inclusion);
+      obstacles.push({
+        x: origin.x,
+        y: origin.y,
+        w: NODE_W,
+        h: textNodeHeight(`子集合 · ${inclusion.nodes.length} 个点`),
+      });
+      continue;
+    }
+    const boxes = new Map<string, { x: number; y: number; w: number; h: number }>();
+    const memberIds: string[] = [];
+    for (const node of inclusion.nodes) {
+      if (directIds.has(node.id)) continue;
+      memberIds.push(node.id);
+      if (!isFiniteNumber(node.x) || !isFiniteNumber(node.y)) continue;
+      const frame = node.kind === 'image' ? imageFrame(node.imageWidth, 1) : null;
+      boxes.set(node.id, {
+        x: node.x + inclusion.x,
+        y: node.y + inclusion.y,
+        w: frame ? frame.w : NODE_W,
+        h: frame ? frame.h : textNodeHeight(node.description),
+      });
+    }
+    const rect = inclusionFrameRect(
+      {
+        childId: inclusion.childId,
+        title: inclusion.title,
+        labels: inclusion.labels,
+        anchorX: inclusion.x,
+        anchorY: inclusion.y,
+        collapsed: false,
+        memberIds,
+      },
+      boxes,
+    );
+    if (rect) obstacles.push(rect);
+  }
+  return obstacles;
 }

@@ -9,7 +9,11 @@ import type {
   Edge,
   EdgeAppearance,
   EdgeDetail,
+  LayoutDirection,
+  LayoutSide,
   CreateNodeResult,
+  InsertParentBody,
+  InsertParentResult,
   InclusionCandidates,
   Library,
   LibraryCollection,
@@ -33,8 +37,9 @@ import {
 import { createEdge, deleteEdge, loadEdge, renameEdge } from './edges.js';
 import { loadGraph, loadLibrary } from './graph.js';
 import { createInclusion, loadInclusionCandidates, removeInclusion, updateInclusion } from './inclusions.js';
-import { putOutline, removeMember, restoreOutline, type OutlineWrite } from './outline.js';
+import { insertParent as requestInsertParent, putOutline, removeMember, restoreOutline, type OutlineWrite } from './outline.js';
 import { clearPeek, deleteNode, describeNode, loadNode, loadPeek, renameNode } from './nodes.js';
+import { adoptCollectionMindmap, commitCollectionMindmap, saveLayout, saveMemberSide } from './mindmap.js';
 import { savePlacements, type PlacementWrite } from './placements.js';
 import { pullView, setSyncView, type SyncView } from './pull.js';
 import { clearSearch, search, type SearchArgs } from './search.js';
@@ -75,6 +80,8 @@ export class LibraryService extends Service implements LibraryState {
     inclusions: [],
     appearance: defaultEdgeAppearance,
     outlineVersion: 0,
+    layoutDirection: 'right',
+    mindmapAnchored: false,
   };
   graphId = '';
   nodeDetail: NodeDetail | null = null;
@@ -115,9 +122,13 @@ export class LibraryService extends Service implements LibraryState {
   async createNode(
     collectionId: string,
     name: string,
-    place?: { parentId?: string | null; afterNodeId?: string },
+    place?: { parentId?: string | null; afterNodeId?: string; beforeNodeId?: string },
   ): Promise<CreateNodeResult | null> {
     return this.write(() => createNode(this, collectionId, name, place), (node) => node !== null);
+  }
+
+  async insertParent(collectionId: string, body: InsertParentBody): Promise<InsertParentResult | null> {
+    return this.write(() => requestInsertParent(this, collectionId, body), (created) => created !== null);
   }
 
   async addMember(collectionId: string, nodeId: string, parentId?: string | null) {
@@ -149,8 +160,26 @@ export class LibraryService extends Service implements LibraryState {
     return saveAppearance(this, collectionId, next);
   }
 
+  /** 改这个合集的脑图朝向。不写本地图，调用方再读图并写坐标。 */
+  async updateLayout(collectionId: string, direction: LayoutDirection): Promise<boolean> {
+    return saveLayout(this, collectionId, direction);
+  }
+
+  /** 把根的直接子项放到另一侧。失败不改本地。 */
+  async updateMemberSide(collectionId: string, nodeId: string, side: LayoutSide): Promise<boolean> {
+    return saveMemberSide(this, collectionId, nodeId, side);
+  }
+
   async savePlacements(collectionId: string, placements: PlacementWrite[]): Promise<boolean> {
     return this.write(() => savePlacements(this, collectionId, placements), (ok) => ok);
+  }
+
+  adoptMindmap(collectionId: string) {
+    return adoptCollectionMindmap(this, collectionId);
+  }
+
+  commitMindmap(collectionId: string) {
+    return commitCollectionMindmap(this, collectionId);
   }
 
   loadInclusionCandidates(collectionId: string): Promise<InclusionCandidates | null> {

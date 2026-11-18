@@ -103,6 +103,9 @@ function toItem(node: GraphNode, extra: Partial<BoardCanvasItem> = {}): BoardCan
     kind: node.kind,
     assetId: node.assetId,
     imageWidth: node.imageWidth,
+    parentId: node.parentId,
+    outlineOrder: node.outlineOrder,
+    layoutSide: node.layoutSide,
     ...extra,
   };
 }

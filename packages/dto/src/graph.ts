@@ -81,6 +81,7 @@ export const createNodeBodySchema = z.strictObject({
   name: trimmed('名字不能是空的', 80),
   parentId: z.uuid().nullable().optional(),
   afterNodeId: z.uuid().optional(),
+  beforeNodeId: z.uuid().optional(),
 });
 
 export const updateNodeBodySchema = z
@@ -128,12 +129,24 @@ export const createNodeResultSchema = z.object({
   duplicates: z.array(duplicateNodeSchema).max(5),
 });
 
+export const insertParentBodySchema = z.strictObject({
+  expectedVersion: z.int().nonnegative(),
+  nodeId: z.uuid(),
+  name: trimmed('名字不能是空的', 80),
+});
+
+export const insertParentResultSchema = createNodeResultSchema.extend({
+  childId: z.uuid(),
+});
+
 export const memberResultSchema = z.object({
   status: z.enum(['joined', 'exists']),
   parentId: z.uuid().nullable(),
   outlineOrder: z.int().nonnegative(),
   outlineVersion: z.int().nonnegative(),
 });
+
+export const layoutSideSchema = z.enum(['left', 'right']);
 
 export const restoreOutlineBodySchema = z.strictObject({
   expectedVersion: z.int().nonnegative(),
@@ -147,6 +160,7 @@ export const restoreOutlineBodySchema = z.strictObject({
     imageWidth: z.int().min(120).max(480).nullable(),
   }),
   children: z.array(outlineItemSchema),
+  layoutSide: layoutSideSchema.nullable().optional(),
 });
 
 export const edgeSchema = z.object({
@@ -201,6 +215,16 @@ export const defaultCanvasPrefs = {
 
 const labelText = trimmed('关系说明不能是空的', 40);
 
+export const layoutDirectionSchema = z.enum(['right', 'left', 'both']);
+
+export const layoutBodySchema = z.strictObject({
+  direction: layoutDirectionSchema,
+});
+
+export const memberSideBodySchema = z.strictObject({
+  side: layoutSideSchema,
+});
+
 export const graphNodeSchema = nodeSchema.extend({
   description: z.string(),
   kind: nodeKindSchema,
@@ -213,6 +237,7 @@ export const graphNodeSchema = nodeSchema.extend({
   cardTypes: z.array(cardTypeSchema),
   parentId: z.uuid().nullable(),
   outlineOrder: z.int().nonnegative(),
+  layoutSide: layoutSideSchema.nullable(),
 });
 
 export const placementsBodySchema = z.strictObject({
@@ -264,6 +289,17 @@ export const collectionGraphSchema = z.object({
   inclusions: z.array(graphInclusionSchema),
   appearance: edgeAppearanceSchema,
   outlineVersion: z.int().nonnegative(),
+  layoutDirection: layoutDirectionSchema,
+  mindmapAnchored: z.boolean(),
+});
+
+export const mindmapAdoptResultSchema = z.strictObject({
+  mindmapAnchored: z.boolean(),
+  copied: z.int().nonnegative(),
+});
+
+export const mindmapCommitResultSchema = z.strictObject({
+  mindmapAnchored: z.literal(true),
 });
 
 export const createInclusionBodySchema = z.strictObject({
@@ -438,6 +474,8 @@ export type UpdateCollectionBody = z.infer<typeof updateCollectionBodySchema>;
 export type CollectionList = z.infer<typeof collectionListSchema>;
 export type Node = z.infer<typeof nodeSchema>;
 export type CreateNodeBody = z.infer<typeof createNodeBodySchema>;
+export type InsertParentBody = z.infer<typeof insertParentBodySchema>;
+export type InsertParentResult = z.infer<typeof insertParentResultSchema>;
 export type UpdateNodeBody = z.infer<typeof updateNodeBodySchema>;
 export type AddMemberBody = z.infer<typeof addMemberBodySchema>;
 export type OutlineItemBody = z.infer<typeof outlineItemSchema>;
@@ -467,6 +505,12 @@ export type CreateInclusionBody = z.infer<typeof createInclusionBodySchema>;
 export type UpdateInclusionBody = z.infer<typeof updateInclusionBodySchema>;
 export type InclusionCandidate = z.infer<typeof inclusionCandidateSchema>;
 export type InclusionCandidates = z.infer<typeof inclusionCandidatesSchema>;
+export type LayoutDirection = z.infer<typeof layoutDirectionSchema>;
+export type LayoutSide = z.infer<typeof layoutSideSchema>;
+export type LayoutBody = z.infer<typeof layoutBodySchema>;
+export type MemberSideBody = z.infer<typeof memberSideBodySchema>;
+export type MindmapAdoptResult = z.infer<typeof mindmapAdoptResultSchema>;
+export type MindmapCommitResult = z.infer<typeof mindmapCommitResultSchema>;
 export type GraphNode = z.infer<typeof graphNodeSchema>;
 export type GraphEdge = z.infer<typeof graphEdgeSchema>;
 export type LibraryCollection = z.infer<typeof libraryCollectionSchema>;

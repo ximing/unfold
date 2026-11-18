@@ -10,7 +10,9 @@ import {
   noteOutlineSuccess,
   peekOutlineRedo,
   peekOutlineUndo,
+  type AnchorPoint,
   type OutlineHistory,
+  type OutlineNote,
 } from './outline-history.js';
 import { captureRemoval, outlineItems, sameOutline } from './outline-tree.js';
 
@@ -26,6 +28,9 @@ export type OutlineSession = {
   redo: () => Promise<void>;
   applyStructure: (next: OutlineItem[]) => Promise<boolean>;
   removeDirect: (nodeId: string) => Promise<boolean>;
+  /** 只在已经排进 tail 的写入里调用，避免和撤销抢栈。 */
+  note: (note: OutlineNote) => void;
+  bindAnchorPersist: (persist: (collectionId: string) => Promise<boolean>) => void;
   track: <T>(run: () => Promise<T | null>) => Promise<T | null>;
   reload: () => Promise<void>;
 };
@@ -40,6 +45,7 @@ export function useOutlineSession(collectionId: string | undefined): OutlineSess
   const [conflict, setConflict] = useState(false);
   const [seen, setSeen] = useState(collectionId);
   const tail = useRef(Promise.resolve());
+  const anchorPersist = useRef<(collectionId: string) => Promise<boolean>>(async () => false);
   if (seen !== collectionId) {
     const empty = createOutlineHistory();
     historyRef.current = empty;
@@ -54,6 +60,20 @@ export function useOutlineSession(collectionId: string | undefined): OutlineSess
   function remember(next: OutlineHistory) {
     historyRef.current = next;
     setHistory(next);
+  }
+
+  function note(entry: OutlineNote) {
+    remember(noteOutlineSuccess(historyRef.current, entry));
+  }
+
+  function bindAnchorPersist(persist: (collectionId: string) => Promise<boolean>) {
+    anchorPersist.current = persist;
+  }
+
+  async function finishLoaded(pageId: string, commit: OutlineHistory) {
+    remember(commit);
+    const loaded = await libraryRef.current.loadGraph(pageId);
+    setPhase(loaded ? 'saved' : 'failed');
   }
 
   function enqueue<T>(task: () => Promise<T>): Promise<T> {
@@ -91,10 +111,11 @@ export function useOutlineSession(collectionId: string | undefined): OutlineSess
       const entry = peekOutlineUndo(historyRef.current);
       const lib = libraryRef.current;
       if (!entry || !collectionId || lib.graphId !== collectionId) return;
+      const pageId = collectionId;
       setPhase('saving');
       setConflict(false);
       if (entry.kind === 'structure') {
-        const result = await lib.putOutline(collectionId, lib.graph.outlineVersion, entry.undoItems);
+        const result = await lib.putOutline(pageId, lib.graph.outlineVersion, entry.undoItems);
         if (!result.ok) {
           setPhase('failed');
           setConflict(result.conflict);
@@ -104,18 +125,54 @@ export function useOutlineSession(collectionId: string | undefined): OutlineSess
         setPhase('saved');
         return;
       }
-      const result = await lib.restoreOutline(collectionId, {
-        ...entry.restore,
-        expectedVersion: lib.graph.outlineVersion,
-      });
-      if (!result.ok) {
+      if (entry.kind === 'create') {
+        const result = await lib.removeMember(pageId, entry.restore.nodeId, lib.graph.outlineVersion);
+        if (!result.ok) {
+          setPhase('failed');
+          setConflict(result.conflict);
+          return;
+        }
+        await finishLoaded(pageId, commitOutlineUndo(historyRef.current));
+        return;
+      }
+      if (entry.kind === 'remove') {
+        const result = await lib.restoreOutline(pageId, {
+          ...entry.restore,
+          expectedVersion: lib.graph.outlineVersion,
+        });
+        if (!result.ok) {
+          setPhase('failed');
+          setConflict(result.conflict);
+          return;
+        }
+        await finishLoaded(pageId, commitOutlineUndo(historyRef.current));
+        return;
+      }
+      if (entry.kind === 'edge-create') {
+        const ok = await lib.deleteEdge(entry.edge.edgeId);
+        if (!ok) {
+          setPhase('failed');
+          return;
+        }
+        await finishLoaded(pageId, commitOutlineUndo(historyRef.current));
+        return;
+      }
+      if (entry.kind !== 'anchors') {
+        setPhase('idle');
+        return;
+      }
+      const placed = await writeAnchors(lib.graph.nodes, entry.before, (body) => lib.savePlacements(pageId, body));
+      if (!placed) {
         setPhase('failed');
-        setConflict(result.conflict);
+        return;
+      }
+      const laid = await anchorPersist.current(pageId);
+      if (!laid) {
+        setPhase('failed');
         return;
       }
       remember(commitOutlineUndo(historyRef.current));
-      const loaded = await lib.loadGraph(collectionId);
-      setPhase(loaded ? 'saved' : 'failed');
+      setPhase('saved');
     });
   }
 
@@ -124,10 +181,11 @@ export function useOutlineSession(collectionId: string | undefined): OutlineSess
       const entry = peekOutlineRedo(historyRef.current);
       const lib = libraryRef.current;
       if (!entry || !collectionId || lib.graphId !== collectionId) return;
+      const pageId = collectionId;
       setPhase('saving');
       setConflict(false);
       if (entry.kind === 'structure') {
-        const result = await lib.putOutline(collectionId, lib.graph.outlineVersion, entry.redoItems);
+        const result = await lib.putOutline(pageId, lib.graph.outlineVersion, entry.redoItems);
         if (!result.ok) {
           setPhase('failed');
           setConflict(result.conflict);
@@ -137,15 +195,60 @@ export function useOutlineSession(collectionId: string | undefined): OutlineSess
         setPhase('saved');
         return;
       }
-      const result = await lib.removeMember(collectionId, entry.restore.nodeId, lib.graph.outlineVersion);
-      if (!result.ok) {
+      if (entry.kind === 'create') {
+        // 插入父主题也在这里重做。再 POST parent 会新建第二个点。
+        const result = await lib.restoreOutline(pageId, {
+          ...entry.restore,
+          expectedVersion: lib.graph.outlineVersion,
+        });
+        if (!result.ok) {
+          setPhase('failed');
+          setConflict(result.conflict);
+          return;
+        }
+        await finishLoaded(pageId, commitOutlineRedo(historyRef.current));
+        return;
+      }
+      if (entry.kind === 'remove') {
+        const result = await lib.removeMember(pageId, entry.restore.nodeId, lib.graph.outlineVersion);
+        if (!result.ok) {
+          setPhase('failed');
+          setConflict(result.conflict);
+          return;
+        }
+        await finishLoaded(pageId, commitOutlineRedo(historyRef.current));
+        return;
+      }
+      if (entry.kind === 'edge-create') {
+        const created = await lib.createEdge(entry.edge.fromId, entry.edge.toId, entry.edge.label);
+        if (!created) {
+          setPhase('failed');
+          return;
+        }
+        await finishLoaded(
+          pageId,
+          commitOutlineRedo(historyRef.current, (item) =>
+            item.kind === 'edge-create' ? { ...item, edge: { ...item.edge, edgeId: created.id } } : item,
+          ),
+        );
+        return;
+      }
+      if (entry.kind !== 'anchors') {
+        setPhase('idle');
+        return;
+      }
+      const placed = await writeAnchors(lib.graph.nodes, entry.after, (body) => lib.savePlacements(pageId, body));
+      if (!placed) {
         setPhase('failed');
-        setConflict(result.conflict);
+        return;
+      }
+      const laid = await anchorPersist.current(pageId);
+      if (!laid) {
+        setPhase('failed');
         return;
       }
       remember(commitOutlineRedo(historyRef.current));
-      const loaded = await lib.loadGraph(collectionId);
-      setPhase(loaded ? 'saved' : 'failed');
+      setPhase('saved');
     });
   }
 
@@ -199,7 +302,25 @@ export function useOutlineSession(collectionId: string | undefined): OutlineSess
     redo,
     applyStructure,
     removeDirect,
+    note,
+    bindAnchorPersist,
     track,
     reload,
   };
+}
+
+function writeAnchors(
+  nodes: readonly { id: string; parentId: string | null; z: number | null }[],
+  points: readonly AnchorPoint[],
+  save: (body: { nodeId: string; x: number; y: number; z: number }[]) => Promise<boolean>,
+): Promise<boolean> {
+  if (points.length === 0) return Promise.resolve(false);
+  const body: { nodeId: string; x: number; y: number; z: number }[] = [];
+  for (const point of points) {
+    const node = nodes.find((item) => item.id === point.id);
+    if (!node || node.parentId !== null) return Promise.resolve(false);
+    const z = typeof node.z === 'number' && Number.isFinite(node.z) ? node.z : 0;
+    body.push({ nodeId: point.id, x: point.x, y: point.y, z });
+  }
+  return save(body);
 }

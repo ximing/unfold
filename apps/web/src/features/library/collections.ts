@@ -96,12 +96,13 @@ export async function createNode(
   state: LibraryState,
   collectionId: string,
   name: string,
-  place?: { parentId?: string | null; afterNodeId?: string },
+  place?: { parentId?: string | null; afterNodeId?: string; beforeNodeId?: string },
 ): Promise<CreateNodeResult | null> {
   state.error = '';
-  const body: { name: string; parentId?: string | null; afterNodeId?: string } = { name };
+  const body: { name: string; parentId?: string | null; afterNodeId?: string; beforeNodeId?: string } = { name };
   if (place && 'parentId' in place) body.parentId = place.parentId;
   if (place?.afterNodeId) body.afterNodeId = place.afterNodeId;
+  if (place?.beforeNodeId) body.beforeNodeId = place.beforeNodeId;
   const res = await apiSend(`/api/collections/${collectionId}/nodes`, {
     method: 'POST',
     credentials: 'include',

@@ -125,6 +125,7 @@ describe('canvas placements', () => {
         cardTypes: [],
         parentId: null,
         outlineOrder: 0,
+        layoutSide: null,
       });
 
       const emptyB = await graphOf(collectionB.id);

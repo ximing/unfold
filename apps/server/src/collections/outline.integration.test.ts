@@ -59,6 +59,11 @@ type MemberBody = {
   outlineVersion: number;
 };
 
+function layoutSideOf(graph: Graph, id: string): string | null | undefined {
+  const node = graph.nodes.find((item) => item.id === id) as (GNode & { layoutSide?: string | null }) | undefined;
+  return node?.layoutSide;
+}
+
 function itemsOf(nodes: readonly GNode[]): OutlineItem[] {
   return nodes.map((node) => ({ nodeId: node.id, parentId: node.parentId, order: node.outlineOrder }));
 }
@@ -109,7 +114,11 @@ describe('outline', () => {
     return (res.json() as { id: string }).id;
   }
 
-  async function makeNode(collectionId: string, name: string, extra?: { parentId?: string | null; afterNodeId?: string }) {
+  async function makeNode(
+    collectionId: string,
+    name: string,
+    extra?: { parentId?: string | null; afterNodeId?: string; beforeNodeId?: string },
+  ) {
     const res = await call('POST', `/api/collections/${collectionId}/nodes`, { name, ...extra });
     return res;
   }
@@ -896,6 +905,14 @@ describe('outline', () => {
         otherCookie,
       );
       expect(searched.statusCode).toBe(404);
+      const parented = await call(
+        'POST',
+        `/api/collections/${collectionId}/outline/parent`,
+        { expectedVersion: 0, nodeId: node.id, name: '不该' },
+        otherCookie,
+      );
+      expect(parented.statusCode).toBe(404);
+      expect(errorOf(parented.json()).code).toBe('not_found');
     } finally {
       await cleanup(created);
       const other = await app.inject({
@@ -909,6 +926,280 @@ describe('outline', () => {
         const ids = (library.json() as { collections: { id: string }[] }).collections.map((item) => item.id);
         for (const id of ids) await call('DELETE', `/api/collections/${id}`, undefined, otherCookie);
       }
+    }
+  });
+
+  it('inserts a node before a sibling and shifts later orders without an edge', async () => {
+    const token = randomUUID();
+    const created = { nodes: [] as string[], collections: [] as string[] };
+    try {
+      const collectionId = await makeCollection(`前插${token}`);
+      created.collections.push(collectionId);
+      const first = (await makeNode(collectionId, `甲${token}`)).json() as CreatedNode;
+      const second = (await makeNode(collectionId, `乙${token}`)).json() as CreatedNode;
+      const third = (await makeNode(collectionId, `丙${token}`)).json() as CreatedNode;
+      created.nodes.push(first.id, second.id, third.id);
+      const origin = await graphOf(collectionId);
+      const orderOf = (id: string) => origin.nodes.find((node) => node.id === id)?.outlineOrder;
+
+      const inserted = await makeNode(collectionId, `前${token}`, { parentId: null, beforeNodeId: second.id });
+      expect(inserted.statusCode).toBe(201);
+      const createdNode = inserted.json() as CreatedNode;
+      created.nodes.push(createdNode.id);
+      expect(createdNode.parentId).toBeNull();
+      expect(createdNode.outlineOrder).toBe(orderOf(second.id));
+      expect(createdNode.outlineVersion).toBe(origin.outlineVersion + 1);
+
+      const graph = await graphOf(collectionId);
+      expect(graph.edges).toEqual([]);
+      expect(graph.nodes.find((node) => node.id === first.id)?.outlineOrder).toBe(orderOf(first.id));
+      expect(graph.nodes.find((node) => node.id === second.id)?.outlineOrder).toBe((orderOf(second.id) ?? 0) + 1);
+      expect(graph.nodes.find((node) => node.id === third.id)?.outlineOrder).toBe((orderOf(third.id) ?? 0) + 1);
+      expect(graph.nodes.find((node) => node.id === createdNode.id)?.outlineOrder).toBe(orderOf(second.id));
+    } finally {
+      await cleanup(created);
+    }
+  });
+
+  it('rejects beforeNodeId that is combined with afterNodeId or is not a sibling', async () => {
+    const token = randomUUID();
+    const created = { nodes: [] as string[], collections: [] as string[] };
+    try {
+      const collectionId = await makeCollection(`拒前${token}`);
+      created.collections.push(collectionId);
+      const root = (await makeNode(collectionId, `根${token}`)).json() as CreatedNode;
+      const sibling = (await makeNode(collectionId, `弟${token}`)).json() as CreatedNode;
+      const child = (await makeNode(collectionId, `子${token}`, { parentId: root.id })).json() as CreatedNode;
+      created.nodes.push(root.id, sibling.id, child.id);
+      const origin = await graphOf(collectionId);
+
+      const both = await makeNode(collectionId, `双${token}`, {
+        parentId: null,
+        afterNodeId: root.id,
+        beforeNodeId: sibling.id,
+      });
+      expect(both.statusCode).toBe(400);
+      expect(errorOf(both.json()).code).toBe('invalid_body');
+
+      const unknown = await makeNode(collectionId, `无${token}`, { beforeNodeId: randomUUID() });
+      expect(unknown.statusCode).toBe(400);
+      expect(errorOf(unknown.json()).code).toBe('invalid_body');
+
+      const otherParent = await makeNode(collectionId, `别父${token}`, { parentId: null, beforeNodeId: child.id });
+      expect(otherParent.statusCode).toBe(400);
+      expect(errorOf(otherParent.json()).code).toBe('invalid_body');
+
+      const after = await graphOf(collectionId);
+      expect(after.outlineVersion).toBe(origin.outlineVersion);
+      expect(after.nodes).toHaveLength(origin.nodes.length);
+    } finally {
+      await cleanup(created);
+    }
+  });
+
+  it('inserts a parent topic in the selected node slot', async () => {
+    const token = randomUUID();
+    const created = { nodes: [] as string[], collections: [] as string[] };
+    try {
+      const collectionId = await makeCollection(`插父${token}`);
+      created.collections.push(collectionId);
+      const root = (await makeNode(collectionId, `根${token}`)).json() as CreatedNode;
+      const selected = (await makeNode(collectionId, `选${token}`, { parentId: root.id })).json() as CreatedNode;
+      const later = (await makeNode(collectionId, `后${token}`, { parentId: root.id })).json() as CreatedNode;
+      const grandchild = (await makeNode(collectionId, `孙${token}`, { parentId: selected.id })).json() as CreatedNode;
+      const twin = (await makeNode(collectionId, `新父${token}`)).json() as CreatedNode;
+      created.nodes.push(root.id, selected.id, later.id, grandchild.id, twin.id);
+      const placed = await call('PATCH', `/api/collections/${collectionId}/placements`, {
+        placements: [{ nodeId: selected.id, x: 12, y: 34, z: 2 }],
+      });
+      expect(placed.statusCode).toBe(204);
+      const origin = await graphOf(collectionId);
+
+      const res = await call('POST', `/api/collections/${collectionId}/outline/parent`, {
+        expectedVersion: origin.outlineVersion,
+        nodeId: selected.id,
+        name: `新父${token}`,
+      });
+      expect(res.statusCode).toBe(201);
+      const body = res.json() as CreatedNode & { childId: string };
+      created.nodes.push(body.id);
+      expect(body.childId).toBe(selected.id);
+      expect(body.parentId).toBe(root.id);
+      expect(body.outlineOrder).toBe(0);
+      expect(body.outlineVersion).toBe(origin.outlineVersion + 1);
+      expect(body.duplicates.map((item) => item.id)).toContain(twin.id);
+
+      const graph = await graphOf(collectionId);
+      expect(graph.edges).toEqual([]);
+      expect(graph.outlineVersion).toBe(origin.outlineVersion + 1);
+      const selectedNode = graph.nodes.find((node) => node.id === selected.id);
+      const childNode = graph.nodes.find((node) => node.id === grandchild.id);
+      const laterNode = graph.nodes.find((node) => node.id === later.id);
+      const parentNode = graph.nodes.find((node) => node.id === body.id);
+      expect(selectedNode).toMatchObject({ parentId: body.id, outlineOrder: 0, x: 12, y: 34, z: 2 });
+      expect(childNode).toMatchObject({ parentId: selected.id, outlineOrder: 0 });
+      expect(laterNode).toMatchObject({ parentId: root.id, outlineOrder: 1 });
+      expect(parentNode).toMatchObject({ parentId: root.id, outlineOrder: 0, x: null, y: null, z: null });
+    } finally {
+      await cleanup(created);
+    }
+  });
+
+  it('rejects a stale parent insert and a node that is not a member', async () => {
+    const token = randomUUID();
+    const created = { nodes: [] as string[], collections: [] as string[] };
+    try {
+      const collectionId = await makeCollection(`父冲突${token}`);
+      const otherId = await makeCollection(`父外${token}`);
+      created.collections.push(collectionId, otherId);
+      const parent = (await makeNode(collectionId, `父${token}`)).json() as CreatedNode;
+      const child = (await makeNode(collectionId, `子${token}`, { parentId: parent.id })).json() as CreatedNode;
+      const outsider = (await makeNode(otherId, `外${token}`)).json() as CreatedNode;
+      created.nodes.push(parent.id, child.id, outsider.id);
+      const origin = await graphOf(collectionId);
+
+      const stale = await call('POST', `/api/collections/${collectionId}/outline/parent`, {
+        expectedVersion: origin.outlineVersion + 5,
+        nodeId: child.id,
+        name: `过期${token}`,
+      });
+      expect(stale.statusCode).toBe(409);
+      expect(errorOf(stale.json())).toEqual({ code: 'conflict', message: '大纲已经在别处改过，请刷新' });
+      const afterStale = await graphOf(collectionId);
+      expect(afterStale.outlineVersion).toBe(origin.outlineVersion);
+      expect(afterStale.nodes.find((node) => node.id === child.id)?.parentId).toBe(parent.id);
+      expect(afterStale.nodes).toHaveLength(origin.nodes.length);
+
+      const missing = await call('POST', `/api/collections/${collectionId}/outline/parent`, {
+        expectedVersion: origin.outlineVersion,
+        nodeId: randomUUID(),
+        name: `无${token}`,
+      });
+      expect(missing.statusCode).toBe(400);
+      expect(errorOf(missing.json()).code).toBe('invalid_body');
+
+      const foreign = await call('POST', `/api/collections/${collectionId}/outline/parent`, {
+        expectedVersion: origin.outlineVersion,
+        nodeId: outsider.id,
+        name: `外父${token}`,
+      });
+      expect(foreign.statusCode).toBe(400);
+      expect(errorOf(foreign.json()).code).toBe('invalid_body');
+
+      const after = await graphOf(collectionId);
+      expect(after.outlineVersion).toBe(origin.outlineVersion);
+      expect(after.nodes).toHaveLength(origin.nodes.length);
+      expect(after.nodes.find((node) => node.id === child.id)?.parentId).toBe(parent.id);
+    } finally {
+      await cleanup(created);
+    }
+  });
+
+  it('restores an optional layoutSide and rejects a bad one', async () => {
+    const token = randomUUID();
+    const created = { nodes: [] as string[], collections: [] as string[] };
+    try {
+      const collectionId = await makeCollection(`侧${token}`);
+      created.collections.push(collectionId);
+      const root = (await makeNode(collectionId, `根${token}`)).json() as CreatedNode;
+      const child = (await makeNode(collectionId, `子${token}`, { parentId: root.id })).json() as CreatedNode;
+      created.nodes.push(root.id, child.id);
+      const sided = await call('PATCH', `/api/collections/${collectionId}/members/${child.id}/side`, { side: 'left' });
+      expect(sided.statusCode).toBe(200);
+      const origin = await graphOf(collectionId);
+      expect(layoutSideOf(origin, child.id)).toBe('left');
+
+      const removed = await call(
+        'DELETE',
+        `/api/collections/${collectionId}/members/${child.id}?expectedVersion=${origin.outlineVersion}`,
+      );
+      expect(removed.statusCode).toBe(200);
+      const gone = await graphOf(collectionId);
+      expect(gone.nodes.find((node) => node.id === child.id)).toBeUndefined();
+
+      const omitted = await call('POST', `/api/collections/${collectionId}/outline/restore`, {
+        expectedVersion: gone.outlineVersion,
+        nodeId: child.id,
+        parentId: root.id,
+        order: 0,
+        placement: { x: null, y: null, z: null, imageWidth: null },
+        children: [],
+      });
+      expect(omitted.statusCode).toBe(200);
+      const blank = await graphOf(collectionId);
+      expect(layoutSideOf(blank, child.id)).toBeNull();
+
+      const removedAgain = await call(
+        'DELETE',
+        `/api/collections/${collectionId}/members/${child.id}?expectedVersion=${blank.outlineVersion}`,
+      );
+      expect(removedAgain.statusCode).toBe(200);
+      const open = await graphOf(collectionId);
+      const stale = await call('POST', `/api/collections/${collectionId}/outline/restore`, {
+        expectedVersion: open.outlineVersion + 3,
+        nodeId: child.id,
+        parentId: root.id,
+        order: 0,
+        placement: { x: 1, y: 2, z: 3, imageWidth: null },
+        children: [],
+        layoutSide: 'right',
+      });
+      expect(stale.statusCode).toBe(409);
+      expect(errorOf(stale.json()).code).toBe('conflict');
+      expect((await graphOf(collectionId)).nodes.find((node) => node.id === child.id)).toBeUndefined();
+
+      const bad = await call('POST', `/api/collections/${collectionId}/outline/restore`, {
+        expectedVersion: open.outlineVersion,
+        nodeId: child.id,
+        parentId: root.id,
+        order: 0,
+        placement: { x: null, y: null, z: null, imageWidth: null },
+        children: [],
+        layoutSide: 'middle',
+      });
+      expect(bad.statusCode).toBe(400);
+      expect(errorOf(bad.json()).code).toBe('invalid_body');
+      expect((await graphOf(collectionId)).outlineVersion).toBe(open.outlineVersion);
+
+      const restored = await call('POST', `/api/collections/${collectionId}/outline/restore`, {
+        expectedVersion: open.outlineVersion,
+        nodeId: child.id,
+        parentId: root.id,
+        order: 0,
+        placement: { x: 8, y: 9, z: 4, imageWidth: null },
+        children: [],
+        layoutSide: 'left',
+      });
+      expect(restored.statusCode).toBe(200);
+      const back = await graphOf(collectionId);
+      expect(back.nodes.find((node) => node.id === child.id)).toMatchObject({
+        parentId: root.id,
+        outlineOrder: 0,
+        x: 8,
+        y: 9,
+        z: 4,
+      });
+      expect(layoutSideOf(back, child.id)).toBe('left');
+
+      const explicitNull = await call(
+        'DELETE',
+        `/api/collections/${collectionId}/members/${child.id}?expectedVersion=${back.outlineVersion}`,
+      );
+      expect(explicitNull.statusCode).toBe(200);
+      const cleared = await graphOf(collectionId);
+      const asNull = await call('POST', `/api/collections/${collectionId}/outline/restore`, {
+        expectedVersion: cleared.outlineVersion,
+        nodeId: child.id,
+        parentId: root.id,
+        order: 0,
+        placement: { x: null, y: null, z: null, imageWidth: null },
+        children: [],
+        layoutSide: null,
+      });
+      expect(asNull.statusCode).toBe(200);
+      expect(layoutSideOf(await graphOf(collectionId), child.id)).toBeNull();
+    } finally {
+      await cleanup(created);
     }
   });
 });

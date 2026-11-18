@@ -6,6 +6,9 @@ export type BoardMenuAction =
   | 'open'
   | 'grow-child'
   | 'grow-sibling'
+  | 'grow-before'
+  | 'grow-parent'
+  | 'flip-side'
   | 'connect'
   | 'remove'
   | 'delete-item'
@@ -34,6 +37,8 @@ export type BoardMenuTarget = {
   canRename: boolean;
   canOpen: boolean;
   canGrow: boolean;
+  /** 合集画板、两侧、根的直接子项。全貌不要开 */
+  canFlipSide: boolean;
   canConnect: boolean;
   canRemove: boolean;
   canDeleteItem: boolean;
@@ -48,7 +53,7 @@ export function boardMenu(target: BoardMenuTarget): BoardMenuEntry[] {
   if (target.kind === 'canvas') {
     const items: BoardMenuEntry[] = [];
     if (target.canCreate) {
-      items.push({ action: 'create', label: target.tools ? '添加文字点' : '新建合集', hint: '双击' });
+      items.push({ action: 'create', label: target.tools ? '新建根主题' : '新建合集', hint: '双击' });
     }
     if (target.tools && target.canImage) items.push({ action: 'image', label: '添加图片', hint: 'I' });
     if (target.tools && target.canInsert) items.push({ action: 'insert-inclusion', label: '插入子集合' });
@@ -61,10 +66,13 @@ export function boardMenu(target: BoardMenuTarget): BoardMenuEntry[] {
     if (target.canOpen) items.push({ action: 'open', label: '打开', hint: '双击' });
     if (target.canRename) items.push({ action: 'rename', label: '改名', hint: '双击' });
     if (target.canGrow) {
-      items.push({ action: 'grow-child', label: '在旁边新建', hint: 'Tab' });
-      items.push({ action: 'grow-sibling', label: '在下方新建', hint: 'Enter' });
+      items.push({ action: 'grow-child', label: '子主题', hint: 'Tab' });
+      items.push({ action: 'grow-sibling', label: '同级主题', hint: 'Enter' });
+      items.push({ action: 'grow-before', label: '同级之前', hint: '⇧Enter' });
+      items.push({ action: 'grow-parent', label: '父主题', hint: '⌘Enter' });
     }
-    if (target.canConnect) items.push({ action: 'connect', label: '从这里连线' });
+    if (target.canConnect) items.push({ action: 'connect', label: '建立联系' });
+    if (target.tools && target.canFlipSide) items.push({ action: 'flip-side', label: '放到另一侧' });
     const tail: BoardMenuEntry[] = [];
     if (target.canRemove) tail.push({ action: 'remove', label: '移出当前合集' });
     if (target.canDeleteItem) {

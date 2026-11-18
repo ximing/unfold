@@ -96,6 +96,7 @@ export function InlineInput(props: {
               <button
                 key={label}
                 type="button"
+                title={label}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => {
                   const input = ref.current;

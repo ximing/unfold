@@ -61,6 +61,7 @@ docs/images     根目录 README 用的界面截图
 | [prd/2026-10-25-graph.md](prd/2026-10-25-graph.md) | 现在的产品行为：合集、点、边、卡片、画布设置、交互 |
 | [tech/2026-10-25-graph.md](tech/2026-10-25-graph.md) | 拓扑、表、HTTP、前端、检查 |
 | [deploy.md](deploy.md) | 主机、镜像、迁移、桌面安装包 |
+| [design/2026-11-17-mindmap-canvas.md](design/2026-11-17-mindmap-canvas.md) | 待落地：合集画板改成脑图。现状仍以 [prd/2026-10-25-graph.md](prd/2026-10-25-graph.md) 与 [tech/2026-10-25-graph.md](tech/2026-10-25-graph.md) 为准，本文件落地前不是现行行为 |
 
 改产品语义或接口时，先改前两份，再改代码。
 

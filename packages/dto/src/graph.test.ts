@@ -148,6 +148,7 @@ describe('graphNodeSchema', () => {
         cardTypes: [],
         parentId: null,
         outlineOrder: 0,
+        layoutSide: null,
       }),
     ).toMatchObject({
       kind: 'text',
@@ -172,6 +173,7 @@ describe('graphNodeSchema', () => {
         cardTypes: ['note', 'rich'],
         parentId: null,
         outlineOrder: 1,
+        layoutSide: null,
       }),
     ).toMatchObject({ kind: 'image', x: 1.5, y: -2, z: 4, imageWidth: 220, assetId: ownerId });
   });

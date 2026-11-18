@@ -67,6 +67,7 @@ type NodeHandlers = {
   onBeginLink?: (event: ReactPointerEvent, id: string) => void;
   onBeginResizeImage?: (event: ReactPointerEvent, id: string) => void;
   onImageLoad?: (assetId: string, naturalWidth: number, naturalHeight: number) => void;
+  onToggleFold?: (id: string) => void;
 };
 
 type NodeApi = {
@@ -89,12 +90,59 @@ function sameBox(left: BoardBox, right: BoardBox): boolean {
   return left.x === right.x && left.y === right.y && left.w === right.w && left.h === right.h;
 }
 
+function sameFold(left: BoardCanvasItem['fold'], right: BoardCanvasItem['fold']): boolean {
+  if (left === right) return true;
+  if (!left || !right) return !left && !right;
+  return left.side === right.side && left.collapsed === right.collapsed && left.count === right.count;
+}
+
 function sameFace(left: BoardCanvasItem, right: BoardCanvasItem): boolean {
   return (
     left.label === right.label &&
     left.description === right.description &&
     (left.count ?? 0) === (right.count ?? 0) &&
-    sameList(left.types, right.types)
+    sameList(left.types, right.types) &&
+    sameFold(left.fold, right.fold)
+  );
+}
+
+function FoldMark(props: {
+  box: BoardBox;
+  fold: NonNullable<BoardCanvasItem['fold']>;
+  id: string;
+  apiRef: RefObject<NodeApi | null>;
+}) {
+  const { box, fold, id, apiRef } = props;
+  const text = fold.collapsed ? String(fold.count) : fold.side === 'left' ? '‹' : '›';
+  const width = fold.collapsed ? Math.max(18, 8 + text.length * 7) : 18;
+  const height = 18;
+  const pad = 10;
+  const cx = fold.side === 'left' ? box.x - pad - width / 2 : box.x + box.w + pad + width / 2;
+  const cy = box.y + box.h / 2;
+  return (
+    <g
+      className="bfold"
+      role="button"
+      aria-label={fold.collapsed ? '展开' : '折叠'}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        event.preventDefault();
+        apiRef.current?.handlers.onToggleFold?.(id);
+      }}
+      onClick={(event) => {
+        event.stopPropagation();
+        event.preventDefault();
+      }}
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        event.preventDefault();
+      }}
+    >
+      <rect className="bfold-shape" x={cx - width / 2} y={cy - height / 2} width={width} height={height} rx={height / 2} />
+      <text className="bfold-label" x={cx} y={cy} textAnchor="middle">
+        {text}
+      </text>
+    </g>
   );
 }
 
@@ -131,6 +179,7 @@ export function BoardNodes(props: {
   onBeginLink?: (event: ReactPointerEvent, id: string) => void;
   onBeginResizeImage?: (event: ReactPointerEvent, id: string) => void;
   onImageLoad?: (assetId: string, naturalWidth: number, naturalHeight: number) => void;
+  onToggleFold?: (id: string) => void;
   /** 关掉后不画卡片数和类型色点。全貌始终打开，用来显示成员点数 */
   showMarkers?: boolean;
 }) {
@@ -297,6 +346,7 @@ const TextNode = memo(function TextNode(props: {
           onBeginLink={(event, id) => apiRef.current?.handlers.onBeginLink?.(event, id)}
         />
       ) : null}
+      {item.fold ? <FoldMark box={box} fold={item.fold} id={item.id} apiRef={apiRef} /> : null}
       <title>{item.label}</title>
     </g>
   );
@@ -414,6 +464,7 @@ const ImageNode = memo(function ImageNode(props: {
           onBeginLink={(event, id) => apiRef.current?.handlers.onBeginLink?.(event, id)}
         />
       ) : null}
+      {item.fold ? <FoldMark box={box} fold={item.fold} id={item.id} apiRef={apiRef} /> : null}
       {selected && canResize ? (
         <circle
           className="bnode-resize"

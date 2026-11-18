@@ -24,6 +24,7 @@ function node(id: string, x: number | null, y: number | null): GraphNode {
     cardTypes: [],
     parentId: null,
     outlineOrder: 0,
+    layoutSide: null,
   };
 }
 

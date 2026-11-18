@@ -47,6 +47,8 @@ export const collections = pgTable('collections', {
   edgeArrow: text('edge_arrow').notNull().default('end'),
   outlineVersion: integer('outline_version').notNull().default(0),
   outlineInitialized: boolean('outline_initialized').notNull().default(false),
+  layoutDirection: text('layout_direction').notNull().default('right'),
+  mindmapAnchored: boolean('mindmap_anchored').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -55,6 +57,7 @@ export const collections = pgTable('collections', {
   check('collections_edge_width_check', sql`${table.edgeWidth} IN ('thin', 'medium', 'thick')`),
   check('collections_edge_color_check', sql`${table.edgeColor} IN ('gray', 'blue', 'green', 'red')`),
   check('collections_edge_arrow_check', sql`${table.edgeArrow} IN ('end', 'none')`),
+  check('collections_layout_direction_check', sql`${table.layoutDirection} IN ('right', 'left', 'both')`),
 ]);
 
 export const nodes = pgTable(
@@ -90,6 +93,10 @@ export const memberships = pgTable(
     imageWidth: integer('image_width'),
     parentNodeId: uuid('parent_node_id').references(() => nodes.id, { onDelete: 'set null' }),
     outlineOrder: integer('outline_order').notNull().default(0),
+    layoutSide: text('layout_side'),
+    freeX: doublePrecision('free_x'),
+    freeY: doublePrecision('free_y'),
+    freeCaptured: boolean('free_captured').notNull().default(false),
   },
   (table) => [
     primaryKey({ columns: [table.collectionId, table.nodeId] }),
@@ -100,6 +107,10 @@ export const memberships = pgTable(
     check(
       'memberships_parent_not_self_check',
       sql`${table.parentNodeId} IS NULL OR ${table.parentNodeId} <> ${table.nodeId}`,
+    ),
+    check(
+      'memberships_layout_side_check',
+      sql`${table.layoutSide} IS NULL OR ${table.layoutSide} IN ('left', 'right')`,
     ),
   ],
 );

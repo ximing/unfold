@@ -12,6 +12,7 @@ export type RemovalNode = OutlineNodeRef & {
   y: number | null;
   z: number | null;
   imageWidth: number | null;
+  layoutSide: 'left' | 'right' | null;
 };
 
 export type OutlineRow = {
@@ -99,6 +100,7 @@ export function captureRemoval(nodes: readonly RemovalNode[], nodeId: string): M
     parentId: node.parentId,
     order: node.outlineOrder,
     placement: { x: node.x, y: node.y, z: node.z, imageWidth: node.imageWidth },
+    layoutSide: node.layoutSide === 'left' || node.layoutSide === 'right' ? node.layoutSide : null,
     children,
   };
 }

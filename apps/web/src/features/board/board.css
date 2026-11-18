@@ -110,6 +110,21 @@
   stroke-width: 1.5;
   cursor: crosshair;
 }
+.bfold { cursor: pointer; }
+.bfold-shape {
+  fill: var(--card);
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.bfold:hover .bfold-shape { stroke: var(--accent); }
+.bfold-label {
+  fill: var(--mute);
+  font-size: 11px;
+  font-family: var(--sans);
+  font-weight: 500;
+  dominant-baseline: middle;
+  pointer-events: none;
+}
 .bnode.bnode-image .bnode-rect,
 .bnode.bnode-image:hover .bnode-rect,
 .bnode.bnode-image.on .bnode-rect {
@@ -179,6 +194,42 @@
   stroke: var(--accent);
   stroke-width: 1.5;
   cursor: ew-resize;
+}
+
+/* 大纲分支。箭头指向子主题。没有联系时不能选中。
+   已保存的联系用属性上的线色，不能在这里写 stroke/fill，否则会盖住。 */
+.bbranch-struct {
+  stroke: var(--mute);
+  stroke-width: 1.25;
+  stroke-linecap: butt;
+  fill: none;
+  pointer-events: none;
+}
+.bbranch-struct-arrow {
+  fill: var(--mute);
+  stroke: none;
+  pointer-events: none;
+}
+.bbranch-rel .bbranch-line {
+  fill: none;
+  stroke-linecap: butt;
+  pointer-events: none;
+}
+.bbranch-rel .bbranch-arrow {
+  stroke: none;
+  pointer-events: none;
+}
+.bbranch-hit {
+  stroke: transparent;
+  stroke-width: 18;
+  fill: none;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.mindmap-seam {
+  stroke: var(--mute);
+  stroke-width: 2;
+  pointer-events: none;
 }
 
 /* 边 */
@@ -295,11 +346,18 @@ html.board-dragging * {
   gap: 4px;
   padding: 7px 8px 8px;
   border-top: 1px solid var(--line-soft);
+  overflow: hidden;
 }
 .blink-picks button {
+  /* 标签最长 40 字且常无空格。不限宽时会按中英文边界换行，第二行顶出浮层，挡住落点。 */
   font: inherit;
   font-size: 12px;
   line-height: 1.4;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   border: 0;
   border-radius: 999px;
   padding: 1px 9px;

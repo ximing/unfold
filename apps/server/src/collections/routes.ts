@@ -3,6 +3,9 @@ import {
   createCollectionBodySchema,
   createInclusionBodySchema,
   createNodeBodySchema,
+  insertParentBodySchema,
+  layoutBodySchema,
+  memberSideBodySchema,
   edgeAppearanceSchema,
   placementsBodySchema,
   putOutlineBodySchema,
@@ -21,14 +24,18 @@ import {
   removeCollection,
 } from '../graph/db.js';
 import { assembleCollectionGraph } from './graph-view.js';
+import { adoptMindmap, commitMindmap } from './mindmap-anchor.js';
 import { createInclusion, listInclusionCandidates, removeInclusion, updateInclusion, type InclusionFailure } from './inclusions.js';
 import {
   addCollectionMember,
   createCollectionNode,
+  insertCollectionParent,
   ensureCollectionOutline,
   putCollectionOutline,
   removeCollectionMember,
   restoreCollectionOutline,
+  setCollectionLayout,
+  setMemberSide,
   type OutlineFailure,
 } from './outline.js';
 import {
@@ -44,6 +51,7 @@ import {
   inclusionSelf,
   invalidBody,
   memberParamsSchema,
+  mindmapAnchorConflict,
   nodeNotFound,
   outlineConflict,
   type SessionLookup,
@@ -331,6 +339,41 @@ export function registerCollectionRoutes(app: FastifyInstance, db: Database, ses
     return reply.code(200).send(appearanceFromRow(row));
   });
 
+  app.patch('/api/collections/:id/layout', async (request, reply) => {
+    const user = await session(request, reply);
+    if (!user) return;
+
+    const params = idParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send(invalidBody());
+    const parsed = layoutBodySchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send(invalidBody());
+
+    const result = await setCollectionLayout(db, user.id, params.data.id, parsed.data.direction);
+    if (typeof result === 'string') return sendOutlineFailure(reply, result);
+    return reply.code(200).send(result);
+  });
+
+  app.post('/api/collections/:id/mindmap-adopt', async (request, reply) => {
+    const user = await session(request, reply);
+    if (!user) return;
+    const params = idParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send(invalidBody());
+    const result = await adoptMindmap(db, user.id, params.data.id);
+    if (result === 'missing') return reply.code(404).send(collectionNotFound);
+    return reply.code(200).send(result);
+  });
+
+  app.post('/api/collections/:id/mindmap-commit', async (request, reply) => {
+    const user = await session(request, reply);
+    if (!user) return;
+    const params = idParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send(invalidBody());
+    const result = await commitMindmap(db, user.id, params.data.id);
+    if (result === 'missing') return reply.code(404).send(collectionNotFound);
+    if (result === 'conflict') return reply.code(409).send(mindmapAnchorConflict);
+    return reply.code(200).send(result);
+  });
+
   app.patch('/api/collections/:id/placements', async (request, reply) => {
     const user = await session(request, reply);
     if (!user) return;
@@ -446,6 +489,20 @@ export function registerCollectionRoutes(app: FastifyInstance, db: Database, ses
     return reply.code(200).send(result);
   });
 
+  app.patch('/api/collections/:id/members/:nodeId/side', async (request, reply) => {
+    const user = await session(request, reply);
+    if (!user) return;
+
+    const params = memberParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send(invalidBody());
+    const parsed = memberSideBodySchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send(invalidBody());
+
+    const result = await setMemberSide(db, user.id, params.data.id, params.data.nodeId, parsed.data.side);
+    if (typeof result === 'string') return sendOutlineFailure(reply, result);
+    return reply.code(200).send(result);
+  });
+
   app.put('/api/collections/:id/outline', async (request, reply) => {
     const user = await session(request, reply);
     if (!user) return;
@@ -457,6 +514,19 @@ export function registerCollectionRoutes(app: FastifyInstance, db: Database, ses
     const result = await putCollectionOutline(db, user.id, params.data.id, parsed.data);
     if (typeof result === 'string') return sendOutlineFailure(reply, result);
     return reply.code(200).send(result);
+  });
+
+  app.post('/api/collections/:id/outline/parent', async (request, reply) => {
+    const user = await session(request, reply);
+    if (!user) return;
+
+    const params = idParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send(invalidBody());
+    const parsed = insertParentBodySchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send(invalidBody(bodyMessage(parsed.error)));
+    const created = await insertCollectionParent(db, user.id, params.data.id, parsed.data);
+    if (typeof created === 'string') return sendOutlineFailure(reply, created);
+    return reply.code(201).send(created);
   });
 
   app.post('/api/collections/:id/outline/restore', async (request, reply) => {

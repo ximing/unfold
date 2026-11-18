@@ -127,6 +127,20 @@
       "when": 1793500000000,
       "tag": "0017_outline",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793600000000,
+      "tag": "0018_mindmap_direction",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793700000000,
+      "tag": "0019_mindmap_anchor",
+      "breakpoints": true
     }
   ]
 }

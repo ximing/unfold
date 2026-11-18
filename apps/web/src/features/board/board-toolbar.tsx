@@ -1,4 +1,4 @@
-import type { CanvasPrefs, EdgeAppearance } from '@unfold/dto';
+import type { CanvasPrefs, EdgeAppearance, LayoutDirection } from '@unfold/dto';
 import { Group, Image, MousePointer2, SlidersHorizontal, Spline, Type } from 'lucide-react';
 import { BoardSettings } from './board-settings.js';
 import './board-toolbar.css';
@@ -13,9 +13,11 @@ export function BoardToolbar(props: {
   settingsOpen: boolean;
   appearance: EdgeAppearance;
   canvas: CanvasPrefs;
+  layoutDirection?: LayoutDirection;
   onToggleSettings: () => void;
   onAppearance: (next: EdgeAppearance) => void;
   onCanvas: (patch: Partial<CanvasPrefs>) => void;
+  onLayoutDirection?: (direction: LayoutDirection) => void;
 }) {
   return (
     <nav className="board-toolbar" aria-label="画布工具">
@@ -72,8 +74,10 @@ export function BoardToolbar(props: {
         <BoardSettings
           appearance={props.appearance}
           canvas={props.canvas}
+          layoutDirection={props.layoutDirection}
           onAppearance={props.onAppearance}
           onCanvas={props.onCanvas}
+          onLayoutDirection={props.onLayoutDirection}
         />
       ) : null}
     </nav>

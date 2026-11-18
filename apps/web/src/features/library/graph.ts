@@ -30,7 +30,16 @@ export async function loadGraph(state: LibraryState, collectionId: string): Prom
   }
   if (!res.ok) {
     state.error = await errorMessage(res, '这个合集没有找到');
-    state.graph = { nodes: [], edges: [], bridges: [], inclusions: [], appearance: defaultEdgeAppearance, outlineVersion: 0 };
+    state.graph = {
+      nodes: [],
+      edges: [],
+      bridges: [],
+      inclusions: [],
+      appearance: defaultEdgeAppearance,
+      outlineVersion: 0,
+      layoutDirection: 'right',
+      mindmapAnchored: false,
+    };
     state.graphId = collectionId;
     return false;
   }

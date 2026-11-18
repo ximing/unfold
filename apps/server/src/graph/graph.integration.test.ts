@@ -88,6 +88,8 @@ describe('graph', () => {
       inclusions: [],
       appearance: defaultEdgeAppearance,
       outlineVersion: 1,
+      layoutDirection: 'right',
+      mindmapAnchored: false,
     });
 
     const missing = await call('GET', `/api/nodes/${randomUUID()}`);

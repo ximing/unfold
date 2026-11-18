@@ -10,6 +10,7 @@ function target(patch: Partial<BoardMenuTarget> & Pick<BoardMenuTarget, 'kind'>)
     canRename: false,
     canOpen: false,
     canGrow: false,
+    canFlipSide: false,
     canConnect: false,
     canRemove: false,
     canDeleteItem: false,
@@ -27,9 +28,9 @@ function labels(patch: Partial<BoardMenuTarget> & Pick<BoardMenuTarget, 'kind'>)
 }
 
 describe('boardMenu', () => {
-  it('合集空白是添加文字和图片', () => {
+  it('合集空白是新建根主题和图片', () => {
     expect(labels({ kind: 'canvas', tools: true, canCreate: true, canImage: true })).toEqual([
-      '添加文字点',
+      '新建根主题',
       '添加图片',
     ]);
   });
@@ -41,7 +42,7 @@ describe('boardMenu', () => {
   it('合集空白可以插入子集合', () => {
     expect(
       labels({ kind: 'canvas', tools: true, canCreate: true, canImage: true, canInsert: true }),
-    ).toEqual(['添加文字点', '添加图片', '插入子集合']);
+    ).toEqual(['新建根主题', '添加图片', '插入子集合']);
   });
 
   it('收起的子集合可以展开或移出', () => {
@@ -54,7 +55,7 @@ describe('boardMenu', () => {
     expect(inclusionMenu(false).map((item) => item.label)).toEqual(['收起', '', '移出这个合集']);
   });
 
-  it('合集的点有详情、改名、生长、连线和删除', () => {
+  it('合集的点有详情、改名、结构和建立联系', () => {
     const items = boardMenu(
       target({
         kind: 'node',
@@ -70,15 +71,26 @@ describe('boardMenu', () => {
     expect(items.map((item) => item.label)).toEqual([
       '查看详情',
       '改名',
-      '在旁边新建',
-      '在下方新建',
-      '从这里连线',
+      '子主题',
+      '同级主题',
+      '同级之前',
+      '父主题',
+      '建立联系',
       '',
       '移出当前合集',
       '删除这个点',
     ]);
     expect(items.find((item) => item.label === '删除这个点')).toMatchObject({ danger: true, hint: 'Delete' });
     expect(items.some((item) => item.separator === true)).toBe(true);
+  });
+
+  it('两侧且能换边时有放到另一侧，单向和全貌没有', () => {
+    expect(
+      labels({ kind: 'node', tools: true, canGrow: true, canConnect: true, canFlipSide: true }),
+    ).toContain('放到另一侧');
+    expect(labels({ kind: 'node', tools: true, canGrow: true, canConnect: true })).not.toContain('放到另一侧');
+    expect(labels({ kind: 'node', canOpen: true, canFlipSide: true })).not.toContain('放到另一侧');
+    expect(labels({ kind: 'canvas', canCreate: true, canFlipSide: true })).toEqual(['新建合集']);
   });
 
   it('全貌的合集是打开和删除，删除没有 Delete 提示', () => {

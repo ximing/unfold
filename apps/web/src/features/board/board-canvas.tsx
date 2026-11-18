@@ -1,4 +1,4 @@
-import type { CanvasPrefs, CardType, EdgeAppearance } from '@unfold/dto';
+import type { CanvasPrefs, CardType, EdgeAppearance, LayoutDirection } from '@unfold/dto';
 import { defaultCanvasPrefs, defaultEdgeAppearance } from '@unfold/dto';
 import {
   useEffect,
@@ -12,12 +12,26 @@ import {
 } from 'react';
 import type { UMenuEntry } from '../../shared/ui/context-menu/context-menu.js';
 import { BoardEdges } from './board-edges.js';
+import { BranchLines } from './branch-lines.js';
+import { branchLinkIds, branchRelationPoint } from './branch-geometry.js';
+import { branchLevelExtra } from './label.js';
 import { anchorOnBorder, edgeDraw, edgeLanes } from './edge-geometry.js';
 import { EDGE_STROKE, EDGE_WIDTH } from './edge-style.js';
 import { applyMarquee, applyPick, moveDelta, nodesInRect, normalizeRect, pickModeFromKeys, stackOrder } from './selection.js';
 import { snapPoint, snapTextOrigin } from './snap.js';
 import { isFiniteNumber, layoutBoard, layoutPlaced, nextPlacementZ, NODE_H, NODE_W, textNodeHeight } from './board-layout.js';
-import { GROW_H, GROW_W, planGrow } from './grow.js';
+import {
+  MINDMAP_DRAFT_H,
+  mindmapDraftAt,
+  mindmapKeyAction,
+  mindmapNeighbor,
+  mindmapSelectionOf,
+} from './mindmap-draft.js';
+import type { MindmapDraftRole, MindmapKeyAction } from './mindmap-draft.js';
+import { MINDMAP_GROW_ID, previewMindmapGrow } from './mindmap-preview.js';
+import { shortLabel } from './label.js';
+import { mindmapDragRole, mindmapDropKind, mindmapFollowerIds, resolveMindmapDrop } from './mindmap-drag.js';
+import type { MindmapDropBox, MindmapDropNode, MindmapSeamLine } from './mindmap-drag.js';
 import { LinkComposer } from './link-composer.js';
 import { imageFrame, IMAGE_NAME_LINE } from './image-frame.js';
 import { BoardNodes, NodeChrome } from './board-nodes.js';
@@ -53,6 +67,13 @@ export type BoardCanvasItem = {
   face?: 'inclusion';
   /** 这个点画在哪个子集合里。坐标已经是父画布上的世界坐标 */
   groupId?: string;
+  /** 大纲父级。只给合集画板画分支，不是边 */
+  parentId?: string | null;
+  outlineOrder?: number;
+  /** 根的直接子项在两侧时的列。null 画在右。 */
+  layoutSide?: 'left' | 'right' | null;
+  /** 直接成员的折叠按钮。投影点和子集合芯片不设。 */
+  fold?: { side: 'left' | 'right'; collapsed: boolean; count: number };
 };
 export type BoardCanvasLink = { id: string; fromId: string; toId: string; label: string; count?: number };
 export type BoardSpot = { id: string; x: number; y: number };
@@ -64,7 +85,16 @@ type Editing =
   | { kind: 'rename'; id: string }
   | { kind: 'link'; fromId: string; toId: string }
   | { kind: 'relabel'; id: string }
-  | { kind: 'grow'; role: 'beside' | 'below'; x: number; y: number; groupId: string | null }
+  | {
+      kind: 'grow';
+      role: MindmapDraftRole;
+      nodeId: string;
+      x: number;
+      y: number;
+      groupId: string | null;
+      name: string;
+      attempt: number;
+    }
   | null;
 
 type FrameShift = { childId: string; dx: number; dy: number; anchorX: number; anchorY: number };
@@ -97,6 +127,8 @@ type DragGesture = {
   pointerId: number;
   anchorId: string;
   members: DragMember[];
+  /** places 只写坐标。reparent 是单个直接成员，松手才改父级。 */
+  mode: 'places' | 'reparent';
   startClientX: number;
   startClientY: number;
   startWorldX: number;
@@ -217,6 +249,33 @@ function isImageMime(type: string): boolean {
   return mime.startsWith('image/');
 }
 
+function canvasDropNode(item: BoardCanvasItem): MindmapDropNode {
+  return {
+    id: item.id,
+    parentId: item.parentId ?? null,
+    order: item.outlineOrder ?? 0,
+    kind: mindmapDropKind(item),
+  };
+}
+
+function boxesAt(
+  boxes: readonly { id: string; x: number; y: number; w: number; h: number }[],
+  shifted: ReadonlyMap<string, { x: number; y: number }>,
+  zOf: ReadonlyMap<string, number>,
+): MindmapDropBox[] {
+  return boxes.map((box) => {
+    const at = shifted.get(box.id);
+    return {
+      id: box.id,
+      x: at?.x ?? box.x,
+      y: at?.y ?? box.y,
+      w: box.w,
+      h: box.h,
+      z: zOf.get(box.id) ?? 0,
+    };
+  });
+}
+
 export function BoardCanvas(props: {
   items: BoardCanvasItem[];
   links: BoardCanvasLink[];
@@ -243,10 +302,18 @@ export function BoardCanvas(props: {
   onMove?: (id: string, x: number, y: number, z: number) => boolean | Promise<boolean>;
   /** 一次写下多个点。同一个合集应合成一次请求 */
   onMoveItems?: (items: { id: string; x: number; y: number; z: number }[]) => boolean | Promise<boolean>;
+  /** 单个直接成员松手后改父级。anchor 为空不写坐标。返回 false 时坐标也不写。 */
+  onMindmapDrop?: (input: {
+    nodeId: string;
+    items: { nodeId: string; parentId: string | null; order: number }[];
+    anchor: { x: number; y: number; z: number } | null;
+  }) => boolean | Promise<boolean>;
   /** 松手时写入图片宽度。返回 false 或抛错时回到按下时的宽度 */
   onResizeImage?: (id: string, imageWidth: number) => boolean | Promise<boolean>;
   /** 已有部分坐标时，把还没有 x 的点放到当前视野中心 */
   onPlaceUnpositioned?: (spots: BoardSpot[]) => void;
+  /** 合集直接成员的坐标已经按脑图算好。这些点不进自动排布，也不补到视野中心。全貌不传。 */
+  mindmap?: boolean;
   /** 从节点手柄拖到另一个节点连线 */
   onConnect?: (fromId: string, toId: string, label: string) => void;
   /** 悬停预览内容 */
@@ -262,15 +329,24 @@ export function BoardCanvas(props: {
   canvas?: CanvasPrefs;
   onAppearance?: (next: EdgeAppearance) => void;
   onCanvas?: (patch: Partial<CanvasPrefs>) => void;
+  /** 这个合集的脑图朝向。全貌不传 */
+  layoutDirection?: LayoutDirection;
+  onLayoutDirection?: (direction: LayoutDirection) => void;
+  /** 把根的直接子项放到另一侧 */
+  onFlipSide?: (id: string) => void;
   /** 改边的标签。空字符串或与原来相同由调用方忽略 */
   onRelabel?: (id: string, label: string) => void;
-  /** 选中点后 Tab 在旁边新建、Enter 在下方新建。名字写完才调用，不连边。 */
+  /** 选中直接成员后写名字再建子主题、同级或父主题。失败时调用方返回 false，浮层留着。不连边。 */
   onGrowNode?: (draft: {
     name: string;
     x: number;
     y: number;
     groupId: string | null;
-  }) => void;
+    role: MindmapDraftRole;
+    nodeId: string;
+  }) => void | boolean | Promise<void | boolean>;
+  /** 同级上移或下移。到头由调用方决定不发请求。 */
+  onMoveSibling?: (nodeId: string, direction: 'up' | 'down') => void;
   /** 选文件、粘贴或拖入后交给调用方。不传则只回到选择工具 */
   onInsertImages?: (files: File[], at: Pt, anchor: 'center' | 'corner', groupId: string | null) => void;
   /** 当前合集里展开或收起的子集合。用来画边框、拖动整块区域 */
@@ -278,6 +354,8 @@ export function BoardCanvas(props: {
   /** 拖动展开区域的标题。写入的是锚点，不改成员坐标 */
   onMoveInclusion?: (childId: string, x: number, y: number) => boolean | Promise<boolean>;
   onToggleInclusion?: (childId: string) => void;
+  /** 折起或展开一个直接成员的子树。不写摆放。 */
+  onToggleFold?: (id: string) => void;
   onRemoveInclusion?: (childId: string) => void;
   /** 工具栏或右键插入。坐标是边框左上角，已经按网格吸附 */
   onInsertInclusion?: (origin: Pt) => void;
@@ -292,6 +370,12 @@ export function BoardCanvas(props: {
   const fileRef = useRef<HTMLInputElement>(null);
   const imageAtRef = useRef<Pt | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
+  const [holdGrow, setHoldGrow] = useState<{
+    role: MindmapDraftRole;
+    nodeId: string;
+    name: string;
+    known: readonly string[];
+  } | null>(null);
   const [linkDrag, setLinkDrag] = useState<LinkDrag | null>(null);
   const [tool, setTool] = useState<BoardTool>('select');
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -307,11 +391,13 @@ export function BoardCanvas(props: {
      「再点一次出详情」必须在按下时记录。 */
   const downSoleRef = useRef(false);
   const [dragPlaces, setDragPlaces] = useState<Record<string, { x: number; y: number }> | null>(null);
+  const [seam, setSeam] = useState<MindmapSeamLine | null>(null);
   const marqueeRef = useRef<MarqueeGesture | null>(null);
   const [marqueeRect, setMarqueeRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const selectedIdsRef = useRef<readonly string[]>([]);
   const onSelectIdsRef = useRef(props.onSelectIds);
   const onMoveItemsRef = useRef(props.onMoveItems);
+  const onMindmapDropRef = useRef(props.onMindmapDrop);
   const boxesRef = useRef<{ id: string; x: number; y: number; w: number; h: number }[]>([]);
   const spaceRef = useRef(false);
   const frameDragRef = useRef<FrameDrag | null>(null);
@@ -330,6 +416,7 @@ export function BoardCanvas(props: {
   const linksRef = useRef(props.links);
   const onMoveRef = useRef(props.onMove);
   const onPlaceRef = useRef(props.onPlaceUnpositioned);
+  const mindmapRef = useRef(props.mindmap === true);
   const onInsertRef = useRef(props.onInsertImages);
   const editingRef = useRef<Editing>(null);
   const toolRef = useRef<BoardTool>('select');
@@ -344,10 +431,12 @@ export function BoardCanvas(props: {
   linksRef.current = props.links;
   onMoveRef.current = props.onMove;
   onMoveItemsRef.current = props.onMoveItems;
+  onMindmapDropRef.current = props.onMindmapDrop;
   onSelectIdsRef.current = props.onSelectIds;
   selectedIdsRef.current = props.selectedIds ?? [];
   onResizeRef.current = props.onResizeImage;
   onPlaceRef.current = props.onPlaceUnpositioned;
+  mindmapRef.current = props.mindmap === true;
   onInsertRef.current = props.onInsertImages;
   onMoveInclusionRef.current = props.onMoveInclusion;
   editingRef.current = editing;
@@ -364,19 +453,31 @@ export function BoardCanvas(props: {
   snapRef.current = toolsOn && canvas.snap;
 
   const groups = props.groups ?? [];
-  const hasSaved = props.items.some((item) => isFiniteNumber(item.x));
-  const missingKey = props.items
+  const mindmapOn = props.mindmap === true;
+  const autoItems = mindmapOn
+    ? props.items.filter((item) => mindmapDropKind(item) !== 'member')
+    : props.items;
+  const hasSaved = autoItems.some((item) => isFiniteNumber(item.x));
+  const missingKey = autoItems
     .filter((item) => !isFiniteNumber(item.x))
     .map((item) => item.id)
     .join(',');
   const spot = hasSaved && spotCenter?.key === missingKey ? { x: spotCenter.x, y: spotCenter.y } : null;
-  const laid = hasSaved
+  const laidAuto = hasSaved
     ? layoutPlaced(
-        props.items.map((item) => ({ id: item.id, x: item.x ?? null, y: item.y ?? null })),
+        autoItems.map((item) => ({ id: item.id, x: item.x ?? null, y: item.y ?? null })),
         props.links,
         spot ?? { x: 0, y: 0 },
       )
-    : layoutBoard(props.items, props.links);
+    : layoutBoard(autoItems, props.links);
+  const memberLaid = mindmapOn
+    ? props.items.flatMap((item) => {
+        if (mindmapDropKind(item) !== 'member') return [];
+        if (!isFiniteNumber(item.x) || !isFiniteNumber(item.y)) return [];
+        return [{ id: item.id, x: item.x, y: item.y, w: NODE_W, h: NODE_H }];
+      })
+    : [];
+  const laid = memberLaid.length === 0 ? laidAuto : [...laidAuto, ...memberLaid];
   const placedIds = new Set(props.items.filter((item) => isFiniteNumber(item.x)).map((item) => item.id));
   const visible = hasSaved && spot === null ? laid.filter((box) => placedIds.has(box.id)) : laid;
   const moved = dragPlaces
@@ -386,6 +487,51 @@ export function BoardCanvas(props: {
       })
     : visible;
   const itemById = new Map(props.items.map((item) => [item.id, item]));
+  const holdLanded =
+    holdGrow !== null &&
+    props.items.some((item) => !holdGrow.known.includes(item.id) && mindmapDropKind(item) === 'member');
+  const growLive = editing?.kind === 'grow' ? editing : null;
+  const grow =
+    growLive !== null
+      ? { role: growLive.role, nodeId: growLive.nodeId, name: growLive.name, typing: true as const }
+      : holdGrow !== null && !holdLanded
+        ? { role: holdGrow.role, nodeId: holdGrow.nodeId, name: holdGrow.name, typing: false as const }
+        : null;
+  const growPreview =
+    mindmapOn && grow !== null && !dragPlaces
+      ? previewMindmapGrow({
+          members: props.items.flatMap((item) => {
+            if (mindmapDropKind(item) !== 'member') return [];
+            if (!isFiniteNumber(item.x) || !isFiniteNumber(item.y)) return [];
+            const slot = item.kind === 'image' ? imageFrame(item.imageWidth, 1) : null;
+            return [
+              {
+                id: item.id,
+                parentId: item.parentId ?? null,
+                order: item.outlineOrder ?? 0,
+                side: item.layoutSide ?? null,
+                x: item.x,
+                y: item.y,
+                w: slot ? slot.w : NODE_W,
+                h: slot ? slot.h : textNodeHeight(item.description),
+              },
+            ];
+          }),
+          folded: new Set(props.items.filter((item) => item.fold?.collapsed).map((item) => item.id)),
+          direction: props.layoutDirection ?? 'right',
+          role: grow.role,
+          nodeId: grow.nodeId,
+          draft: { w: NODE_W, h: NODE_H },
+          levelExtra: branchLevelExtra(
+            props.items.flatMap((item) => {
+              if (item.groupId || item.face === 'inclusion') return [];
+              return [{ id: item.id, parentId: item.parentId ?? null }];
+            }),
+            props.links,
+          ),
+        })
+      : null;
+  const previewAt = growPreview ? new Map(growPreview.boxes.map((box) => [box.id, box])) : null;
   const imageHeights = new Map<string, number>();
   const boxes = moved.map((box) => {
     const item = itemById.get(box.id);
@@ -401,15 +547,43 @@ export function BoardCanvas(props: {
         ? frameShift
         : null;
     const at = shift ? { ...box, x: box.x + shift.dx, y: box.y + shift.dy } : box;
-    if (item?.kind !== 'image') return { ...at, h: textNodeHeight(item?.description) };
+    const preview = previewAt?.get(box.id);
+    const placed = preview ? { ...at, x: preview.x, y: preview.y } : at;
+    if (item?.kind !== 'image') return { ...placed, h: textNodeHeight(item?.description) };
     const width = resizePreview?.id === item.id ? resizePreview.width : item.imageWidth;
     const stored = item.assetId ? imageRatios[item.assetId] : undefined;
     const ratio = stored !== undefined && stored > 0 && Number.isFinite(stored) ? stored : 1;
+    const slot = imageFrame(width, 1);
     const frame = imageFrame(width, ratio);
     imageHeights.set(item.id, frame.pictureH);
-    return { ...at, w: frame.w, h: frame.h };
+    return { ...placed, y: placed.y + (slot.h - frame.h) / 2, w: frame.w, h: frame.h };
   });
+  const draftBox = previewAt?.get(MINDMAP_GROW_ID) ?? null;
   const boxOf = new Map(boxes.map((box) => [box.id, box]));
+  if (draftBox) boxOf.set(MINDMAP_GROW_ID, draftBox);
+  const branchItems =
+    growPreview === null
+      ? props.items
+      : [
+          ...props.items.map((item) =>
+            item.id === growPreview.reparentId ? { ...item, parentId: MINDMAP_GROW_ID } : item,
+          ),
+          { id: MINDMAP_GROW_ID, parentId: growPreview.parentId },
+        ];
+  function composerPoint(
+    fromId: string,
+    toId: string,
+    from: { x: number; y: number; w: number; h: number },
+    to: { x: number; y: number; w: number; h: number },
+    laneIndex = 0,
+    laneCount = 1,
+    paired = false,
+  ) {
+    return (
+      branchRelationPoint(branchItems, boxOf, fromId, toId) ??
+      edgeDraw(from, to, laneIndex, laneCount, paired, route).label
+    );
+  }
   boxesRef.current = boxes;
   const frames: InclusionFrameView[] = [];
   for (const group of groups) {
@@ -436,7 +610,7 @@ export function BoardCanvas(props: {
     });
   }
   framesRef.current = frames;
-  const world = bounds([...boxes, ...frames]);
+  const world = bounds([...boxes, ...frames, ...(draftBox ? [draftBox] : [])]);
   fittedWorld.current = world;
   const resetKey =
     props.fitKey ??
@@ -547,6 +721,7 @@ export function BoardCanvas(props: {
     if (dragRef.current) {
       dragRef.current = null;
       setDragPlaces(null);
+      setSeam(null);
     }
     if (marqueeRef.current) {
       marqueeRef.current = null;
@@ -706,6 +881,14 @@ export function BoardCanvas(props: {
   );
 
   useEffect(() => {
+    if (!holdGrow) return;
+    const landed = props.items.some(
+      (item) => !holdGrow.known.includes(item.id) && mindmapDropKind(item) === 'member',
+    );
+    if (landed) setHoldGrow(null);
+  }, [props.items, holdGrow]);
+
+  useEffect(() => {
     if (!settingsOpen) return;
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target;
@@ -717,21 +900,73 @@ export function BoardCanvas(props: {
     return () => window.removeEventListener('pointerdown', onPointerDown, true);
   }, [settingsOpen]);
 
-  function beginGrow(role: 'beside' | 'below', nodeId: string) {
+  function directMember(id: string): BoardCanvasItem | null {
+    const item = itemsRef.current.find((entry) => entry.id === id) ?? null;
+    if (
+      mindmapSelectionOf({
+        selectedIds: [id],
+        selectedId: id,
+        edge: false,
+        item,
+      }) !== 'member'
+    ) {
+      return null;
+    }
+    return item;
+  }
+
+  function rootDirectChild(id: string): boolean {
+    const item = directMember(id);
+    const parentId = item?.parentId ?? null;
+    if (!item || parentId === null) return false;
+    const parent = itemsRef.current.find((entry) => entry.id === parentId);
+    if (!parent || (parent.parentId ?? null) !== null) return false;
+    return directMember(parent.id) !== null;
+  }
+
+  function beginMindmap(role: MindmapDraftRole, nodeId: string) {
     const anchor = boxOf.get(nodeId);
-    const source = itemsRef.current.find((entry) => entry.id === nodeId);
-    if (!anchor || !props.onGrowNode || isUploading(nodeId) || source?.face === 'inclusion') return;
+    const source = directMember(nodeId);
+    if (!anchor || !props.onGrowNode || !source) return;
     disarmPeek();
-    const at = snapPoint(planGrow(role, anchor, boxes, canvas.grow), snapRef.current);
+    const parent = role === 'parent' && source.parentId ? (boxOf.get(source.parentId) ?? null) : null;
+    const at = mindmapDraftAt(role, anchor, { w: NODE_W, h: MINDMAP_DRAFT_H }, parent);
     const next: Editing = {
       kind: 'grow',
       role,
+      nodeId,
       x: at.x,
       y: at.y,
-      groupId: source?.groupId ?? null,
+      groupId: null,
+      name: '',
+      attempt: 0,
     };
     editingRef.current = next;
     setEditing(next);
+  }
+
+  function runMindmapKey(action: MindmapKeyAction) {
+    const selectedId = props.selectedId;
+    if (!selectedId || action.type === 'suppress') return;
+    disarmPeek();
+    if (action.type === 'rename') {
+      startRename(selectedId);
+      return;
+    }
+    if (action.type === 'move-sibling') {
+      props.onMoveSibling?.(selectedId, action.direction);
+      return;
+    }
+    if (action.type === 'navigate') {
+      const outline = itemsRef.current.flatMap((item) => {
+        if (directMember(item.id) === null) return [];
+        return [{ id: item.id, parentId: item.parentId ?? null, outlineOrder: item.outlineOrder ?? 0 }];
+      });
+      const next = mindmapNeighbor(outline, selectedId, action.direction);
+      if (next) publishSelection([next]);
+      return;
+    }
+    beginMindmap(action.role, selectedId);
   }
 
   function beginCreate(at: Pt) {
@@ -816,8 +1051,11 @@ export function BoardCanvas(props: {
     else if (action === 'image') pickImages({ x: hit.worldX, y: hit.worldY });
     else if (action === 'rename') startRename(hit.id);
     else if (action === 'open') props.onOpenItem?.(hit.id);
-    else if (action === 'grow-child') beginGrow('beside', hit.id);
-    else if (action === 'grow-sibling') beginGrow('below', hit.id);
+    else if (action === 'grow-child') beginMindmap('child', hit.id);
+    else if (action === 'grow-sibling') beginMindmap('after', hit.id);
+    else if (action === 'grow-before') beginMindmap('before', hit.id);
+    else if (action === 'grow-parent') beginMindmap('parent', hit.id);
+    else if (action === 'flip-side' && hit.kind === 'node') props.onFlipSide?.(hit.id);
     else if (action === 'connect') startConnect(hit.id);
     else if (action === 'remove') props.onRemoveItem?.(hit.id);
     else if (action === 'delete-item') props.onAskRemoveItem?.(hit.id);
@@ -843,7 +1081,13 @@ export function BoardCanvas(props: {
             canInspect: hit.kind === 'edge' ? props.onInspectLink !== undefined : props.onInspectItem !== undefined,
             canRename: props.onRenameItem !== undefined,
             canOpen: props.onOpenItem !== undefined,
-            canGrow: props.onGrowNode !== undefined,
+            canGrow: props.onGrowNode !== undefined && hit.kind === 'node' && directMember(hit.id) !== null,
+            canFlipSide:
+              toolsOn &&
+              props.layoutDirection === 'both' &&
+              props.onFlipSide !== undefined &&
+              hit.kind === 'node' &&
+              rootDirectChild(hit.id),
             canConnect: toolsOn && props.onConnect !== undefined,
             canRemove: props.onRemoveItem !== undefined,
             canDeleteItem: props.onAskRemoveItem !== undefined,
@@ -885,6 +1129,35 @@ export function BoardCanvas(props: {
         onSelectIdsRef.current?.(boxesRef.current.map((box) => box.id));
         return;
       }
+      const aside =
+        event.target instanceof Element &&
+        event.target.closest('.panel, .collection-bar, .dock, .unassigned-pane, .outline-shell') !== null;
+      if (toolsOn && !aside) {
+        const selectedId = props.selectedId;
+        const action = mindmapKeyAction({
+          toolsOn: true,
+          field: isFieldTarget(event.target),
+          blocked: document.querySelector('.modal-wrap, .overlay, .ctx-menu') !== null,
+          composing: event.isComposing,
+          repeat: event.repeat,
+          key: event.key,
+          shiftKey: event.shiftKey,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          selection: mindmapSelectionOf({
+            selectedIds: props.selectedIds ?? [],
+            selectedId,
+            edge: selectedId !== null && linksRef.current.some((link) => link.id === selectedId),
+            item: selectedId ? (itemsRef.current.find((entry) => entry.id === selectedId) ?? null) : null,
+          }),
+        });
+        if (action) {
+          event.preventDefault();
+          if (action.type !== 'suppress' && !editingRef.current && !linkDragRef.current) runMindmapKey(action);
+          return;
+        }
+      }
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (isFieldTarget(event.target)) return;
       if (document.querySelector('.modal-wrap, .overlay, .ctx-menu')) return;
@@ -912,6 +1185,7 @@ export function BoardCanvas(props: {
         if (dragRef.current) {
           dragRef.current = null;
           setDragPlaces(null);
+          setSeam(null);
           releaseDragChrome();
         }
         if (marqueeRef.current) {
@@ -1006,11 +1280,6 @@ export function BoardCanvas(props: {
         if (best) publishSelection([best.id]);
         return;
       }
-      const many = (props.selectedIds?.length ?? 0) > 1;
-      if (many && (event.key === 'Tab' || event.key === 'Enter')) {
-        event.preventDefault();
-        return;
-      }
       const selectedChild = props.selectedId ? inclusionChildId(props.selectedId) : null;
       const inclusionSelected =
         selectedChild !== null &&
@@ -1028,24 +1297,11 @@ export function BoardCanvas(props: {
           return;
         }
       }
-      if (event.key === 'Tab' && !event.shiftKey && props.onGrowNode && !event.repeat) {
-        const item = props.items.find((entry) => entry.id === props.selectedId);
-        if (!item || item.uploading) return;
-        event.preventDefault();
-        beginGrow('beside', item.id);
-        return;
-      }
       if (event.key === 'Enter') {
         const item = props.items.find((entry) => entry.id === props.selectedId);
         const link = props.links.find((entry) => entry.id === props.selectedId);
         if (item?.uploading) return;
-        if (item && props.onGrowNode) {
-          if (event.repeat) return;
-          event.preventDefault();
-          beginGrow('below', item.id);
-          return;
-        }
-        if (item) {
+        if (item && !toolsOn) {
           event.preventDefault();
           disarmPeek();
           if (props.onOpenItem) props.onOpenItem(item.id);
@@ -1274,7 +1530,7 @@ export function BoardCanvas(props: {
     };
   }, [multiOn]);
 
-  /* ---------- 拖动节点：超过 4 个屏幕像素才算移动。选中的点共用一段位移 ---------- */
+  /* ---------- 拖动节点：超过 4 个屏幕像素才算移动。多选根只平移选中的点；单个直接成员带着子树 ---------- */
   function beginDrag(event: ReactPointerEvent, nodeId: string) {
     downSoleRef.current = multiOn
       ? selectedIdsRef.current.length === 1 && selectedIdsRef.current[0] === nodeId
@@ -1295,14 +1551,30 @@ export function BoardCanvas(props: {
     if (event.target instanceof Element && event.target.closest('.bnode-handle, .bnode-resize')) return;
     const box = boxOf.get(nodeId);
     if (!box) return;
+    const current = selectedIdsRef.current;
+    const ids = multiOn && current.includes(nodeId) ? current.filter((id) => boxOf.has(id)) : [nodeId];
+    let mode: DragGesture['mode'] = 'places';
+    let movingIds = ids;
+    if (toolsOn) {
+      const role = mindmapDragRole(ids, itemsRef.current);
+      if (role === 'block') {
+        event.stopPropagation();
+        return;
+      }
+      if (role === 'reparent' && onMindmapDropRef.current) {
+        mode = 'reparent';
+        const outline = itemsRef.current.flatMap((item) =>
+          mindmapDropKind(item) === 'member' ? [{ id: item.id, parentId: item.parentId ?? null }] : [],
+        );
+        movingIds = mindmapFollowerIds(nodeId, outline).filter((id) => boxOf.has(id));
+      }
+    }
     event.stopPropagation();
     disarmPeek();
     engageDragChrome();
-    const current = selectedIdsRef.current;
-    const ids = multiOn && current.includes(nodeId) ? current.filter((id) => boxOf.has(id)) : [nodeId];
     if (multiOn && !current.includes(nodeId)) publishSelection([nodeId]);
     const start = toWorld(event.clientX, event.clientY);
-    const members = ids.flatMap((id) => {
+    const members = movingIds.flatMap((id) => {
       const at = boxOf.get(id);
       return at ? [{ id, originX: at.x, originY: at.y }] : [];
     });
@@ -1311,6 +1583,7 @@ export function BoardCanvas(props: {
       pointerId: event.pointerId,
       anchorId: nodeId,
       members,
+      mode,
       startClientX: event.clientX,
       startClientY: event.clientY,
       startWorldX: start.x,
@@ -1350,8 +1623,24 @@ export function BoardCanvas(props: {
         if (member.id.startsWith('uploading:')) onMoveRef.current?.(member.id, at.x, at.y, 0);
       }
       setDragPlaces(places);
+      if (drag.mode === 'reparent') {
+        const drop = readDrop(drag, now);
+        setSeam(drop.type === 'anchor' ? null : drop.seam);
+      }
       window.getSelection()?.removeAllRanges();
     };
+    function readDrop(drag: DragGesture, pointer: Pt) {
+      const shifted = new Map(
+        drag.members.map((member) => [member.id, { x: member.originX + drag.dx, y: member.originY + drag.dy }]),
+      );
+      const zOf = new Map(itemsRef.current.map((item) => [item.id, isFiniteNumber(item.z) ? item.z : 0]));
+      return resolveMindmapDrop({
+        draggedId: drag.anchorId,
+        pointer,
+        nodes: itemsRef.current.map(canvasDropNode),
+        boxes: boxesAt(boxesRef.current, shifted, zOf),
+      });
+    }
     const finish = (event: PointerEvent, commit: boolean) => {
       const drag = dragRef.current;
       if (!drag || drag.pointerId !== event.pointerId) return;
@@ -1359,8 +1648,70 @@ export function BoardCanvas(props: {
       releaseDragChrome();
       if (drag.moved) dragEndAtRef.current = performance.now();
       const serial = drag.serial;
+      const clearPlaces = () => {
+        if (dragSerial.current !== serial) return;
+        setDragPlaces(null);
+        setSeam(null);
+      };
       if (!commit || !drag.moved) {
-        if (dragSerial.current === serial) setDragPlaces(null);
+        clearPlaces();
+        return;
+      }
+      const commitPlaces = (payload: { id: string; x: number; y: number; z: number }[]) => {
+        const moveItems = onMoveItemsRef.current;
+        const moveOne = onMoveRef.current;
+        void (async () => {
+          try {
+            if (moveItems) await moveItems(payload);
+            else if (moveOne) {
+              for (const item of payload) await moveOne(item.id, item.x, item.y, item.z);
+            }
+          } catch {
+            // 失败时清掉位移，点回到按下时的坐标
+          }
+          clearPlaces();
+        })();
+      };
+      if (drag.mode === 'reparent') {
+        const drop = readDrop(drag, toWorld(event.clientX, event.clientY));
+        if (dragSerial.current === serial) setSeam(null);
+        if (drop.type === 'cancel') {
+          clearPlaces();
+          return;
+        }
+        const member = drag.members.find((item) => item.id === drag.anchorId);
+        const spot = member
+          ? {
+              id: drag.anchorId,
+              x: member.originX + drag.dx,
+              y: member.originY + drag.dy,
+              z: nextPlacementZ(itemsRef.current.map((item) => item.z)),
+            }
+          : null;
+        if (drop.type === 'anchor') {
+          if (!spot) clearPlaces();
+          else commitPlaces([spot]);
+          return;
+        }
+        const apply = onMindmapDropRef.current;
+        if (!apply || (drop.anchor && !spot)) {
+          clearPlaces();
+          return;
+        }
+        if (!drop.anchor) clearPlaces();
+        void (async () => {
+          try {
+            const ok = await apply({
+              nodeId: drag.anchorId,
+              items: drop.items,
+              anchor: drop.anchor && spot ? { x: spot.x, y: spot.y, z: spot.z } : null,
+            });
+            if (ok === false) clearPlaces();
+          } catch {
+            clearPlaces();
+          }
+          clearPlaces();
+        })();
         return;
       }
       const ordered = stackOrder(
@@ -1380,20 +1731,7 @@ export function BoardCanvas(props: {
           },
         ];
       });
-      const moveItems = onMoveItemsRef.current;
-      const moveOne = onMoveRef.current;
-      void (async () => {
-        try {
-          if (moveItems) await moveItems(payload);
-          else if (moveOne) {
-            for (const item of payload) await moveOne(item.id, item.x, item.y, item.z);
-          }
-        } catch {
-          // 失败时清掉位移，点回到按下时的坐标
-        }
-        if (dragSerial.current !== serial) return;
-        setDragPlaces(null);
-      })();
+      commitPlaces(payload);
     };
     const onPointerUp = (event: PointerEvent) => finish(event, true);
     const onPointerCancel = (event: PointerEvent) => finish(event, false);
@@ -1673,7 +2011,7 @@ export function BoardCanvas(props: {
 
   useEffect(() => {
     if (!hasSaved || missingKey === '' || !spotCenter || spotCenter.key !== missingKey) return;
-    const items = itemsRef.current;
+    const items = itemsRef.current.filter((item) => !mindmapRef.current || mindmapDropKind(item) !== 'member');
     const laidNow = layoutPlaced(
       items.map((item) => ({ id: item.id, x: item.x ?? null, y: item.y ?? null })),
       linksRef.current,
@@ -1845,8 +2183,43 @@ export function BoardCanvas(props: {
             onActivate={() => undefined}
             onPointerDown={beginFrameDrag}
           />
+          {toolsOn ? (
+            <BranchLines
+              items={branchItems}
+              boxOf={boxOf}
+              links={props.links}
+              selectedId={props.selectedId}
+              editingId={editing?.kind === 'relabel' ? editing.id : null}
+              appearance={appearance}
+              showMarkers={canvas.markers}
+              onSelectLink={(id) => {
+                selectOnSingleClick(() => {
+                  disarmPeek();
+                  const sole = props.selectedId === id;
+                  props.onSelectLink(id);
+                  if (sole) props.onInspectLink?.(id);
+                });
+              }}
+              onActivateLink={(id) => {
+                cancelPendingClick();
+                disarmPeek();
+                if (!props.onRelabel) return;
+                const next: Editing = { kind: 'relabel', id };
+                editingRef.current = next;
+                setEditing(next);
+              }}
+              onEditPlain={(pair) => {
+                cancelPendingClick();
+                disarmPeek();
+                if (!props.onConnect) return;
+                const next: Editing = { kind: 'link', fromId: pair.parentId, toId: pair.childId };
+                editingRef.current = next;
+                setEditing(next);
+              }}
+            />
+          ) : null}
           <BoardEdges
-            links={props.links}
+            links={toolsOn ? props.links.filter((link) => !branchLinkIds(branchItems, boxOf, props.links).has(link.id)) : props.links}
             boxOf={boxOf}
             selectedId={props.selectedId}
             editingId={editing?.kind === 'relabel' ? editing.id : null}
@@ -1906,8 +2279,10 @@ export function BoardCanvas(props: {
             imageHeights={imageHeights}
             onImageLoad={rememberImageRatio}
             onBeginResizeImage={props.onResizeImage ? beginResize : undefined}
+            onToggleFold={props.onToggleFold}
             showMarkers={!toolsOn || canvas.markers}
           />
+          {seam ? <line className="mindmap-seam" x1={seam.x1} y1={seam.y} x2={seam.x2} y2={seam.y} /> : null}
           <InclusionFrames
             frames={frames}
             selectedId={props.selectedId}
@@ -1946,29 +2321,68 @@ export function BoardCanvas(props: {
               })()
             : null}
 
-          {editing?.kind === 'grow'
+          {grow
             ? (() => {
-                const draft = { x: editing.x, y: editing.y, w: GROW_W, h: GROW_H };
+                const at =
+                  draftBox ??
+                  (growLive
+                    ? { x: growLive.x, y: growLive.y, w: NODE_W, h: MINDMAP_DRAFT_H }
+                    : null);
+                if (!at) return null;
+                if (!grow.typing || !growLive) {
+                  return (
+                    <g className="node bnode on">
+                      <NodeChrome x={at.x} y={at.y} w={at.w} h={at.h} selected />
+                      <text className="bnode-name" x={at.x + at.w / 2} y={at.y + at.h / 2} textAnchor="middle">
+                        {shortLabel(grow.name)}
+                      </text>
+                    </g>
+                  );
+                }
+                const draft = growLive;
                 return (
                   <g className="node bnode on">
-                    <NodeChrome x={draft.x} y={draft.y} w={draft.w} h={draft.h} selected />
+                    <NodeChrome x={at.x} y={at.y} w={at.w} h={at.h} selected />
                     <InlineInput
+                      key={draft.attempt}
                       variant="node"
-                      x={draft.x}
-                      y={draft.y + draft.h / 2 - INLINE_DY}
-                      w={draft.w}
-                      h={INLINE_H}
+                      x={at.x}
+                      y={at.y}
+                      w={at.w}
+                      h={at.h}
+                      initial={draft.name}
                       placeholder="点的名字"
                       onCommit={(name) => {
-                        if (editingRef.current?.kind !== 'grow') return;
                         const current = editingRef.current;
-                        finishEditing();
-                        props.onGrowNode?.({
+                        if (current?.kind !== 'grow') return;
+                        const known = itemsRef.current.map((item) => item.id);
+                        setHoldGrow({
+                          role: current.role,
+                          nodeId: current.nodeId,
                           name,
-                          x: current.x,
-                          y: current.y,
-                          groupId: current.groupId,
+                          known,
                         });
+                        finishEditing();
+                        void (async () => {
+                          let ok: void | boolean;
+                          try {
+                            ok = await props.onGrowNode?.({
+                              name,
+                              x: at.x,
+                              y: at.y,
+                              groupId: current.groupId,
+                              role: current.role,
+                              nodeId: current.nodeId,
+                            });
+                          } catch {
+                            ok = false;
+                          }
+                          if (ok !== false) return;
+                          setHoldGrow(null);
+                          const next: Editing = { ...current, name, attempt: current.attempt + 1 };
+                          editingRef.current = next;
+                          setEditing(next);
+                        })();
                       }}
                       onCancel={() => {
                         if (editingRef.current?.kind !== 'grow') return;
@@ -2046,7 +2460,7 @@ export function BoardCanvas(props: {
                 const from = boxOf.get(editing.fromId);
                 const to = boxOf.get(editing.toId);
                 if (!from || !to) return null;
-                const mid = edgeDraw(from, to, 0, 1, false, route).label;
+                const mid = composerPoint(editing.fromId, editing.toId, from, to);
                 return (
                   <LinkComposer
                     x={mid.x - 84}
@@ -2076,7 +2490,7 @@ export function BoardCanvas(props: {
                 const to = boxOf.get(link.toId);
                 if (!from || !to) return null;
                 const lane = edgeLanes(props.links).get(link.id) ?? { index: 0, count: 1, paired: false };
-                const mid = edgeDraw(from, to, lane.index, lane.count, lane.paired, route).label;
+                const mid = composerPoint(link.fromId, link.toId, from, to, lane.index, lane.count, lane.paired);
                 return (
                   <LinkComposer
                     x={mid.x - 84}
@@ -2116,9 +2530,11 @@ export function BoardCanvas(props: {
           settingsOpen={settingsOpen}
           appearance={appearance}
           canvas={canvas}
+          layoutDirection={props.layoutDirection}
           onToggleSettings={() => setSettingsOpen((open) => !open)}
           onAppearance={(next) => props.onAppearance?.(next)}
           onCanvas={(patch) => props.onCanvas?.(patch)}
+          onLayoutDirection={props.onLayoutDirection}
         />
       ) : null}
       {toolsOn ? (

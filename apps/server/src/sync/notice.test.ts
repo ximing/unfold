@@ -11,6 +11,8 @@ describe('变更通知', () => {
     expect(shouldPublish('POST', '/api/logout', 204)).toBe(false);
     expect(shouldPublish('PATCH', '/api/me/username', 200)).toBe(false);
     expect(shouldPublish('POST', '/api/collections', 400)).toBe(false);
+    expect(shouldPublish('POST', '/api/collections/550e8400-e29b-41d4-a716-446655440000/mindmap-adopt', 200)).toBe(false);
+    expect(shouldPublish('POST', '/api/collections/550e8400-e29b-41d4-a716-446655440000/mindmap-commit', 200)).toBe(false);
   });
 
   it('没有合法的页标识时用固定值', () => {
